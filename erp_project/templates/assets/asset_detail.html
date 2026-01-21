@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">{{ asset.name }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Back
+        </a>
+        {% if asset.status == 'draft' and can_edit %}
+        <a href="{% url 'assets:asset_edit' asset.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-edit me-1"></i>Edit
+        </a>
+        <a href="{% url 'assets:asset_activate' asset.pk %}" class="btn btn-success" onclick="return confirm('Activate this asset and post acquisition journal?');">
+            <i class="fas fa-check me-1"></i>Activate
+        </a>
+        {% elif asset.status == 'active' and can_edit %}
+        <a href="{% url 'assets:asset_depreciate' asset.pk %}" class="btn btn-outline-primary" onclick="return confirm('Run depreciation for this asset?');">
+            <i class="fas fa-calculator me-1"></i>Depreciate
+        </a>
+        <a href="{% url 'assets:asset_dispose' asset.pk %}" class="btn btn-outline-danger">
+            <i class="fas fa-times me-1"></i>Dispose
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Status -->
+<div class="mb-4">
+    {% if asset.status == 'draft' %}
+    <span class="badge bg-secondary fs-6">Draft</span>
+    {% elif asset.status == 'active' %}
+    <span class="badge bg-success fs-6">Active</span>
+    {% elif asset.status == 'fully_depreciated' %}
+    <span class="badge bg-warning fs-6">Fully Depreciated</span>
+    {% elif asset.status == 'disposed' %}
+    <span class="badge bg-dark fs-6">Disposed</span>
+    {% endif %}
+</div>
+
+<div class="row">
+    <!-- Asset Details -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2"></i>Asset Details</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted" width="40%">Asset Number</td>
+                        <td class="fw-medium">{{ asset.asset_number }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Name</td>
+                        <td>{{ asset.name }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Category</td>
+                        <td>{{ asset.category.name }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Serial Number</td>
+                        <td>{{ asset.serial_number|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Location</td>
+                        <td>{{ asset.location|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Custodian</td>
+                        <td>{{ asset.custodian|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Vendor</td>
+                        <td>{{ asset.vendor|default:"-" }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Financial Summary -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-coins me-2"></i>Financial Summary</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted">Acquisition Date</td>
+                        <td class="text-end">{{ asset.acquisition_date|date:"d M Y" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Acquisition Cost</td>
+                        <td class="text-end">AED {{ asset.acquisition_cost|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Salvage Value</td>
+                        <td class="text-end">AED {{ asset.salvage_value|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Depreciable Amount</td>
+                        <td class="text-end">AED {{ asset.depreciable_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr class="border-top">
+                        <td class="text-muted">Accumulated Depreciation</td>
+                        <td class="text-end text-danger">AED {{ asset.accumulated_depreciation|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr class="table-success fw-bold">
+                        <td>Book Value</td>
+                        <td class="text-end">AED {{ asset.book_value|floatformat:2|intcomma }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Depreciation Settings -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-cog me-2"></i>Depreciation Settings</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted">Method</td>
+                        <td>{{ asset.get_depreciation_method_display }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Useful Life</td>
+                        <td>{{ asset.useful_life_years }} years ({{ asset.useful_life_months }} months)</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Depreciation Start</td>
+                        <td>{{ asset.depreciation_start_date|date:"d M Y"|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Monthly Depreciation</td>
+                        <td class="fw-medium">AED {{ asset.monthly_depreciation|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Last Depreciation</td>
+                        <td>{{ asset.last_depreciation_date|date:"d M Y"|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Remaining Life</td>
+                        <td>{{ asset.remaining_life_months }} months</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Accounting Links -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-book me-2"></i>Accounting</h6>
+            </div>
+            <div class="card-body">
+                {% if asset.acquisition_journal %}
+                <p class="mb-2">
+                    <strong>Acquisition Journal:</strong>
+                    <a href="{% url 'finance:journal_detail' asset.acquisition_journal.pk %}">
+                        {{ asset.acquisition_journal.entry_number }}
+                    </a>
+                </p>
+                {% endif %}
+                
+                {% if asset.disposal_journal %}
+                <p class="mb-2">
+                    <strong>Disposal Journal:</strong>
+                    <a href="{% url 'finance:journal_detail' asset.disposal_journal.pk %}">
+                        {{ asset.disposal_journal.entry_number }}
+                    </a>
+                </p>
+                {% endif %}
+                
+                {% if asset.status == 'disposed' %}
+                <hr>
+                <p class="mb-1"><strong>Disposal Details:</strong></p>
+                <p class="mb-1">Date: {{ asset.disposal_date|date:"d M Y" }}</p>
+                <p class="mb-1">Proceeds: AED {{ asset.disposal_amount|floatformat:2|intcomma }}</p>
+                <p class="mb-1">
+                    {% if asset.gain_loss_on_disposal >= 0 %}
+                    <span class="text-success">Gain: AED {{ asset.gain_loss_on_disposal|floatformat:2|intcomma }}</span>
+                    {% else %}
+                    <span class="text-danger">Loss: AED {{ asset.gain_loss_on_disposal|floatformat:2|intcomma }}</span>
+                    {% endif %}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Depreciation History -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>Depreciation History</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Accumulated</th>
+                        <th class="text-end">Book Value</th>
+                        <th>Journal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in depreciation_records %}
+                    <tr>
+                        <td>{{ record.depreciation_date|date:"d M Y" }}</td>
+                        <td class="text-end">{{ record.depreciation_amount|floatformat:2|intcomma }}</td>
+                        <td class="text-end">{{ record.accumulated_depreciation|floatformat:2|intcomma }}</td>
+                        <td class="text-end">{{ record.book_value_after|floatformat:2|intcomma }}</td>
+                        <td>
+                            {% if record.journal_entry %}
+                            <a href="{% url 'finance:journal_detail' record.journal_entry.pk %}">
+                                {{ record.journal_entry.entry_number }}
+                            </a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">No depreciation records</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,106 @@
+from django import forms
+from .models import Project, Task, Timesheet, ProjectExpense
+from apps.crm.models import Customer
+from apps.purchase.models import Vendor
+from apps.finance.models import Account
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class ProjectForm(forms.ModelForm):
+    class Meta:
+        model = Project
+        fields = ['name', 'description', 'customer', 'manager', 'status', 'start_date', 'end_date', 'budget']
+        widgets = {
+            'start_date': forms.DateInput(attrs={'type': 'date'}),
+            'end_date': forms.DateInput(attrs={'type': 'date'}),
+            'description': forms.Textarea(attrs={'rows': 2}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name, field in self.fields.items():
+            if name in ['customer', 'manager', 'status']:
+                field.widget.attrs['class'] = 'form-select'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+
+class TaskForm(forms.ModelForm):
+    class Meta:
+        model = Task
+        fields = ['name', 'description', 'assigned_to', 'status', 'priority', 'due_date', 'estimated_hours']
+        widgets = {
+            'due_date': forms.DateInput(attrs={'type': 'date'}),
+            'description': forms.Textarea(attrs={'rows': 2}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Filter assigned_to to active users only
+        self.fields['assigned_to'].queryset = User.objects.filter(is_active=True).order_by('first_name', 'last_name', 'username')
+        self.fields['assigned_to'].empty_label = '-- Unassigned --'
+        for name, field in self.fields.items():
+            if name in ['assigned_to', 'status', 'priority']:
+                field.widget.attrs['class'] = 'form-select'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+
+class TimesheetForm(forms.ModelForm):
+    class Meta:
+        model = Timesheet
+        fields = ['task', 'date', 'hours', 'description']
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date'}),
+            'description': forms.Textarea(attrs={'rows': 2}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name, field in self.fields.items():
+            if name == 'task':
+                field.widget.attrs['class'] = 'form-select'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+
+
+class ProjectExpenseForm(forms.ModelForm):
+    """Form for creating/editing project expenses."""
+    class Meta:
+        model = ProjectExpense
+        fields = [
+            'project', 'category', 'description', 'expense_date',
+            'amount', 'vat_amount', 'vendor', 'invoice_reference',
+            'expense_account'
+        ]
+        widgets = {
+            'expense_date': forms.DateInput(attrs={'type': 'date'}),
+            'description': forms.Textarea(attrs={'rows': 2}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Filter active projects
+        self.fields['project'].queryset = Project.objects.filter(is_active=True, status__in=['planned', 'in_progress'])
+        
+        # Filter active vendors
+        self.fields['vendor'].queryset = Vendor.objects.filter(is_active=True)
+        self.fields['vendor'].required = False
+        
+        # Filter expense accounts
+        self.fields['expense_account'].queryset = Account.objects.filter(
+            is_active=True,
+            account_type__in=['expense', 'cogs']
+        )
+        self.fields['expense_account'].required = False
+        self.fields['expense_account'].empty_label = '-- Use Default --'
+        
+        for name, field in self.fields.items():
+            if name in ['project', 'category', 'vendor', 'expense_account']:
+                field.widget.attrs['class'] = 'form-select'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+        
+        self.fields['amount'].widget.attrs['step'] = '0.01'
+        self.fields['vat_amount'].widget.attrs['step'] = '0.01'
+

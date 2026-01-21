@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:banktransfer_list' %}">Bank Transfers</a></li>
+            <li class="breadcrumb-item active">New Transfer</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-exchange-alt me-2 text-primary"></i>Transfer Details</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Transfer Date</label>
+                    {{ form.transfer_date }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">From Bank Account</label>
+                    {{ form.from_bank }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">To Bank Account</label>
+                    {{ form.to_bank }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Amount (AED)</label>
+                    {{ form.amount }}
+                </div>
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Reference</label>
+                    {{ form.reference }}
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                {{ form.notes }}
+            </div>
+        </div>
+        <div class="card-footer bg-white">
+            <button type="submit" class="btn btn-dark">
+                <i class="fas fa-save me-2"></i>Create Transfer
+            </button>
+            <a href="{% url 'finance:banktransfer_list' %}" class="btn btn-light">Cancel</a>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+

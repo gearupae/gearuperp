@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{% url 'finance:expenseclaim_list' %}">Expense Claims</a></li>
+                <li class="breadcrumb-item active">{{ claim.claim_number }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+    </div>
+    <div>
+        {% if claim.status == 'draft' %}
+        <a href="{% url 'finance:expenseclaim_submit' claim.pk %}" class="btn btn-primary">
+            <i class="fas fa-paper-plane me-2"></i>Submit for Approval
+        </a>
+        {% endif %}
+        {% if can_approve and claim.status == 'submitted' %}
+        <a href="{% url 'finance:expenseclaim_approve' claim.pk %}" class="btn btn-success">
+            <i class="fas fa-check me-2"></i>Approve
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Expense Items</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th class="text-end">Amount</th>
+                                <th class="text-end">VAT</th>
+                                <th>Receipt</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in claim.items.all %}
+                            <tr>
+                                <td>{{ item.date|date:"d/m/Y" }}</td>
+                                <td>{{ item.get_category_display }}</td>
+                                <td>{{ item.description }}</td>
+                                <td class="text-end">{{ item.amount|floatformat:2 }}</td>
+                                <td class="text-end">{{ item.vat_amount|floatformat:2 }}</td>
+                                <td>
+                                    {% if item.has_receipt %}
+                                    <span class="badge bg-success"><i class="fas fa-check"></i></span>
+                                    {% else %}
+                                    <span class="badge bg-secondary"><i class="fas fa-times"></i></span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-3 text-muted">No items</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="bg-light">
+                            <tr class="fw-bold">
+                                <td colspan="3">Total</td>
+                                <td class="text-end">{{ claim.total_amount|floatformat:2 }}</td>
+                                <td class="text-end">{{ claim.total_vat|floatformat:2 }}</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-primary"></i>Claim Details</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted">Status</th>
+                        <td>
+                            {% if claim.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif claim.status == 'submitted' %}
+                            <span class="badge bg-warning">Submitted</span>
+                            {% elif claim.status == 'approved' %}
+                            <span class="badge bg-success">Approved</span>
+                            {% elif claim.status == 'rejected' %}
+                            <span class="badge bg-danger">Rejected</span>
+                            {% elif claim.status == 'paid' %}
+                            <span class="badge bg-primary">Paid</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Employee</th>
+                        <td>{{ claim.employee.get_full_name|default:claim.employee.username }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Claim Date</th>
+                        <td>{{ claim.claim_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Total Amount</th>
+                        <td class="fw-bold">AED {{ claim.total_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Claimable VAT</th>
+                        <td>AED {{ claim.total_vat|floatformat:2 }}</td>
+                    </tr>
+                    {% if claim.approved_by %}
+                    <tr>
+                        <th class="text-muted">Approved By</th>
+                        <td>{{ claim.approved_by.username }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Approved On</th>
+                        <td>{{ claim.approved_date|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        
+        {% if claim.description %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-sticky-note me-2 text-primary"></i>Description</h6>
+            </div>
+            <div class="card-body">
+                {{ claim.description }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+

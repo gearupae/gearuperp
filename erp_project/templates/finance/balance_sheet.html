@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">As of {{ as_of_date }}</p>
+    </div>
+    <div>
+        <a href="?date={{ as_of_date }}&format=excel" class="btn btn-success me-2">
+            <i class="fas fa-file-excel me-1"></i>Excel
+        </a>
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Balance Status -->
+<div class="alert {% if is_balanced %}alert-success{% else %}alert-danger{% endif %} mb-4">
+    <i class="fas {% if is_balanced %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} me-2"></i>
+    {% if is_balanced %}
+        <strong>Balanced:</strong> Assets = Liabilities + Equity
+    {% else %}
+        <strong>NOT BALANCED:</strong> Assets ({{ total_assets|floatformat:2|intcomma }}) ≠ Liabilities + Equity ({{ total_liabilities_equity|floatformat:2|intcomma }})
+    {% endif %}
+</div>
+
+<div class="row">
+    <!-- Assets -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-university me-2"></i>Assets</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Account</th>
+                                <th class="text-end">Amount (AED)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in asset_data %}
+                            <tr>
+                                <td>{{ item.account.code }} - {{ item.account.name }}</td>
+                                <td class="text-end">{{ item.amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-center text-muted py-3">No assets recorded</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="table-primary fw-bold">
+                            <tr>
+                                <td>Total Assets</td>
+                                <td class="text-end">{{ total_assets|floatformat:2|intcomma }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Liabilities & Equity -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-secondary text-white">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-landmark me-2"></i>Liabilities & Equity</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Account</th>
+                                <th class="text-end">Amount (AED)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Liabilities -->
+                            <tr class="table-light">
+                                <td colspan="2" class="fw-bold text-danger">Liabilities</td>
+                            </tr>
+                            {% for item in liability_data %}
+                            <tr>
+                                <td class="ps-4">{{ item.account.code }} - {{ item.account.name }}</td>
+                                <td class="text-end">{{ item.amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-center text-muted py-2 ps-4">No liabilities</td></tr>
+                            {% endfor %}
+                            <tr class="border-bottom">
+                                <td class="fw-medium ps-4">Total Liabilities</td>
+                                <td class="text-end fw-medium">{{ total_liabilities|floatformat:2|intcomma }}</td>
+                            </tr>
+                            
+                            <!-- Equity -->
+                            <tr class="table-light">
+                                <td colspan="2" class="fw-bold text-info">Equity</td>
+                            </tr>
+                            {% for item in equity_data %}
+                            <tr>
+                                <td class="ps-4">{{ item.account.code }} - {{ item.account.name }}</td>
+                                <td class="text-end">{{ item.amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-center text-muted py-2 ps-4">No equity accounts</td></tr>
+                            {% endfor %}
+                            <tr>
+                                <td class="ps-4">Current Year Profit/(Loss)</td>
+                                <td class="text-end">{{ current_year_profit|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr class="border-bottom">
+                                <td class="fw-medium ps-4">Total Equity</td>
+                                <td class="text-end fw-medium">{{ total_equity|floatformat:2|intcomma }}</td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="table-secondary fw-bold">
+                            <tr>
+                                <td>Total Liabilities & Equity</td>
+                                <td class="text-end">{{ total_liabilities_equity|floatformat:2|intcomma }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

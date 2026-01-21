@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div><h4 class="mb-1 fw-bold">{{ title }}</h4><p class="text-muted mb-0">Manage payroll records</p></div>
+    {% if can_create %}
+    <div>
+        <a href="{% url 'hr:payroll_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Add Payroll
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-money-check text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Payroll</p>
+                        <h5 class="mb-0 fw-bold">AED {{ total_payroll|floatformat:2 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Paid Records</p>
+                        <h5 class="mb-0 fw-bold">{{ paid_payrolls|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-file-invoice text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Processed Records</p>
+                        <h5 class="mb-0 fw-bold">{{ processed_payrolls|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Employee</th><th>Month</th><th class="text-end">Basic</th><th class="text-end">Allowances</th><th class="text-end">Deductions</th><th class="text-end">Net Salary</th><th>Status</th><th class="text-center" width="120">Actions</th></tr></thead>
+                <tbody>
+                    {% for payroll in payrolls %}
+                    <tr>
+                        <td>{{ payroll.employee.full_name }}</td>
+                        <td>{{ payroll.month|date:"F Y" }}</td>
+                        <td class="text-end">{{ payroll.basic_salary|floatformat:2 }}</td>
+                        <td class="text-end">{{ payroll.allowances|floatformat:2 }}</td>
+                        <td class="text-end">{{ payroll.deductions|floatformat:2 }}</td>
+                        <td class="text-end fw-medium">{{ payroll.net_salary|floatformat:2 }}</td>
+                        <td>{% if payroll.status == 'paid' %}<span class="badge badge-active">Paid</span>{% elif payroll.status == 'processed' %}<span class="badge" style="background:#dbeafe;color:#1e40af;">Processed</span>{% else %}<span class="badge bg-secondary">Draft</span>{% endif %}</td>
+                        <td class="text-center">
+                            <a href="{% url 'hr:payroll_detail' payroll.pk %}" class="btn btn-action btn-outline-secondary" title="View">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if payroll.status == 'draft' and can_edit %}
+                            <form method="post" action="{% url 'hr:payroll_process' payroll.pk %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-action btn-outline-success" title="Process" onclick="return confirm('Process payroll and post to accounting?');">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            </form>
+                            <a href="{% url 'hr:payroll_edit' payroll.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% elif payroll.status == 'processed' and can_edit %}
+                            <a href="{% url 'hr:payroll_pay' payroll.pk %}" class="btn btn-action btn-outline-success" title="Pay Salary">
+                                <i class="fas fa-money-bill-wave"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}<tr><td colspan="8" class="text-center py-5 text-muted"><i class="fas fa-money-check fa-3x mb-3 d-block"></i>No payroll records</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

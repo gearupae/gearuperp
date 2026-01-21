@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">As of {{ as_of_date|date:"d/m/Y" }}</small>
+    </div>
+    <div class="btn-group">
+        <a href="?format=excel" class="btn btn-success">
+            <i class="fas fa-file-excel me-2"></i>Excel
+        </a>
+        <button class="btn btn-outline-dark" onclick="window.print()">
+            <i class="fas fa-print me-2"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col">
+        <div class="card border-0 shadow-sm h-100 bg-success text-white">
+            <div class="card-body text-center py-3">
+                <small>Current</small>
+                <h5 class="mb-0">{{ totals.current|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-0 shadow-sm h-100 bg-info text-white">
+            <div class="card-body text-center py-3">
+                <small>1-30 Days</small>
+                <h5 class="mb-0">{{ totals.1_30|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-0 shadow-sm h-100 bg-warning text-dark">
+            <div class="card-body text-center py-3">
+                <small>31-60 Days</small>
+                <h5 class="mb-0">{{ totals.31_60|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-0 shadow-sm h-100 bg-orange text-white" style="background-color: #fd7e14;">
+            <div class="card-body text-center py-3">
+                <small>61-90 Days</small>
+                <h5 class="mb-0">{{ totals.61_90|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-0 shadow-sm h-100 bg-danger text-white">
+            <div class="card-body text-center py-3">
+                <small>Over 90 Days</small>
+                <h5 class="mb-0">{{ totals.over_90|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-0 shadow-sm h-100 bg-dark text-white">
+            <div class="card-body text-center py-3">
+                <small>Total</small>
+                <h5 class="mb-0">{{ grand_total|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Source Information -->
+{% if ap_account %}
+<div class="alert alert-info mb-4">
+    <i class="fas fa-info-circle me-2"></i>
+    Reading from: <strong>{{ ap_account.code }} - {{ ap_account.name }}</strong> (Journal Entries)
+</div>
+{% endif %}
+
+<!-- Current (0-30 Days) -->
+{% if aging_data.current %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">
+            <span class="badge bg-success me-2">Current (0-30 Days)</span>
+            {{ aging_data.current|length }} Item{% if aging_data.current|length != 1 %}s{% endif %}
+        </h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Outstanding</th>
+                        <th class="text-center">Days Old</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in aging_data.current %}
+                    <tr>
+                        <td class="fw-medium">{{ item.reference }}</td>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.date|date:"d/m/Y" }}</td>
+                        <td class="text-end">{{ item.total|floatformat:2 }}</td>
+                        <td class="text-end">{{ item.paid|floatformat:2 }}</td>
+                        <td class="text-end fw-bold">{{ item.outstanding|floatformat:2 }}</td>
+                        <td class="text-center"><span class="badge bg-success">{{ item.days_old }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 31-60 Days -->
+{% if aging_data.1_30 %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">
+            <span class="badge bg-info me-2">31-60 Days</span>
+            {{ aging_data.1_30|length }} Item{% if aging_data.1_30|length != 1 %}s{% endif %}
+        </h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Outstanding</th>
+                        <th class="text-center">Days Old</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in aging_data.1_30 %}
+                    <tr>
+                        <td class="fw-medium">{{ item.reference }}</td>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.date|date:"d/m/Y" }}</td>
+                        <td class="text-end">{{ item.total|floatformat:2 }}</td>
+                        <td class="text-end">{{ item.paid|floatformat:2 }}</td>
+                        <td class="text-end fw-bold">{{ item.outstanding|floatformat:2 }}</td>
+                        <td class="text-center"><span class="badge bg-info">{{ item.days_old }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 61-90 Days -->
+{% if aging_data.31_60 %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">
+            <span class="badge bg-warning me-2">61-90 Days</span>
+            {{ aging_data.31_60|length }} Item{% if aging_data.31_60|length != 1 %}s{% endif %}
+        </h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Outstanding</th>
+                        <th class="text-center">Days Old</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in aging_data.31_60 %}
+                    <tr>
+                        <td class="fw-medium">{{ item.reference }}</td>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.date|date:"d/m/Y" }}</td>
+                        <td class="text-end">{{ item.total|floatformat:2 }}</td>
+                        <td class="text-end">{{ item.paid|floatformat:2 }}</td>
+                        <td class="text-end fw-bold">{{ item.outstanding|floatformat:2 }}</td>
+                        <td class="text-center"><span class="badge bg-warning text-dark">{{ item.days_old }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 91-120 Days -->
+{% if aging_data.61_90 %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">
+            <span class="badge me-2" style="background-color: #fd7e14;">91-120 Days</span>
+            {{ aging_data.61_90|length }} Item{% if aging_data.61_90|length != 1 %}s{% endif %}
+        </h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Outstanding</th>
+                        <th class="text-center">Days Old</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in aging_data.61_90 %}
+                    <tr>
+                        <td class="fw-medium">{{ item.reference }}</td>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.date|date:"d/m/Y" }}</td>
+                        <td class="text-end">{{ item.total|floatformat:2 }}</td>
+                        <td class="text-end">{{ item.paid|floatformat:2 }}</td>
+                        <td class="text-end fw-bold">{{ item.outstanding|floatformat:2 }}</td>
+                        <td class="text-center"><span class="badge" style="background-color: #fd7e14;">{{ item.days_old }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Over 120 Days -->
+{% if aging_data.over_90 %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">
+            <span class="badge bg-danger me-2">Over 120 Days</span>
+            {{ aging_data.over_90|length }} Item{% if aging_data.over_90|length != 1 %}s{% endif %}
+        </h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th>Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Outstanding</th>
+                        <th class="text-center">Days Old</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in aging_data.over_90 %}
+                    <tr>
+                        <td class="fw-medium">{{ item.reference }}</td>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.date|date:"d/m/Y" }}</td>
+                        <td class="text-end">{{ item.total|floatformat:2 }}</td>
+                        <td class="text-end">{{ item.paid|floatformat:2 }}</td>
+                        <td class="text-end fw-bold">{{ item.outstanding|floatformat:2 }}</td>
+                        <td class="text-center"><span class="badge bg-danger">{{ item.days_old }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if grand_total == 0 %}
+<div class="alert alert-success">
+    <i class="fas fa-check-circle me-2"></i>No outstanding payables.
+</div>
+{% endif %}
+{% endblock %}
+

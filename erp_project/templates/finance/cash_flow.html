@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">{{ start_date }} to {{ end_date }}</small>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-outline-dark" onclick="window.print()">
+            <i class="fas fa-print me-2"></i>Print
+        </button>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+            <div class="card-body text-center">
+                <h6 class="mb-2">Opening Cash Balance</h6>
+                <h3 class="mb-0">AED {{ opening_cash|floatformat:2 }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 {% if net_change >= 0 %}bg-success{% else %}bg-danger{% endif %} text-white">
+            <div class="card-body text-center">
+                <h6 class="mb-2">Net Change in Cash</h6>
+                <h3 class="mb-0">AED {{ net_change|floatformat:2 }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 bg-dark text-white">
+            <div class="card-body text-center">
+                <h6 class="mb-2">Closing Cash Balance</h6>
+                <h3 class="mb-0">AED {{ closing_cash|floatformat:2 }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-water me-2 text-primary"></i>Cash Flow Summary</h6>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <tbody>
+                <tr class="table-info">
+                    <td colspan="2" class="fw-bold">Cash Flows from Operating Activities</td>
+                </tr>
+                <tr>
+                    <td class="ps-4">Net Income from Operations</td>
+                    <td class="text-end fw-bold {% if operating_activities >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        AED {{ operating_activities|floatformat:2 }}
+                    </td>
+                </tr>
+                <tr class="table-warning fw-bold">
+                    <td>Net Cash from Operating Activities</td>
+                    <td class="text-end">AED {{ operating_activities|floatformat:2 }}</td>
+                </tr>
+                
+                <tr class="table-info">
+                    <td colspan="2" class="fw-bold">Cash Flows from Investing Activities</td>
+                </tr>
+                <tr>
+                    <td class="ps-4 text-muted">No investing activities recorded</td>
+                    <td class="text-end">AED 0.00</td>
+                </tr>
+                
+                <tr class="table-info">
+                    <td colspan="2" class="fw-bold">Cash Flows from Financing Activities</td>
+                </tr>
+                <tr>
+                    <td class="ps-4 text-muted">No financing activities recorded</td>
+                    <td class="text-end">AED 0.00</td>
+                </tr>
+                
+                <tr class="table-dark text-white fs-5">
+                    <td class="fw-bold">Net Increase/(Decrease) in Cash</td>
+                    <td class="text-end fw-bold">AED {{ net_change|floatformat:2 }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="alert alert-info mt-3">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Note:</strong> This is a simplified cash flow statement. For detailed analysis, please review the Bank Ledger and General Ledger reports.
+</div>
+{% endblock %}
+
+

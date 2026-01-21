@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% load settings_tags %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Transfer funds between bank accounts</small>
+    </div>
+    {% if can_create %}
+    <a href="{% url 'finance:banktransfer_create' %}" class="btn btn-dark">
+        <i class="fas fa-plus me-2"></i>New Transfer
+    </a>
+    {% endif %}
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Transfer #</th>
+                        <th>Date</th>
+                        <th>From Bank</th>
+                        <th>To Bank</th>
+                        <th class="text-end">Amount (AED)</th>
+                        <th>Reference</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transfer in transfers %}
+                    <tr>
+                        <td class="fw-medium">{{ transfer.transfer_number }}</td>
+                        <td>{{ transfer.transfer_date|date:"d/m/Y" }}</td>
+                        <td>{{ transfer.from_bank.name }}</td>
+                        <td>{{ transfer.to_bank.name }}</td>
+                        <td class="text-end fw-bold">{{ transfer.amount|floatformat:2 }}</td>
+                        <td>{{ transfer.reference }}</td>
+                        <td>
+                            {% if transfer.status == 'draft' %}
+                            <span class="badge bg-warning">Draft</span>
+                            {% elif transfer.status == 'confirmed' %}
+                            <span class="badge bg-success">Confirmed</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Cancelled</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if can_edit and transfer.status == 'draft' %}
+                            <a href="{% url 'finance:banktransfer_confirm' transfer.pk %}" 
+                               class="btn btn-sm btn-success"
+                               onclick="return confirm('Confirm this transfer?')">
+                                <i class="fas fa-check"></i> Confirm
+                            </a>
+                            {% endif %}
+                            {% if transfer.journal_entry %}
+                            <a href="{% url 'finance:journal_detail' transfer.journal_entry.pk %}" class="btn btn-sm btn-outline-dark">
+                                <i class="fas fa-book"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-exchange-alt fa-3x mb-3 d-block opacity-25"></i>
+                            No bank transfers found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

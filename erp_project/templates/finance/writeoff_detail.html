@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">{{ writeoff.get_writeoff_type_display }} • {{ writeoff.writeoff_date|date:"d/m/Y" }}</small>
+    </div>
+    <div class="btn-group">
+        <a href="{% url 'finance:writeoff_list' %}" class="btn btn-outline-dark">
+            <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+        {% if writeoff.status == 'draft' %}
+        <a href="{% url 'finance:writeoff_edit' writeoff.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-edit me-2"></i>Edit
+        </a>
+        <form method="post" action="{% url 'finance:writeoff_approve' writeoff.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-info" onclick="return confirm('Approve this write-off?');">
+                <i class="fas fa-thumbs-up me-2"></i>Approve
+            </button>
+        </form>
+        <form method="post" action="{% url 'finance:writeoff_post' writeoff.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success" onclick="return confirm('Post this write-off?');">
+                <i class="fas fa-check me-2"></i>Post
+            </button>
+        </form>
+        {% elif writeoff.status == 'approved' %}
+        <form method="post" action="{% url 'finance:writeoff_post' writeoff.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success" onclick="return confirm('Post this write-off?');">
+                <i class="fas fa-check me-2"></i>Post
+            </button>
+        </form>
+        {% elif writeoff.status == 'posted' %}
+        <form method="post" action="{% url 'finance:writeoff_reverse' writeoff.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-warning" onclick="return confirm('Reverse this write-off?');">
+                <i class="fas fa-undo me-2"></i>Reverse
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Status and Info Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-hashtag fa-2x text-primary mb-2"></i>
+                <small class="d-block text-muted">Write-Off Number</small>
+                <h5 class="mb-0 fw-bold">{{ writeoff.writeoff_number }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-info-circle fa-2x text-info mb-2"></i>
+                <small class="d-block text-muted">Status</small>
+                {% if writeoff.status == 'draft' %}
+                <h5 class="mb-0"><span class="badge bg-secondary fs-6">Draft</span></h5>
+                {% elif writeoff.status == 'approved' %}
+                <h5 class="mb-0"><span class="badge bg-info fs-6">Approved</span></h5>
+                {% elif writeoff.status == 'posted' %}
+                <h5 class="mb-0"><span class="badge bg-success fs-6">Posted</span></h5>
+                {% else %}
+                <h5 class="mb-0"><span class="badge bg-warning fs-6">Reversed</span></h5>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-dollar-sign fa-2x text-danger mb-2"></i>
+                <small class="d-block text-muted">Amount</small>
+                <h5 class="mb-0 fw-bold text-danger">{{ writeoff.amount|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-tag fa-2x text-warning mb-2"></i>
+                <small class="d-block text-muted">Type</small>
+                <h5 class="mb-0">
+                    {% if writeoff.writeoff_type == 'bad_debt' %}
+                    <span class="badge bg-danger fs-6">{{ writeoff.get_writeoff_type_display }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary fs-6">{{ writeoff.get_writeoff_type_display }}</span>
+                    {% endif %}
+                </h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Write-Off Details -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold">Write-Off Details</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <th class="text-muted" style="width: 180px;">Description:</th>
+                        <td>{{ writeoff.description }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Source Account:</th>
+                        <td>{{ writeoff.source_account.code }} - {{ writeoff.source_account.name }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Expense Account:</th>
+                        <td>{{ writeoff.expense_account.code }} - {{ writeoff.expense_account.name }}</td>
+                    </tr>
+                    {% if writeoff.reference_number %}
+                    <tr>
+                        <th class="text-muted">Reference:</th>
+                        <td>{{ writeoff.reference_type }} - {{ writeoff.reference_number }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- Journal Entry -->
+        {% if writeoff.journal_entry %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold">Journal Entry</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">
+                    <strong>Entry Number:</strong>
+                    <a href="{% url 'finance:journal_detail' writeoff.journal_entry.pk %}">
+                        {{ writeoff.journal_entry.entry_number }}
+                    </a>
+                </p>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Account</th>
+                                <th class="text-end">Debit</th>
+                                <th class="text-end">Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for line in writeoff.journal_entry.lines.all %}
+                            <tr>
+                                <td>{{ line.account.code }} - {{ line.account.name }}</td>
+                                <td class="text-end">{% if line.debit > 0 %}{{ line.debit|floatformat:2 }}{% endif %}</td>
+                                <td class="text-end">{% if line.credit > 0 %}{{ line.credit|floatformat:2 }}{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if writeoff.notes %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold">Notes</h6>
+            </div>
+            <div class="card-body">
+                {{ writeoff.notes|linebreaks }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-md-4">
+        <!-- Party Info -->
+        {% if writeoff.customer or writeoff.vendor %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold">Related Party</h6>
+            </div>
+            <div class="card-body">
+                {% if writeoff.customer %}
+                <div class="d-flex align-items-center">
+                    <div class="bg-success text-white rounded-circle p-3 me-3">
+                        <i class="fas fa-user fa-lg"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted">Customer</small>
+                        <h6 class="mb-0">{{ writeoff.customer.name }}</h6>
+                    </div>
+                </div>
+                {% endif %}
+                {% if writeoff.vendor %}
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning text-dark rounded-circle p-3 me-3">
+                        <i class="fas fa-truck fa-lg"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted">Vendor</small>
+                        <h6 class="mb-0">{{ writeoff.vendor.name }}</h6>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Audit Info -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold">Audit Trail</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <small class="text-muted d-block">Created By</small>
+                    <span>{{ writeoff.created_by.get_full_name|default:writeoff.created_by.username }}</span>
+                    <small class="text-muted d-block">{{ writeoff.created_at|date:"d/m/Y H:i" }}</small>
+                </div>
+                {% if writeoff.approved_by %}
+                <div class="mb-3">
+                    <small class="text-muted d-block">Approved By</small>
+                    <span>{{ writeoff.approved_by.get_full_name|default:writeoff.approved_by.username }}</span>
+                    <small class="text-muted d-block">{{ writeoff.approved_date|date:"d/m/Y H:i" }}</small>
+                </div>
+                {% endif %}
+                {% if writeoff.posted_by %}
+                <div class="mb-3">
+                    <small class="text-muted d-block">Posted By</small>
+                    <span>{{ writeoff.posted_by.get_full_name|default:writeoff.posted_by.username }}</span>
+                    <small class="text-muted d-block">{{ writeoff.posted_date|date:"d/m/Y H:i" }}</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

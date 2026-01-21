@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <h4 class="mb-1 fw-bold">{{ title }}</h4>
+    <p class="text-muted mb-0">Enter project expense details</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Project <span class="text-danger">*</span></label>
+                            {{ form.project }}
+                            {% if form.project.errors %}
+                            <div class="text-danger small mt-1">{{ form.project.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
+                            {{ form.category }}
+                            {% if form.category.errors %}
+                            <div class="text-danger small mt-1">{{ form.category.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Description <span class="text-danger">*</span></label>
+                        {{ form.description }}
+                        {% if form.description.errors %}
+                        <div class="text-danger small mt-1">{{ form.description.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Expense Date <span class="text-danger">*</span></label>
+                            {{ form.expense_date }}
+                            {% if form.expense_date.errors %}
+                            <div class="text-danger small mt-1">{{ form.expense_date.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Amount (excl. VAT) <span class="text-danger">*</span></label>
+                            {{ form.amount }}
+                            {% if form.amount.errors %}
+                            <div class="text-danger small mt-1">{{ form.amount.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">VAT Amount</label>
+                            {{ form.vat_amount }}
+                            {% if form.vat_amount.errors %}
+                            <div class="text-danger small mt-1">{{ form.vat_amount.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <h6 class="fw-bold mb-3"><i class="fas fa-building me-2"></i>Vendor Details (Optional)</h6>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Vendor</label>
+                            {{ form.vendor }}
+                            {% if form.vendor.errors %}
+                            <div class="text-danger small mt-1">{{ form.vendor.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Invoice Reference</label>
+                            {{ form.invoice_reference }}
+                            {% if form.invoice_reference.errors %}
+                            <div class="text-danger small mt-1">{{ form.invoice_reference.errors.0 }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <h6 class="fw-bold mb-3"><i class="fas fa-calculator me-2"></i>Accounting (Optional)</h6>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Expense Account</label>
+                        {{ form.expense_account }}
+                        <small class="text-muted">Leave blank to use the project's default expense account or system mapping.</small>
+                        {% if form.expense_account.errors %}
+                        <div class="text-danger small mt-1">{{ form.expense_account.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <hr class="my-4">
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'projects:expense_list' %}" class="btn btn-light">
+                            <i class="fas fa-arrow-left me-1"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Save Expense
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2"></i>Instructions</h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted mb-2">
+                    <strong>Project:</strong> Select the project this expense belongs to.
+                </p>
+                <p class="small text-muted mb-2">
+                    <strong>Category:</strong> Classify the expense type for reporting.
+                </p>
+                <p class="small text-muted mb-2">
+                    <strong>Amount:</strong> Enter the net amount excluding VAT.
+                </p>
+                <p class="small text-muted mb-2">
+                    <strong>VAT Amount:</strong> Enter the VAT component separately if applicable.
+                </p>
+                <hr>
+                <p class="small text-muted mb-0">
+                    <strong>Workflow:</strong><br>
+                    1. Create expense (Draft)<br>
+                    2. Approve expense<br>
+                    3. Post to accounting
+                </p>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-book me-2"></i>Accounting Impact</h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted mb-2">When posted:</p>
+                <table class="table table-sm small mb-0">
+                    <tr>
+                        <td>Dr</td>
+                        <td>Project Expense</td>
+                    </tr>
+                    <tr>
+                        <td>Dr</td>
+                        <td>VAT Recoverable</td>
+                    </tr>
+                    <tr>
+                        <td>Cr</td>
+                        <td>Accounts Payable / Accrued</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

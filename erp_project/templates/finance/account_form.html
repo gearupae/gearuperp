@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:account_list' %}">Chart of Accounts</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Account Code <span class="text-danger">*</span></label>
+                    {{ form.code }}
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Account Name <span class="text-danger">*</span></label>
+                    {{ form.name }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Account Type <span class="text-danger">*</span></label>
+                    {{ form.account_type }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Parent Account</label>
+                    {{ form.parent }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save</button>
+                <a href="{% url 'finance:account_list' %}" class="btn btn-light">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+

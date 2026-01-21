@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage user roles and access levels</p>
+    </div>
+    <div>
+        {% if is_superuser or 'create' in user_permissions.settings %}
+        <button class="btn btn-primary" onclick="toggleInlineForm('roleForm')">
+            <i class="fas fa-plus me-2"></i>Add Role
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Inline Create Form -->
+<div id="roleForm" class="inline-form-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="mb-0 fw-semibold">
+            <i class="fas fa-user-shield me-2 text-primary"></i>Add New Role
+        </h5>
+        <button type="button" class="btn-close" onclick="cancelInlineForm('roleForm')"></button>
+    </div>
+    <form method="post" action="{% url 'settings:role_create' %}">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Role Name <span class="text-danger">*</span></label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Code <span class="text-danger">*</span></label>
+                <input type="text" name="code" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" name="is_active" checked>
+                    <label class="form-check-label">Active</label>
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea name="description" class="form-control" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="mt-4 pt-3 border-top">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Save Role
+            </button>
+            <button type="button" class="btn btn-light" onclick="cancelInlineForm('roleForm')">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<!-- Roles Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Role Name</th>
+                        <th>Code</th>
+                        <th>Description</th>
+                        <th>System Role</th>
+                        <th>Status</th>
+                        <th class="text-center" width="150">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for role in roles %}
+                    <tr>
+                        <td class="fw-medium">{{ role.name }}</td>
+                        <td><code>{{ role.code }}</code></td>
+                        <td>{{ role.description|default:"-"|truncatewords:10 }}</td>
+                        <td>
+                            {% if role.is_system_role %}
+                                <span class="badge bg-info">System</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if role.is_active %}
+                                <span class="badge badge-active">Active</span>
+                            {% else %}
+                                <span class="badge badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if is_superuser or 'edit' in user_permissions.settings %}
+                            <a href="{% url 'settings:role_permissions' role.pk %}" class="btn btn-action btn-outline-info" title="Permissions">
+                                <i class="fas fa-key"></i>
+                            </a>
+                            <a href="{% url 'settings:role_edit' role.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="fas fa-user-shield fa-3x mb-3 d-block"></i>
+                            No roles found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

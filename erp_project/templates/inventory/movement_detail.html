@@ -1,0 +1,219 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Stock movement details</p>
+    </div>
+    <div>
+        <a href="{% url 'inventory:movement_list' %}" class="btn btn-light">
+            <i class="fas fa-arrow-left me-1"></i>Back to Movements
+        </a>
+        {% if can_post %}
+        <a href="{% url 'inventory:movement_post' movement.pk %}" class="btn btn-primary" onclick="return confirm('Post this movement to accounting?')">
+            <i class="fas fa-book me-1"></i>Post to Accounting
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <!-- Movement Details -->
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold">Movement Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted" style="width:40%">Movement #:</td>
+                                <td class="fw-bold">{{ movement.movement_number }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Date:</td>
+                                <td>{{ movement.movement_date|date:"d/m/Y" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Type:</td>
+                                <td>
+                                    {% if movement.movement_type == 'in' %}
+                                    <span class="badge badge-active">Stock In</span>
+                                    {% elif movement.movement_type == 'out' %}
+                                    <span class="badge badge-inactive">Stock Out</span>
+                                    {% elif movement.movement_type == 'transfer' %}
+                                    <span class="badge" style="background:#dbeafe;color:#1e40af;">Transfer</span>
+                                    {% elif movement.movement_type == 'adjustment_plus' %}
+                                    <span class="badge bg-info">Adjustment (+)</span>
+                                    {% elif movement.movement_type == 'adjustment_minus' %}
+                                    <span class="badge bg-secondary">Adjustment (-)</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ movement.get_movement_type_display }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Source:</td>
+                                <td>{{ movement.get_source_display }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted" style="width:40%">Item:</td>
+                                <td>
+                                    <a href="{% url 'inventory:item_detail' movement.item.pk %}">{{ movement.item.name }}</a>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Item Code:</td>
+                                <td>{{ movement.item.item_code }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">From Warehouse:</td>
+                                <td>{{ movement.warehouse.name }}</td>
+                            </tr>
+                            {% if movement.to_warehouse %}
+                            <tr>
+                                <td class="text-muted">To Warehouse:</td>
+                                <td>{{ movement.to_warehouse.name }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <p class="text-muted mb-1">Quantity</p>
+                        <h3 class="mb-0 fw-bold">{{ movement.quantity }} <small class="text-muted">{{ movement.item.unit }}</small></h3>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <p class="text-muted mb-1">Unit Cost</p>
+                        <h3 class="mb-0 fw-bold">{{ movement.unit_cost|floatformat:2 }}</h3>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <p class="text-muted mb-1">Total Value</p>
+                        <h3 class="mb-0 fw-bold text-primary">{{ movement.total_cost|floatformat:2 }}</h3>
+                    </div>
+                </div>
+                
+                {% if movement.reference or movement.notes %}
+                <hr>
+                <div class="row">
+                    {% if movement.reference %}
+                    <div class="col-md-6">
+                        <p class="text-muted mb-1">Reference</p>
+                        <p class="mb-0">{{ movement.reference }}</p>
+                    </div>
+                    {% endif %}
+                    {% if movement.notes %}
+                    <div class="col-md-6">
+                        <p class="text-muted mb-1">Notes</p>
+                        <p class="mb-0">{{ movement.notes }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Accounting Journal Entry -->
+        {% if movement.journal_entry %}
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold">Journal Entry</h6>
+                <a href="{% url 'finance:journal_detail' movement.journal_entry.pk %}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-external-link-alt me-1"></i>View Full Entry
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Description</th>
+                            <th class="text-end">Debit</th>
+                            <th class="text-end">Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in journal_lines %}
+                        <tr>
+                            <td>{{ line.account.account_code }} - {{ line.account.name }}</td>
+                            <td>{{ line.description }}</td>
+                            <td class="text-end">{% if line.debit %}{{ line.debit|floatformat:2 }}{% endif %}</td>
+                            <td class="text-end">{% if line.credit %}{{ line.credit|floatformat:2 }}{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr class="fw-bold">
+                            <td colspan="2">Total</td>
+                            <td class="text-end">{{ movement.journal_entry.total_debit|floatformat:2 }}</td>
+                            <td class="text-end">{{ movement.journal_entry.total_credit|floatformat:2 }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Status & Audit -->
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold">Accounting Status</h6>
+            </div>
+            <div class="card-body text-center">
+                {% if movement.posted %}
+                <div class="bg-success bg-opacity-10 rounded-3 p-4 mb-3">
+                    <i class="fas fa-check-circle text-success fa-3x mb-2"></i>
+                    <h5 class="text-success mb-0">Posted to GL</h5>
+                </div>
+                <p class="mb-1 text-muted small">Journal Entry:</p>
+                <p class="fw-bold">{{ movement.journal_entry.entry_number }}</p>
+                {% elif movement.total_cost > 0 %}
+                <div class="bg-warning bg-opacity-10 rounded-3 p-4 mb-3">
+                    <i class="fas fa-clock text-warning fa-3x mb-2"></i>
+                    <h5 class="text-warning mb-0">Pending Posting</h5>
+                </div>
+                <p class="text-muted small">This movement is ready to be posted to the General Ledger.</p>
+                {% else %}
+                <div class="bg-secondary bg-opacity-10 rounded-3 p-4 mb-3">
+                    <i class="fas fa-minus-circle text-secondary fa-3x mb-2"></i>
+                    <h5 class="text-secondary mb-0">No Cost Value</h5>
+                </div>
+                <p class="text-muted small">This movement has no cost and cannot be posted.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold">Audit Trail</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted">Created:</td>
+                        <td>{{ movement.created_at|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Updated:</td>
+                        <td>{{ movement.updated_at|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

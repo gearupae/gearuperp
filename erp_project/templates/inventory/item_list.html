@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage inventory items</p>
+    </div>
+    <div>
+        {% if can_create %}
+        <a href="{% url 'inventory:item_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Add Item
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-cubes text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Items</p>
+                        <h5 class="mb-0 fw-bold">{{ total_items }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-danger bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-exclamation-triangle text-danger"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Low Stock Items</p>
+                        <h5 class="mb-0 fw-bold">{{ low_stock_count }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <input type="text" name="search" class="form-control" placeholder="Search items..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="category" class="form-select">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if request.GET.category == cat.id|stringformat:'i' %}selected{% endif %}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="item_type" class="form-select">
+                    <option value="">All Types</option>
+                    {% for value, label in type_choices %}
+                    <option value="{{ value }}" {% if request.GET.item_type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>
+                <a href="{% url 'inventory:item_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th class="text-end">Purchase Price</th>
+                        <th class="text-end">Selling Price</th>
+                        <th class="text-end">Stock</th>
+                        <th>Status</th>
+                        <th class="text-center" width="120">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'inventory:item_detail' item.pk %}" class="fw-medium text-decoration-none">{{ item.item_code }}</a>
+                        </td>
+                        <td>{{ item.name }}</td>
+                        <td>{{ item.category.name|default:"-" }}</td>
+                        <td>
+                            {% if item.item_type == 'product' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af;">Product</span>
+                            {% else %}
+                            <span class="badge" style="background:#f3e8ff;color:#7c3aed;">Service</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ item.purchase_price|floatformat:2 }}</td>
+                        <td class="text-end">{{ item.selling_price|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if item.item_type == 'product' %}
+                                {% with stock_qty=item.total_stock_calc|default:0 %}
+                                {% if stock_qty < item.minimum_stock %}
+                                <span class="text-danger fw-medium">{{ stock_qty }}</span>
+                                {% else %}
+                                {{ stock_qty }}
+                                {% endif %}
+                                {% endwith %}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.status == 'active' %}
+                            <span class="badge badge-active">Active</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'inventory:item_detail' item.pk %}" class="btn btn-action btn-outline-info" title="View">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if can_edit %}
+                            <a href="{% url 'inventory:item_edit' item.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_delete %}
+                            <a href="{% url 'inventory:item_delete' item.pk %}" class="btn btn-action btn-outline-danger" title="Delete" onclick="return confirm('Delete this item?');">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="fas fa-cubes fa-3x mb-3 d-block"></i>
+                            No items found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

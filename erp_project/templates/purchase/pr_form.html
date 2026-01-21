@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'purchase:pr_list' %}">Purchase Requests</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+{% if form.errors and form.errors.items %}
+<div class="alert alert-danger mb-4">
+    <h6 class="alert-heading mb-2"><i class="fas fa-exclamation-triangle me-2"></i>Please correct the errors below:</h6>
+    {% for field, errors in form.errors.items %}
+        <div><strong>{{ field }}:</strong> {{ errors|join:", " }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+{% if items_formset.non_form_errors %}
+<div class="alert alert-danger mb-4">
+    <h6 class="alert-heading mb-2"><i class="fas fa-exclamation-triangle me-2"></i>Item Errors:</h6>
+    <div>{{ items_formset.non_form_errors|join:", " }}</div>
+</div>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">Request Details</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Date <span class="text-danger">*</span></label>
+                    {{ form.date }}
+                    {% if form.date.errors %}<div class="text-danger small">{{ form.date.errors|join:", " }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Required By Date</label>
+                    {{ form.required_by_date }}
+                    {% if form.required_by_date.errors %}<div class="text-danger small">{{ form.required_by_date.errors|join:", " }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    {{ form.status }}
+                    {% if form.status.errors %}<div class="text-danger small">{{ form.status.errors|join:", " }}</div>{% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    {{ form.notes }}
+                    {% if form.notes.errors %}<div class="text-danger small">{{ form.notes.errors|join:", " }}</div>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-semibold">Items</h6>
+            <button type="button" class="btn btn-sm btn-primary" onclick="addItemRow()">
+                <i class="fas fa-plus me-1"></i>Add Item
+            </button>
+        </div>
+        <div class="card-body p-0">
+            {{ items_formset.management_form }}
+            <div class="table-responsive">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:50%">Description</th>
+                            <th style="width:15%">Qty</th>
+                            <th style="width:20%">Est. Price</th>
+                            <th style="width:15%"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody">
+                        {% for item_form in items_formset %}
+                        <tr class="item-row" {% if item_form.DELETE.value %}style="display:none;"{% endif %}>
+                            <td>
+                                {{ item_form.id }}
+                                <input type="text" name="{{ item_form.prefix }}-description" class="form-control" 
+                                       value="{{ item_form.description.value|default:'' }}" placeholder="Item description">
+                            </td>
+                            <td>
+                                <input type="number" name="{{ item_form.prefix }}-quantity" class="form-control" 
+                                       value="{{ item_form.quantity.value|default:1 }}" step="0.01" min="0.01">
+                            </td>
+                            <td>
+                                <input type="number" name="{{ item_form.prefix }}-estimated_price" class="form-control" 
+                                       value="{{ item_form.estimated_price.value|default:0 }}" step="0.01" min="0">
+                            </td>
+                            <td class="text-center">
+                                {% if item_form.instance.pk %}
+                                <input type="checkbox" name="{{ item_form.prefix }}-DELETE" class="d-none delete-check"
+                                       {% if item_form.DELETE.value %}checked{% endif %}>
+                                {% endif %}
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItemRow(this)">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save</button>
+    <a href="{% url 'purchase:pr_list' %}" class="btn btn-light">Cancel</a>
+</form>
+
+{% block extra_js %}
+<script>
+let formCount = {{ items_formset.total_form_count }};
+
+function addItemRow() {
+    const tbody = document.getElementById('itemsBody');
+    const newRow = document.createElement('tr');
+    newRow.className = 'item-row';
+    newRow.innerHTML = `
+        <td><input type="text" name="items-${formCount}-description" class="form-control" placeholder="Item description"></td>
+        <td><input type="number" name="items-${formCount}-quantity" class="form-control" value="1" step="0.01" min="0.01"></td>
+        <td><input type="number" name="items-${formCount}-estimated_price" class="form-control" value="0" step="0.01" min="0"></td>
+        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItemRow(this)"><i class="fas fa-times"></i></button></td>
+    `;
+    tbody.appendChild(newRow);
+    formCount++;
+    document.getElementById('id_items-TOTAL_FORMS').value = formCount;
+}
+
+function removeItemRow(btn) {
+    const row = btn.closest('tr');
+    const deleteCheck = row.querySelector('.delete-check');
+    if (deleteCheck) {
+        deleteCheck.checked = true;
+        row.style.display = 'none';
+    } else {
+        row.remove();
+    }
+}
+</script>
+{% endblock %}
+{% endblock %}

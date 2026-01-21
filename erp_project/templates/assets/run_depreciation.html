@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Run monthly depreciation for all active assets</p>
+    </div>
+    <a href="{% url 'assets:asset_list' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-calculator me-2"></i>Run Depreciation</h6>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-4">
+                        <label class="form-label">Depreciation Date</label>
+                        <input type="date" name="depreciation_date" class="form-control" value="{{ today }}" required>
+                        <small class="text-muted">Select the date for depreciation posting (usually first of month)</small>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>{{ active_assets }}</strong> active assets will be depreciated.
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" onclick="return confirm('Run depreciation for {{ active_assets }} active assets?');">
+                        <i class="fas fa-play me-1"></i>Run Depreciation
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2"></i>Information</h6>
+            </div>
+            <div class="card-body">
+                <p>Running depreciation will:</p>
+                <ul>
+                    <li>Calculate monthly depreciation for each active asset</li>
+                    <li>Create journal entries:
+                        <ul>
+                            <li>Dr Depreciation Expense</li>
+                            <li>Cr Accumulated Depreciation</li>
+                        </ul>
+                    </li>
+                    <li>Update asset book values</li>
+                    <li>Mark fully depreciated assets</li>
+                </ul>
+                <p class="mb-0 text-muted">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    Assets already depreciated for the selected period will be skipped.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

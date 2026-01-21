@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item">Reports</li>
+                    <li class="breadcrumb-item active">Unreconciled Transactions</li>
+                </ol>
+            </nav>
+        </div>
+        {% if selected_bank %}
+        <button class="btn btn-outline-dark" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Bank Account</label>
+                    <select name="bank" class="form-select">
+                        <option value="">Select Bank Account</option>
+                        {% for bank in bank_accounts %}
+                        <option value="{{ bank.id }}" {% if selected_bank.id == bank.id %}selected{% endif %}>
+                            {{ bank.name }} - {{ bank.bank_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-dark">
+                        <i class="fas fa-search me-1"></i>Generate
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_bank and unreconciled_data %}
+    <!-- Unreconciled Payments Received -->
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h6 class="mb-0">
+                <i class="fas fa-arrow-down me-2"></i>Unreconciled Payments Received
+                <span class="badge bg-light text-dark float-end">Total: AED {{ unreconciled_data.total_received|floatformat:2 }}</span>
+            </h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Payment #</th>
+                            <th>Date</th>
+                            <th>Customer</th>
+                            <th>Reference</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in unreconciled_data.received %}
+                        <tr>
+                            <td>{{ payment.payment_number }}</td>
+                            <td>{{ payment.payment_date|date:"d M Y" }}</td>
+                            <td>{{ payment.party_name }}</td>
+                            <td>{{ payment.reference }}</td>
+                            <td class="text-end text-success">{{ payment.amount|floatformat:2 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-3">No unreconciled receipts</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unreconciled Payments Made -->
+    <div class="card mb-4">
+        <div class="card-header bg-danger text-white">
+            <h6 class="mb-0">
+                <i class="fas fa-arrow-up me-2"></i>Unreconciled Payments Made
+                <span class="badge bg-light text-dark float-end">Total: AED {{ unreconciled_data.total_made|floatformat:2 }}</span>
+            </h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Payment #</th>
+                            <th>Date</th>
+                            <th>Vendor</th>
+                            <th>Reference</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in unreconciled_data.made %}
+                        <tr>
+                            <td>{{ payment.payment_number }}</td>
+                            <td>{{ payment.payment_date|date:"d M Y" }}</td>
+                            <td>{{ payment.party_name }}</td>
+                            <td>{{ payment.reference }}</td>
+                            <td class="text-end text-danger">{{ payment.amount|floatformat:2 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-3">No unreconciled payments</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unreconciled Bank Statement Lines -->
+    <div class="card">
+        <div class="card-header bg-warning text-dark">
+            <h6 class="mb-0">
+                <i class="fas fa-file-alt me-2"></i>Unmatched Bank Statement Lines
+                <span class="badge bg-dark float-end">{{ unreconciled_data.statement_lines.count }} items</span>
+            </h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Statement</th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th class="text-end">Debit (Out)</th>
+                            <th class="text-end">Credit (In)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in unreconciled_data.statement_lines %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'finance:bankstatement_detail' line.statement.pk %}">
+                                    {{ line.statement.statement_number }}
+                                </a>
+                            </td>
+                            <td>{{ line.transaction_date|date:"d M Y" }}</td>
+                            <td>{{ line.description|truncatewords:8 }}</td>
+                            <td class="text-end {% if line.debit > 0 %}text-danger{% endif %}">
+                                {% if line.debit > 0 %}{{ line.debit|floatformat:2 }}{% endif %}
+                            </td>
+                            <td class="text-end {% if line.credit > 0 %}text-success{% endif %}">
+                                {% if line.credit > 0 %}{{ line.credit|floatformat:2 }}{% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-3">No unmatched statement lines</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+            <p class="text-muted">Select a bank account to view unreconciled transactions.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+

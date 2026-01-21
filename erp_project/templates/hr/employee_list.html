@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div><h4 class="mb-1 fw-bold">{{ title }}</h4><p class="text-muted mb-0">Manage employees</p></div>
+    {% if can_create %}<a href="{% url 'hr:employee_create' %}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Add Employee</a>{% endif %}
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-users text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Employees</p>
+                        <h5 class="mb-0 fw-bold">{{ total_employees|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Active Employees</p>
+                        <h5 class="mb-0 fw-bold">{{ active_employees|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-sitemap text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Departments</p>
+                        <h5 class="mb-0 fw-bold">{{ total_departments|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-6"><input type="text" name="search" class="form-control" placeholder="Search employees..." value="{{ request.GET.search }}"></div>
+            <div class="col-md-6"><button type="submit" class="btn btn-primary me-2"><i class="fas fa-search me-1"></i>Search</button><a href="{% url 'hr:employee_list' %}" class="btn btn-light">Clear</a></div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Code</th><th>Name</th><th>Email</th><th>Department</th><th>Designation</th><th>Status</th><th class="text-center" width="100">Actions</th></tr></thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr>
+                        <td><a href="{% url 'hr:employee_detail' emp.pk %}" class="fw-medium text-decoration-none">{{ emp.employee_code }}</a></td>
+                        <td>{{ emp.full_name }}</td>
+                        <td>{{ emp.email }}</td>
+                        <td>{{ emp.department.name|default:"-" }}</td>
+                        <td>{{ emp.designation.name|default:"-" }}</td>
+                        <td>{% if emp.status == 'active' %}<span class="badge badge-active">Active</span>{% else %}<span class="badge badge-inactive">{{ emp.get_status_display }}</span>{% endif %}</td>
+                        <td class="text-center">
+                            <a href="{% url 'hr:employee_detail' emp.pk %}" class="btn btn-action btn-outline-info"><i class="fas fa-eye"></i></a>
+                            {% if can_edit %}<a href="{% url 'hr:employee_edit' emp.pk %}" class="btn btn-action btn-outline-primary"><i class="fas fa-edit"></i></a>{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}<tr><td colspan="7" class="text-center py-5 text-muted"><i class="fas fa-users fa-3x mb-3 d-block"></i>No employees found</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

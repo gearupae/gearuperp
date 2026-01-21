@@ -1,0 +1,283 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">{{ payroll.month|date:"F Y" }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'hr:payroll_list' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Back to List
+        </a>
+        {% if payroll.status == 'draft' and can_edit %}
+        <a href="{% url 'hr:payroll_edit' payroll.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-edit me-1"></i>Edit
+        </a>
+        <form method="post" action="{% url 'hr:payroll_process' payroll.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success" onclick="return confirm('Process payroll and post to accounting?');">
+                <i class="fas fa-check me-1"></i>Process
+            </button>
+        </form>
+        {% elif payroll.status == 'processed' and can_edit %}
+        <a href="{% url 'hr:payroll_pay' payroll.pk %}" class="btn btn-success">
+            <i class="fas fa-money-bill-wave me-1"></i>Pay Salary
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Status Badge -->
+<div class="mb-4">
+    {% if payroll.status == 'paid' %}
+    <span class="badge bg-success fs-6"><i class="fas fa-check-circle me-1"></i>Paid</span>
+    {% elif payroll.status == 'processed' %}
+    <span class="badge bg-primary fs-6"><i class="fas fa-clock me-1"></i>Processed - Awaiting Payment</span>
+    {% else %}
+    <span class="badge bg-secondary fs-6"><i class="fas fa-file me-1"></i>Draft</span>
+    {% endif %}
+</div>
+
+<div class="row">
+    <!-- Employee & Salary Details -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-user me-2"></i>Employee Details</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted" width="40%">Employee</td>
+                        <td class="fw-medium">
+                            <a href="{% url 'hr:employee_detail' payroll.employee.pk %}">
+                                {{ payroll.employee.full_name }}
+                            </a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Employee ID</td>
+                        <td>{{ payroll.employee.employee_id }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Department</td>
+                        <td>{{ payroll.employee.department|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Designation</td>
+                        <td>{{ payroll.employee.designation|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Payroll Month</td>
+                        <td class="fw-bold">{{ payroll.month|date:"F Y" }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Salary Breakdown -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-money-check-alt me-2"></i>Salary Breakdown</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted">Basic Salary</td>
+                        <td class="text-end">AED {{ payroll.basic_salary|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Allowances</td>
+                        <td class="text-end text-success">+ AED {{ payroll.allowances|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr class="border-top">
+                        <td class="fw-medium">Gross Salary</td>
+                        <td class="text-end fw-medium">AED {{ payroll.basic_salary|add:payroll.allowances|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Deductions</td>
+                        <td class="text-end text-danger">- AED {{ payroll.deductions|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr class="border-top table-success">
+                        <td class="fw-bold fs-5">Net Salary</td>
+                        <td class="text-end fw-bold fs-5">AED {{ payroll.net_salary|floatformat:2|intcomma }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Accounting & Payment Details -->
+<div class="row">
+    <!-- Accrual Journal -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-book me-2"></i>Accrual Journal Entry</h6>
+            </div>
+            <div class="card-body">
+                {% if payroll.journal_entry %}
+                <div class="alert alert-success py-2 mb-3">
+                    <i class="fas fa-check-circle me-1"></i>
+                    Posted on {{ payroll.journal_entry.date|date:"d M Y" }}
+                </div>
+                <table class="table table-sm mb-3">
+                    <tr>
+                        <td class="text-muted">Journal Number</td>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' payroll.journal_entry.pk %}">
+                                {{ payroll.journal_entry.entry_number }}
+                            </a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Reference</td>
+                        <td>{{ payroll.journal_entry.reference }}</td>
+                    </tr>
+                </table>
+                <div class="bg-light p-3 rounded">
+                    <table class="table table-sm table-borderless mb-0">
+                        <thead>
+                            <tr>
+                                <th>Account</th>
+                                <th class="text-end">Debit</th>
+                                <th class="text-end">Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for line in payroll.journal_entry.lines.all %}
+                            <tr>
+                                <td>{{ line.account.code }} - {{ line.account.name }}</td>
+                                <td class="text-end">{% if line.debit %}{{ line.debit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                                <td class="text-end">{% if line.credit %}{{ line.credit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Journal entry will be created when payroll is processed.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Payment Details -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-credit-card me-2"></i>Payment Details</h6>
+            </div>
+            <div class="card-body">
+                {% if payroll.status == 'paid' %}
+                <div class="alert alert-success py-2 mb-3">
+                    <i class="fas fa-check-circle me-1"></i>
+                    Paid on {{ payroll.paid_date|date:"d M Y" }}
+                </div>
+                <table class="table table-sm mb-3">
+                    <tr>
+                        <td class="text-muted">Bank Account</td>
+                        <td>{{ payroll.paid_from_bank.account_name|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Payment Reference</td>
+                        <td>{{ payroll.payment_reference|default:"-" }}</td>
+                    </tr>
+                    {% if payroll.payment_journal_entry %}
+                    <tr>
+                        <td class="text-muted">Journal Number</td>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' payroll.payment_journal_entry.pk %}">
+                                {{ payroll.payment_journal_entry.entry_number }}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </table>
+                {% if payroll.payment_journal_entry %}
+                <div class="bg-light p-3 rounded">
+                    <table class="table table-sm table-borderless mb-0">
+                        <thead>
+                            <tr>
+                                <th>Account</th>
+                                <th class="text-end">Debit</th>
+                                <th class="text-end">Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for line in payroll.payment_journal_entry.lines.all %}
+                            <tr>
+                                <td>{{ line.account.code }} - {{ line.account.name }}</td>
+                                <td class="text-end">{% if line.debit %}{{ line.debit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                                <td class="text-end">{% if line.credit %}{{ line.credit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+                {% elif payroll.status == 'processed' %}
+                <div class="alert alert-warning py-2">
+                    <i class="fas fa-clock me-1"></i>
+                    Payroll is processed. Awaiting payment.
+                </div>
+                {% if can_edit %}
+                <a href="{% url 'hr:payroll_pay' payroll.pk %}" class="btn btn-success">
+                    <i class="fas fa-money-bill-wave me-1"></i>Pay Salary
+                </a>
+                {% endif %}
+                {% else %}
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Payment details will appear after payroll is processed and paid.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Audit Trail -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>Audit Trail</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted">Created By</td>
+                        <td>{{ payroll.created_by.username|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Created At</td>
+                        <td>{{ payroll.created_at|date:"d M Y H:i" }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted">Updated By</td>
+                        <td>{{ payroll.updated_by.username|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Updated At</td>
+                        <td>{{ payroll.updated_at|date:"d M Y H:i" }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

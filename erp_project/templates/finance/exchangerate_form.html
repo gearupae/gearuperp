@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Exchange rate to UAE Dirham (AED)</small>
+    </div>
+    <a href="{% url 'finance:exchangerate_list' %}" class="btn btn-outline-dark">
+        <i class="fas fa-arrow-left me-2"></i>Back
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <form method="post">
+            {% csrf_token %}
+            
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold">Exchange Rate Details</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Currency Code <span class="text-danger">*</span></label>
+                        <small class="d-block text-muted mb-2">ISO 4217 (e.g., USD, EUR, GBP)</small>
+                        {{ form.currency_code }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rate Date <span class="text-danger">*</span></label>
+                        {{ form.rate_date }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rate <span class="text-danger">*</span></label>
+                        <small class="d-block text-muted mb-2">Conversion rate to AED</small>
+                        {{ form.rate }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Source</label>
+                        <small class="d-block text-muted mb-2">e.g., UAE Central Bank, Reuters</small>
+                        {{ form.source }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conversion Preview -->
+            <div class="card border-0 shadow-sm bg-light mb-4">
+                <div class="card-body">
+                    <h6 class="mb-3 fw-bold"><i class="fas fa-calculator me-2"></i>Preview</h6>
+                    <p class="mb-1">1 <span id="previewCurrency">XXX</span> = <span id="previewRate">0.00</span> AED</p>
+                    <p class="mb-0 text-muted">1 AED = <span id="previewInverse">0.00</span> <span id="previewCurrency2">XXX</span></p>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <a href="{% url 'finance:exchangerate_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-dark">
+                    <i class="fas fa-save me-2"></i>Save Rate
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    function updatePreview() {
+        const currency = $('#id_currency_code').val() || 'XXX';
+        const rate = parseFloat($('#id_rate').val()) || 0;
+        
+        $('#previewCurrency, #previewCurrency2').text(currency.toUpperCase());
+        $('#previewRate').text(rate.toFixed(4));
+        
+        if (rate > 0) {
+            $('#previewInverse').text((1/rate).toFixed(4));
+        } else {
+            $('#previewInverse').text('0.0000');
+        }
+    }
+    
+    $('#id_currency_code, #id_rate').on('change input', updatePreview);
+    updatePreview();
+});
+</script>
+{% endblock %}
+
+

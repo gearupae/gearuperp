@@ -1,0 +1,554 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .match-highlight { background-color: #d4edda !important; }
+    .unmatched-highlight { background-color: #fff3cd !important; }
+    .adjusted-highlight { background-color: #d1ecf1 !important; }
+    .statement-line { cursor: pointer; }
+    .statement-line:hover { background-color: #f8f9fa; }
+    .match-panel { max-height: 400px; overflow-y: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'finance:bankstatement_list' %}">Bank Statements</a></li>
+                    <li class="breadcrumb-item active">{{ statement.statement_number }}</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="d-flex gap-2">
+            {% if can_edit %}
+            <a href="{% url 'finance:bankstatement_auto_match' statement.pk %}" class="btn btn-outline-dark">
+                <i class="fas fa-magic me-1"></i>Auto Match
+            </a>
+            {% if can_finalize %}
+            <a href="{% url 'finance:bankstatement_finalize' statement.pk %}" class="btn btn-success"
+               onclick="return confirm('Finalize this statement? All lines must be matched.')">
+                <i class="fas fa-check-double me-1"></i>Finalize
+            </a>
+            {% endif %}
+            {% endif %}
+            {% if statement.status == 'reconciled' and can_edit %}
+            <a href="{% url 'finance:bankstatement_lock' statement.pk %}" class="btn btn-dark"
+               onclick="return confirm('Lock this statement? This cannot be undone.')">
+                <i class="fas fa-lock me-1"></i>Lock
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Statement Info -->
+        <div class="col-lg-12 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-2">
+                            <small class="text-muted">Bank Account</small>
+                            <p class="mb-0 fw-medium">{{ statement.bank_account.name }}</p>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Period</small>
+                            <p class="mb-0">{{ statement.statement_start_date|date:"d M Y" }} - {{ statement.statement_end_date|date:"d M Y" }}</p>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Opening Balance</small>
+                            <p class="mb-0 fw-medium">AED {{ statement.opening_balance|floatformat:2 }}</p>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Closing Balance</small>
+                            <p class="mb-0 fw-medium">AED {{ statement.closing_balance|floatformat:2 }}</p>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Progress</small>
+                            <div class="progress mt-1" style="height: 20px;">
+                                <div class="progress-bar bg-success" style="width: {{ statement.match_percentage }}%">
+                                    {{ statement.matched_count }}/{{ statement.total_lines }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Status</small>
+                            <p class="mb-0">
+                                {% if statement.status == 'draft' %}
+                                <span class="badge bg-secondary">Draft</span>
+                                {% elif statement.status == 'in_progress' %}
+                                <span class="badge bg-warning text-dark">In Progress</span>
+                                {% elif statement.status == 'reconciled' %}
+                                <span class="badge bg-success">Reconciled</span>
+                                {% elif statement.status == 'locked' %}
+                                <span class="badge bg-dark">Locked</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Statement Lines -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-list me-2"></i>Statement Lines</h6>
+                    {% if can_edit %}
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#importModal">
+                            <i class="fas fa-file-import me-1"></i>Import CSV
+                        </button>
+                        <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#addLineModal">
+                            <i class="fas fa-plus me-1"></i>Add Line
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Debit (Out)</th>
+                                    <th class="text-end">Credit (In)</th>
+                                    <th>Status</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for line in lines %}
+                                <tr class="statement-line {% if line.reconciliation_status == 'matched' %}match-highlight{% elif line.reconciliation_status == 'adjusted' %}adjusted-highlight{% else %}unmatched-highlight{% endif %}"
+                                    data-line-id="{{ line.id }}" data-amount="{{ line.amount }}">
+                                    <td>{{ line.line_number }}</td>
+                                    <td>{{ line.transaction_date|date:"d M Y" }}</td>
+                                    <td>
+                                        <span title="{{ line.description }}">{{ line.description|truncatewords:8 }}</span>
+                                        {% if line.reference %}
+                                        <br><small class="text-muted">Ref: {{ line.reference }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end {% if line.debit > 0 %}text-danger{% endif %}">
+                                        {% if line.debit > 0 %}{{ line.debit|floatformat:2 }}{% endif %}
+                                    </td>
+                                    <td class="text-end {% if line.credit > 0 %}text-success{% endif %}">
+                                        {% if line.credit > 0 %}{{ line.credit|floatformat:2 }}{% endif %}
+                                    </td>
+                                    <td>
+                                        {% if line.reconciliation_status == 'matched' %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check me-1"></i>{{ line.get_match_method_display }}
+                                        </span>
+                                        {% if line.matched_payment %}
+                                        <br><small>{{ line.matched_payment.payment_number }}</small>
+                                        {% elif line.matched_journal_line %}
+                                        <br><small>{{ line.matched_journal_line.journal_entry.entry_number }}</small>
+                                        {% endif %}
+                                        {% elif line.reconciliation_status == 'adjusted' %}
+                                        <span class="badge bg-info">
+                                            <i class="fas fa-edit me-1"></i>Adjusted
+                                        </span>
+                                        {% if line.adjustment_journal %}
+                                        <br><small>{{ line.adjustment_journal.entry_number }}</small>
+                                        {% endif %}
+                                        {% else %}
+                                        <span class="badge bg-warning text-dark">Unmatched</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if can_edit and statement.status not in 'reconciled,locked' %}
+                                        {% if line.reconciliation_status == 'unmatched' %}
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-success" 
+                                                    onclick="openMatchModal({{ line.id }}, '{{ line.description|escapejs }}', {{ line.credit|default:0 }}, {{ line.debit|default:0 }})"
+                                                    title="Match">
+                                                <i class="fas fa-link"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info"
+                                                    onclick="openAdjustmentModal({{ line.id }}, '{{ line.description|escapejs }}', {{ line.credit|default:0 }}, {{ line.debit|default:0 }})"
+                                                    title="Create Adjustment">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </div>
+                                        {% else %}
+                                        <a href="{% url 'finance:bankstatement_unmatch' statement.pk line.id %}" 
+                                           class="btn btn-sm btn-outline-danger"
+                                           onclick="return confirm('Unmatch this line?')">
+                                            <i class="fas fa-unlink"></i>
+                                        </a>
+                                        {% endif %}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        <i class="fas fa-file-import fa-2x mb-2"></i>
+                                        <p class="mb-0">No statement lines. Import CSV or add lines manually.</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            {% if lines %}
+                            <tfoot class="table-light">
+                                <tr class="fw-bold">
+                                    <td colspan="3">Total</td>
+                                    <td class="text-end text-danger">{{ statement.total_debits|floatformat:2 }}</td>
+                                    <td class="text-end text-success">{{ statement.total_credits|floatformat:2 }}</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Side Panel -->
+        <div class="col-lg-4">
+            <!-- Summary Card -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-calculator me-2"></i>Reconciliation Summary</h6>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr>
+                            <td>Opening Balance</td>
+                            <td class="text-end">AED {{ statement.opening_balance|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td>Total Credits (+)</td>
+                            <td class="text-end text-success">AED {{ statement.total_credits|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td>Total Debits (-)</td>
+                            <td class="text-end text-danger">AED {{ statement.total_debits|floatformat:2 }}</td>
+                        </tr>
+                        <tr class="fw-bold">
+                            <td>Calculated Closing</td>
+                            <td class="text-end">
+                                {% widthratio statement.opening_balance 1 1 as open %}
+                                {% widthratio statement.total_credits 1 1 as credits %}
+                                {% widthratio statement.total_debits 1 1 as debits %}
+                                AED {{ statement.opening_balance|add:statement.total_credits|add:"-"|add:statement.total_debits|floatformat:2 }}
+                            </td>
+                        </tr>
+                        <tr class="fw-bold table-light">
+                            <td>Statement Closing</td>
+                            <td class="text-end">AED {{ statement.closing_balance|floatformat:2 }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Unmatched Payments -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Unmatched Payments ({{ unmatched_payments.count }})</h6>
+                </div>
+                <div class="card-body p-0 match-panel">
+                    {% if unmatched_payments %}
+                    <ul class="list-group list-group-flush">
+                        {% for payment in unmatched_payments %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ payment.payment_number }}</strong>
+                                <br><small class="text-muted">{{ payment.payment_date|date:"d M Y" }} - {{ payment.party_name|truncatewords:3 }}</small>
+                            </div>
+                            <span class="{% if payment.payment_type == 'received' %}text-success{% else %}text-danger{% endif %}">
+                                AED {{ payment.amount|floatformat:2 }}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted text-center py-3 mb-0">No unmatched payments</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Unmatched Journal Entries -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-book me-2"></i>Unmatched Journals ({{ unmatched_journals.count }})</h6>
+                </div>
+                <div class="card-body p-0 match-panel">
+                    {% if unmatched_journals %}
+                    <ul class="list-group list-group-flush">
+                        {% for jl in unmatched_journals %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ jl.journal_entry.entry_number }}</strong>
+                                <br><small class="text-muted">{{ jl.journal_entry.date|date:"d M Y" }} - {{ jl.description|truncatewords:3 }}</small>
+                            </div>
+                            <span class="{% if jl.debit > 0 %}text-success{% else %}text-danger{% endif %}">
+                                AED {{ jl.debit|default:jl.credit|floatformat:2 }}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="text-muted text-center py-3 mb-0">No unmatched journal entries</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import CSV Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'finance:bankstatement_import' statement.pk %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Import CSV</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Importing will replace all existing lines!
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CSV File</label>
+                        <input type="file" name="csv_file" class="form-control" accept=".csv" required>
+                    </div>
+                    <p class="small text-muted mb-0">
+                        Expected columns: Date, Description, Reference, Debit, Credit, Balance
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-dark">Import</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Line Modal -->
+<div class="modal fade" id="addLineModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'finance:bankstatement_add_line' statement.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Statement Line</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Transaction Date</label>
+                        <input type="date" name="transaction_date" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input type="text" name="description" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reference</label>
+                        <input type="text" name="reference" class="form-control">
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Debit (Out)</label>
+                            <input type="number" name="debit" class="form-control" step="0.01" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Credit (In)</label>
+                            <input type="number" name="credit" class="form-control" step="0.01" value="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-dark">Add Line</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Match Modal -->
+<div class="modal fade" id="matchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" id="matchForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Match Transaction</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info mb-3">
+                        <strong>Statement Line:</strong> <span id="matchLineDesc"></span>
+                        <br><strong>Amount:</strong> AED <span id="matchLineAmount"></span>
+                    </div>
+                    
+                    <ul class="nav nav-tabs mb-3" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#matchPayments">Payments</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#matchJournals">Journal Entries</a>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="matchPayments">
+                            <input type="hidden" name="match_type" value="payment">
+                            <div class="list-group">
+                                {% for payment in unmatched_payments %}
+                                <label class="list-group-item">
+                                    <input type="radio" name="payment_id" value="{{ payment.id }}" class="form-check-input me-2">
+                                    <strong>{{ payment.payment_number }}</strong> - {{ payment.party_name }}
+                                    <span class="float-end {% if payment.payment_type == 'received' %}text-success{% else %}text-danger{% endif %}">
+                                        AED {{ payment.amount|floatformat:2 }}
+                                    </span>
+                                    <br><small class="text-muted">{{ payment.payment_date|date:"d M Y" }}</small>
+                                </label>
+                                {% empty %}
+                                <p class="text-muted text-center py-3">No unmatched payments</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="matchJournals">
+                            <input type="hidden" name="match_type" value="journal">
+                            <div class="list-group">
+                                {% for jl in unmatched_journals %}
+                                <label class="list-group-item">
+                                    <input type="radio" name="journal_line_id" value="{{ jl.id }}" class="form-check-input me-2">
+                                    <strong>{{ jl.journal_entry.entry_number }}</strong> - {{ jl.description|truncatewords:5 }}
+                                    <span class="float-end {% if jl.debit > 0 %}text-success{% else %}text-danger{% endif %}">
+                                        AED {{ jl.debit|default:jl.credit|floatformat:2 }}
+                                    </span>
+                                    <br><small class="text-muted">{{ jl.journal_entry.date|date:"d M Y" }}</small>
+                                </label>
+                                {% empty %}
+                                <p class="text-muted text-center py-3">No unmatched journal entries</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Match</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Adjustment Modal -->
+<div class="modal fade" id="adjustmentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" id="adjustmentForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Create Adjustment</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info mb-3">
+                        <strong>Statement Line:</strong> <span id="adjLineDesc"></span>
+                        <br><strong>Amount:</strong> AED <span id="adjLineAmount"></span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Adjustment Type</label>
+                        <select name="adjustment_type" class="form-select" required>
+                            <option value="bank_charge">Bank Charge</option>
+                            <option value="bank_interest">Bank Interest</option>
+                            <option value="fx_difference">FX Difference</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Account</label>
+                        <select name="expense_account_id" class="form-select" required>
+                            <optgroup label="Expenses">
+                                {% for acc in expense_accounts %}
+                                {% if acc.account_type == 'expense' %}
+                                <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                                {% endif %}
+                                {% endfor %}
+                            </optgroup>
+                            <optgroup label="Income">
+                                {% for acc in expense_accounts %}
+                                {% if acc.account_type == 'income' %}
+                                <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                                {% endif %}
+                                {% endfor %}
+                            </optgroup>
+                        </select>
+                        <small class="text-muted">Select expense for charges, income for interest</small>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        This will create a journal entry to record this transaction.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-info">Create Adjustment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openMatchModal(lineId, description, credit, debit) {
+    document.getElementById('matchLineDesc').textContent = description;
+    document.getElementById('matchLineAmount').textContent = (credit > 0 ? credit : debit).toFixed(2);
+    document.getElementById('matchForm').action = '{% url "finance:bankstatement_manual_match" statement.pk 0 %}'.replace('/0/', '/' + lineId + '/');
+    new bootstrap.Modal(document.getElementById('matchModal')).show();
+}
+
+function openAdjustmentModal(lineId, description, credit, debit) {
+    document.getElementById('adjLineDesc').textContent = description;
+    document.getElementById('adjLineAmount').textContent = (credit > 0 ? credit : debit).toFixed(2);
+    document.getElementById('adjustmentForm').action = '{% url "finance:bankstatement_adjustment" statement.pk 0 %}'.replace('/0/', '/' + lineId + '/');
+    new bootstrap.Modal(document.getElementById('adjustmentModal')).show();
+}
+
+// Update match type when switching tabs
+document.querySelectorAll('#matchModal [data-bs-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', function(e) {
+        const target = e.target.getAttribute('href');
+        const form = document.getElementById('matchForm');
+        if (target === '#matchPayments') {
+            form.querySelector('[name="match_type"]').value = 'payment';
+        } else {
+            form.querySelector('[name="match_type"]').value = 'journal';
+        }
+    });
+});
+</script>
+{% endblock %}
+
+

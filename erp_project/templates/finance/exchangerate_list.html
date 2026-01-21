@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Currency exchange rates for multi-currency transactions</small>
+    </div>
+    <a href="{% url 'finance:exchangerate_create' %}" class="btn btn-dark">
+        <i class="fas fa-plus me-2"></i>Add Rate
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <select name="currency" class="form-select">
+                    <option value="">All Currencies</option>
+                    {% for currency in currencies %}
+                    <option value="{{ currency }}" {% if request.GET.currency == currency %}selected{% endif %}>{{ currency }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-outline-dark">
+                    <i class="fas fa-filter me-2"></i>Filter
+                </button>
+                <a href="{% url 'finance:exchangerate_list' %}" class="btn btn-outline-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Info Alert -->
+<div class="alert alert-info mb-4">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Base Currency:</strong> AED (UAE Dirham). All rates are conversion rates to AED.
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="ratesTable">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Currency</th>
+                        <th>Rate Date</th>
+                        <th class="text-end">Rate (to AED)</th>
+                        <th>Source</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rate in rates %}
+                    <tr>
+                        <td>
+                            <span class="badge bg-primary fs-6">{{ rate.currency_code }}</span>
+                        </td>
+                        <td>{{ rate.rate_date|date:"d/m/Y" }}</td>
+                        <td class="text-end fw-bold">{{ rate.rate }}</td>
+                        <td>{{ rate.source|default:"-" }}</td>
+                        <td class="text-center">
+                            <a href="{% url 'finance:exchangerate_edit' rate.pk %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            <i class="fas fa-exchange-alt fa-3x mb-3"></i>
+                            <p class="mb-0">No exchange rates found.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('#ratesTable').DataTable({
+        "order": [[1, "desc"]],
+        "pageLength": 25
+    });
+});
+</script>
+{% endblock %}
+
+

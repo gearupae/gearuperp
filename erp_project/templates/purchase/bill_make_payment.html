@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'purchase:bill_list' %}">Vendor Bills</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'purchase:bill_detail' bill.pk %}">{{ bill.bill_number }}</a></li>
+                <li class="breadcrumb-item active">Make Payment</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold">
+                    <i class="fas fa-file-invoice-dollar text-danger me-2"></i>Payment Voucher
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Payment Date <span class="text-danger">*</span></label>
+                            <input type="date" name="payment_date" class="form-control" value="{{ today }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Amount (AED) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" name="amount" class="form-control" 
+                                   value="{{ bill.balance }}" max="{{ bill.balance }}" required>
+                            <small class="text-muted">Outstanding balance: AED {{ bill.balance|floatformat:2|intcomma }}</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Payment Method</label>
+                            <select name="payment_method" class="form-select" id="paymentMethod">
+                                <option value="bank" selected>Bank Transfer</option>
+                                <option value="cash">Cash</option>
+                                <option value="cheque">Cheque</option>
+                                <option value="card">Credit/Debit Card</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6" id="bankAccountDiv">
+                            <label class="form-label">Bank Account</label>
+                            <select name="bank_account" class="form-select">
+                                {% for bank in bank_accounts %}
+                                <option value="{{ bank.pk }}">{{ bank.account_name }} - {{ bank.bank_name }}</option>
+                                {% empty %}
+                                <option value="">No bank accounts configured</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Reference / Cheque Number</label>
+                        <input type="text" name="reference" class="form-control" 
+                               placeholder="e.g., Check number, transfer reference">
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'purchase:bill_detail' bill.pk %}" class="btn btn-light">
+                            <i class="fas fa-arrow-left me-1"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-check me-1"></i>Record Payment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Bill Summary -->
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold">
+                    <i class="fas fa-file-invoice text-primary me-2"></i>Bill Summary
+                </h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless table-sm">
+                    <tr>
+                        <td class="text-muted">Bill #:</td>
+                        <td class="text-end fw-bold">{{ bill.bill_number }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Vendor:</td>
+                        <td class="text-end">{{ bill.vendor.name }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Bill Date:</td>
+                        <td class="text-end">{{ bill.bill_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Due Date:</td>
+                        <td class="text-end">{{ bill.due_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr class="border-top">
+                        <td class="text-muted">Total Amount:</td>
+                        <td class="text-end fw-bold">AED {{ bill.total_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Paid Amount:</td>
+                        <td class="text-end text-success">AED {{ bill.paid_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr class="border-top">
+                        <td class="text-muted fw-bold">Balance Due:</td>
+                        <td class="text-end fw-bold text-danger">AED {{ bill.balance|floatformat:2|intcomma }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Accounting Note -->
+        <div class="card shadow-sm border-0 mt-3 bg-light">
+            <div class="card-body">
+                <h6 class="fw-bold mb-2"><i class="fas fa-info-circle text-info me-2"></i>Journal Entry</h6>
+                <p class="small text-muted mb-2">This payment will create the following journal entry:</p>
+                <table class="table table-sm small mb-0">
+                    <tr>
+                        <td class="text-success">Dr Accounts Payable</td>
+                        <td class="text-end" id="debitAmount">AED {{ bill.balance|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-danger">Cr Bank / Cash</td>
+                        <td class="text-end" id="creditAmount">AED {{ bill.balance|floatformat:2|intcomma }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('paymentMethod').addEventListener('change', function() {
+    var bankDiv = document.getElementById('bankAccountDiv');
+    if (this.value === 'cash') {
+        bankDiv.style.display = 'none';
+    } else {
+        bankDiv.style.display = 'block';
+    }
+});
+
+// Update journal entry preview when amount changes
+document.querySelector('input[name="amount"]').addEventListener('input', function() {
+    var amount = parseFloat(this.value) || 0;
+    var formatted = 'AED ' + amount.toLocaleString('en-AE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('debitAmount').textContent = formatted;
+    document.getElementById('creditAmount').textContent = formatted;
+});
+</script>
+{% endblock %}
+

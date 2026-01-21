@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% load settings_tags %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Annual and department-wise financial planning</small>
+    </div>
+    {% if can_create %}
+    <a href="{% url 'finance:budget_create' %}" class="btn btn-dark">
+        <i class="fas fa-plus me-2"></i>New Budget
+    </a>
+    {% endif %}
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Budget Name</th>
+                        <th>Fiscal Year</th>
+                        <th>Type</th>
+                        <th>Department</th>
+                        <th class="text-end">Budgeted Income</th>
+                        <th class="text-end">Budgeted Expense</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for budget in budgets %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'finance:budget_detail' budget.pk %}" class="fw-medium text-dark">
+                                {{ budget.name }}
+                            </a>
+                        </td>
+                        <td>{{ budget.fiscal_year.name }}</td>
+                        <td>{{ budget.get_period_type_display }}</td>
+                        <td>{{ budget.department|default:"-" }}</td>
+                        <td class="text-end text-success">{{ budget.get_total_income|floatformat:2 }}</td>
+                        <td class="text-end text-danger">{{ budget.get_total_expense|floatformat:2 }}</td>
+                        <td>
+                            {% if budget.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif budget.status == 'approved' %}
+                            <span class="badge bg-success">Approved</span>
+                            {% else %}
+                            <span class="badge bg-dark">Locked</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'finance:budget_detail' budget.pk %}" class="btn btn-sm btn-outline-dark">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            <a href="{% url 'finance:budget_vs_actual' %}?budget={{ budget.pk }}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-chart-bar"></i> vs Actual
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-piggy-bank fa-3x mb-3 d-block opacity-25"></i>
+                            No budgets found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

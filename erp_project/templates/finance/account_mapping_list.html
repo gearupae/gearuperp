@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">SAP/Oracle-style Account Determination - One-time setup for automatic posting</small>
+    </div>
+    <a href="{% url 'finance:accounting_settings' %}" class="btn btn-outline-dark">
+        <i class="fas fa-cog me-2"></i>Accounting Settings
+    </a>
+</div>
+
+<div class="alert alert-info">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Account Mapping</strong> defines which GL accounts are used for each transaction type.
+    Configure this ONCE, and all transactions will automatically use the correct accounts.
+    Users do NOT need to select accounts on every document.
+</div>
+
+{% for module_code, module_data in mappings_by_module.items %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <div>
+            <h6 class="mb-0 fw-bold">
+                <i class="fas fa-folder-open me-2 text-primary"></i>{{ module_data.name }}
+            </h6>
+        </div>
+        <div>
+            {% if module_data.is_configured %}
+            <span class="badge bg-success"><i class="fas fa-check me-1"></i>Configured</span>
+            {% else %}
+            <span class="badge bg-warning"><i class="fas fa-exclamation-triangle me-1"></i>Incomplete</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th style="width: 40%;">Transaction Type</th>
+                        <th style="width: 50%;">Mapped Account</th>
+                        <th style="width: 10%;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in module_data.items %}
+                    <tr>
+                        <td>
+                            <span class="fw-medium">{{ item.label }}</span>
+                            <br>
+                            <small class="text-muted">{{ item.transaction_type }}</small>
+                        </td>
+                        <td>
+                            {% if can_edit %}
+                            <select class="form-select form-select-sm account-select" 
+                                    data-transaction-type="{{ item.transaction_type }}"
+                                    style="max-width: 400px;">
+                                <option value="">-- Select Account --</option>
+                                {% for account in accounts %}
+                                <option value="{{ account.pk }}" 
+                                        {% if item.account and item.account.pk == account.pk %}selected{% endif %}>
+                                    {{ account.code }} - {{ account.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% else %}
+                            {% if item.account %}
+                            <span class="badge bg-light text-dark border">
+                                {{ item.account.code }} - {{ item.account.name }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">Not configured</span>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.mapping %}
+                            <span class="badge bg-success"><i class="fas fa-check"></i></span>
+                            {% else %}
+                            <span class="badge bg-secondary"><i class="fas fa-minus"></i></span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- Help Card -->
+<div class="card border-0 shadow-sm bg-light">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-question-circle me-2 text-info"></i>How Account Mapping Works</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <h6><i class="fas fa-shopping-cart text-primary me-2"></i>Sales</h6>
+                <ul class="small text-muted">
+                    <li>Sales Invoice posts AR when approved</li>
+                    <li>Customer Receipt clears AR</li>
+                    <li>VAT Payable is credited automatically</li>
+                </ul>
+            </div>
+            <div class="col-md-4">
+                <h6><i class="fas fa-truck text-primary me-2"></i>Purchase</h6>
+                <ul class="small text-muted">
+                    <li>Vendor Bill posts AP when approved</li>
+                    <li>Vendor Payment clears AP</li>
+                    <li>VAT Recoverable is debited automatically</li>
+                </ul>
+            </div>
+            <div class="col-md-4">
+                <h6><i class="fas fa-receipt text-primary me-2"></i>Expense Claims</h6>
+                <ul class="small text-muted">
+                    <li>Approval posts to Employee Payable</li>
+                    <li>Payment clears Employee Payable</li>
+                    <li>Each line uses its configured expense account</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.account-select').forEach(function(select) {
+        select.addEventListener('change', function() {
+            var transactionType = this.dataset.transactionType;
+            var accountId = this.value;
+            
+            fetch('{% url "finance:account_mapping_save" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: 'transaction_type=' + encodeURIComponent(transactionType) + '&account_id=' + encodeURIComponent(accountId)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update status badge
+                    var row = this.closest('tr');
+                    var statusCell = row.querySelector('td:last-child');
+                    if (accountId) {
+                        statusCell.innerHTML = '<span class="badge bg-success"><i class="fas fa-check"></i></span>';
+                    } else {
+                        statusCell.innerHTML = '<span class="badge bg-secondary"><i class="fas fa-minus"></i></span>';
+                    }
+                    
+                    // Show brief toast/notification
+                    showToast(data.message, 'success');
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Error saving mapping', 'error');
+            });
+        });
+    });
+    
+    function showToast(message, type) {
+        // Simple toast notification
+        var toast = document.createElement('div');
+        toast.className = 'alert alert-' + (type === 'success' ? 'success' : 'danger') + ' position-fixed';
+        toast.style.cssText = 'top: 80px; right: 20px; z-index: 9999; max-width: 300px;';
+        toast.innerHTML = '<i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + ' me-2"></i>' + message;
+        document.body.appendChild(toast);
+        
+        setTimeout(function() {
+            toast.remove();
+        }, 3000);
+    }
+});
+</script>
+{% endblock %}
+

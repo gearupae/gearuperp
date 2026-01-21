@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'crm:customer_list' %}">Customers</a></li>
+            <li class="breadcrumb-item active">{{ customer.customer_number }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">{{ customer.name }}</h4>
+            <span class="text-muted">{{ customer.customer_number }}</span>
+        </div>
+        <div>
+            {% if can_edit %}
+            <a href="{% url 'crm:customer_edit' customer.pk %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Edit
+            </a>
+            {% endif %}
+            {% if can_edit and customer.customer_type == 'lead' %}
+            <a href="{% url 'crm:customer_convert' customer.pk %}" class="btn btn-success" onclick="return confirm('Convert {{ customer.name }} to a customer?');">
+                <i class="fas fa-user-check me-2"></i>Convert to Customer
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Main Info -->
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-3">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="fas fa-user me-2 text-primary"></i>Customer Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Contact Name</label>
+                        <p class="fw-medium mb-0">{{ customer.name }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Company</label>
+                        <p class="fw-medium mb-0">{{ customer.company|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Email</label>
+                        <p class="mb-0">
+                            {% if customer.email %}
+                            <a href="mailto:{{ customer.email }}" class="text-decoration-none">
+                                <i class="fas fa-envelope me-1"></i>{{ customer.email }}
+                            </a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small">Phone</label>
+                        <p class="mb-0">
+                            {% if customer.phone %}
+                            <a href="tel:{{ customer.phone }}" class="text-decoration-none">
+                                <i class="fas fa-phone me-1"></i>{{ customer.phone }}
+                            </a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label text-muted small">Address</label>
+                        <p class="mb-0">{{ customer.address|default:"-"|linebreaks }}</p>
+                    </div>
+                    {% if customer.notes %}
+                    <div class="col-12">
+                        <label class="form-label text-muted small">Notes</label>
+                        <p class="mb-0">{{ customer.notes|linebreaks }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Related Records (placeholders for future modules) -->
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header bg-transparent py-3">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="fas fa-history me-2 text-primary"></i>Related Transactions
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="border rounded p-3 text-center">
+                            <i class="fas fa-file-invoice text-warning fs-3 mb-2"></i>
+                            <p class="mb-0 small text-muted">Quotations</p>
+                            <h4 class="mb-0">0</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3 text-center">
+                            <i class="fas fa-receipt text-success fs-3 mb-2"></i>
+                            <p class="mb-0 small text-muted">Invoices</p>
+                            <h4 class="mb-0">0</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3 text-center">
+                            <i class="fas fa-project-diagram text-info fs-3 mb-2"></i>
+                            <p class="mb-0 small text-muted">Projects</p>
+                            <h4 class="mb-0">0</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sidebar -->
+    <div class="col-lg-4">
+        <!-- Status Card -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="text-muted">Type</span>
+                    {% if customer.customer_type == 'lead' %}
+                        <span class="badge badge-lead fs-6">
+                            <i class="fas fa-user-clock me-1"></i>Lead
+                        </span>
+                    {% else %}
+                        <span class="badge badge-customer fs-6">
+                            <i class="fas fa-user-check me-1"></i>Customer
+                        </span>
+                    {% endif %}
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="text-muted">Status</span>
+                    {% if customer.status == 'active' %}
+                        <span class="badge badge-active">Active</span>
+                    {% elif customer.status == 'prospect' %}
+                        <span class="badge bg-warning-subtle text-warning">Prospect</span>
+                    {% else %}
+                        <span class="badge badge-inactive">Inactive</span>
+                    {% endif %}
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-muted">Active</span>
+                    {% if customer.is_active %}
+                        <span class="text-success"><i class="fas fa-check-circle"></i> Yes</span>
+                    {% else %}
+                        <span class="text-danger"><i class="fas fa-times-circle"></i> No</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Audit Info -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent py-3">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="fas fa-info-circle me-2 text-primary"></i>Audit Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label text-muted small">Created</label>
+                    <p class="mb-0">
+                        {{ customer.created_at|date:"d/m/Y H:i" }}
+                        {% if customer.created_by %}
+                        <br><small class="text-muted">by {{ customer.created_by.get_full_name|default:customer.created_by.username }}</small>
+                        {% endif %}
+                    </p>
+                </div>
+                <div>
+                    <label class="form-label text-muted small">Last Updated</label>
+                    <p class="mb-0">
+                        {{ customer.updated_at|date:"d/m/Y H:i" }}
+                        {% if customer.updated_by %}
+                        <br><small class="text-muted">by {{ customer.updated_by.get_full_name|default:customer.updated_by.username }}</small>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

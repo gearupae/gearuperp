@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Project expense details</p>
+    </div>
+    <div>
+        <a href="{% url 'projects:expense_list' %}" class="btn btn-light">
+            <i class="fas fa-arrow-left me-1"></i>Back to List
+        </a>
+        {% if expense.status == 'draft' %}
+        <a href="{% url 'projects:expense_edit' expense.pk %}" class="btn btn-light">
+            <i class="fas fa-edit me-1"></i>Edit
+        </a>
+        {% endif %}
+        {% if can_approve %}
+        <a href="{% url 'projects:expense_approve' expense.pk %}" class="btn btn-success" onclick="return confirm('Approve this expense?')">
+            <i class="fas fa-check me-1"></i>Approve
+        </a>
+        <a href="{% url 'projects:expense_reject' expense.pk %}" class="btn btn-danger" onclick="return confirm('Reject this expense?')">
+            <i class="fas fa-times me-1"></i>Reject
+        </a>
+        {% endif %}
+        {% if can_post %}
+        <a href="{% url 'projects:expense_post' expense.pk %}" class="btn btn-primary" onclick="return confirm('Post this expense to accounting?')">
+            <i class="fas fa-book me-1"></i>Post to Accounting
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <!-- Expense Details -->
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold">Expense Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted" style="width:40%">Expense #:</td>
+                                <td class="fw-bold">{{ expense.expense_number }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Date:</td>
+                                <td>{{ expense.expense_date|date:"d/m/Y" }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Category:</td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ expense.get_category_display }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Status:</td>
+                                <td>
+                                    {% if expense.status == 'draft' %}
+                                    <span class="badge badge-warning"><i class="fas fa-edit me-1"></i>Draft</span>
+                                    {% elif expense.status == 'approved' %}
+                                    <span class="badge" style="background:#dbeafe;color:#1e40af;"><i class="fas fa-thumbs-up me-1"></i>Approved</span>
+                                    {% elif expense.status == 'posted' %}
+                                    <span class="badge badge-active"><i class="fas fa-check-circle me-1"></i>Posted</span>
+                                    {% elif expense.status == 'rejected' %}
+                                    <span class="badge badge-inactive"><i class="fas fa-times me-1"></i>Rejected</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted" style="width:40%">Project:</td>
+                                <td>
+                                    <a href="{% url 'projects:project_detail' expense.project.pk %}">{{ expense.project.name }}</a>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Project Code:</td>
+                                <td>{{ expense.project.project_code }}</td>
+                            </tr>
+                            {% if expense.vendor %}
+                            <tr>
+                                <td class="text-muted">Vendor:</td>
+                                <td>{{ expense.vendor.name }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if expense.invoice_reference %}
+                            <tr>
+                                <td class="text-muted">Invoice Ref:</td>
+                                <td>{{ expense.invoice_reference }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <h6 class="text-muted mb-2">Description</h6>
+                    <p class="mb-0">{{ expense.description }}</p>
+                </div>
+                
+                <hr>
+                
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <p class="text-muted mb-1">Amount (Net)</p>
+                        <h4 class="mb-0 fw-bold">{{ expense.amount|floatformat:2 }}</h4>
+                    </div>
+                    <div class="col-md-4">
+                        <p class="text-muted mb-1">VAT</p>
+                        <h4 class="mb-0 fw-bold">{{ expense.vat_amount|floatformat:2 }}</h4>
+                    </div>
+                    <div class="col-md-4">
+                        <p class="text-muted mb-1">Total</p>
+                        <h4 class="mb-0 fw-bold text-primary">{{ expense.total_amount|floatformat:2 }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Journal Entry -->
+        {% if expense.journal_entry %}
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold">Journal Entry</h6>
+                <a href="{% url 'finance:journal_detail' expense.journal_entry.pk %}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-external-link-alt me-1"></i>View Full Entry
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Description</th>
+                            <th class="text-end">Debit</th>
+                            <th class="text-end">Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in journal_lines %}
+                        <tr>
+                            <td>{{ line.account.account_code }} - {{ line.account.name }}</td>
+                            <td>{{ line.description }}</td>
+                            <td class="text-end">{% if line.debit %}{{ line.debit|floatformat:2 }}{% endif %}</td>
+                            <td class="text-end">{% if line.credit %}{{ line.credit|floatformat:2 }}{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr class="fw-bold">
+                            <td colspan="2">Total</td>
+                            <td class="text-end">{{ expense.journal_entry.total_debit|floatformat:2 }}</td>
+                            <td class="text-end">{{ expense.journal_entry.total_credit|floatformat:2 }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Status & Audit -->
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold">Accounting Status</h6>
+            </div>
+            <div class="card-body text-center">
+                {% if expense.posted %}
+                <div class="bg-success bg-opacity-10 rounded-3 p-4 mb-3">
+                    <i class="fas fa-check-circle text-success fa-3x mb-2"></i>
+                    <h5 class="text-success mb-0">Posted to GL</h5>
+                </div>
+                <p class="mb-1 text-muted small">Journal Entry:</p>
+                <p class="fw-bold">{{ expense.journal_entry.entry_number }}</p>
+                {% elif expense.status == 'approved' %}
+                <div class="bg-info bg-opacity-10 rounded-3 p-4 mb-3">
+                    <i class="fas fa-thumbs-up text-info fa-3x mb-2"></i>
+                    <h5 class="text-info mb-0">Approved</h5>
+                </div>
+                <p class="text-muted small">Ready to be posted to accounting.</p>
+                {% elif expense.status == 'draft' %}
+                <div class="bg-warning bg-opacity-10 rounded-3 p-4 mb-3">
+                    <i class="fas fa-edit text-warning fa-3x mb-2"></i>
+                    <h5 class="text-warning mb-0">Draft</h5>
+                </div>
+                <p class="text-muted small">Awaiting approval.</p>
+                {% elif expense.status == 'rejected' %}
+                <div class="bg-danger bg-opacity-10 rounded-3 p-4 mb-3">
+                    <i class="fas fa-times-circle text-danger fa-3x mb-2"></i>
+                    <h5 class="text-danger mb-0">Rejected</h5>
+                </div>
+                <p class="text-muted small">This expense has been rejected.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if expense.expense_account %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold">Expense Account</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-0">
+                    <strong>{{ expense.expense_account.account_code }}</strong><br>
+                    {{ expense.expense_account.name }}
+                </p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold">Audit Trail</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted">Created:</td>
+                        <td>{{ expense.created_at|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Updated:</td>
+                        <td>{{ expense.updated_at|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% if expense.approved_by %}
+                    <tr>
+                        <td class="text-muted">Approved By:</td>
+                        <td>{{ expense.approved_by.get_full_name|default:expense.approved_by.username }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Approved On:</td>
+                        <td>{{ expense.approved_date|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

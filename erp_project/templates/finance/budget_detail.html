@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{% url 'finance:budget_list' %}">Budgets</a></li>
+                <li class="breadcrumb-item active">{{ budget.name }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+    </div>
+    <div>
+        <a href="{% url 'finance:budget_vs_actual' %}?budget={{ budget.pk }}" class="btn btn-primary">
+            <i class="fas fa-chart-bar me-2"></i>View vs Actual
+        </a>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Fiscal Year</h6>
+                <h4 class="mb-0">{{ budget.fiscal_year.name }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Total Income</h6>
+                <h4 class="mb-0 text-success">{{ budget.get_total_income|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Total Expense</h6>
+                <h4 class="mb-0 text-danger">{{ budget.get_total_expense|floatformat:2 }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <h6 class="text-muted mb-2">Status</h6>
+                {% if budget.status == 'draft' %}
+                <span class="badge bg-secondary fs-6">Draft</span>
+                {% elif budget.status == 'approved' %}
+                <span class="badge bg-success fs-6">Approved</span>
+                {% else %}
+                <span class="badge bg-dark fs-6">Locked</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Budget Lines</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Account</th>
+                        <th class="text-end">Jan</th>
+                        <th class="text-end">Feb</th>
+                        <th class="text-end">Mar</th>
+                        <th class="text-end">Apr</th>
+                        <th class="text-end">May</th>
+                        <th class="text-end">Jun</th>
+                        <th class="text-end">Jul</th>
+                        <th class="text-end">Aug</th>
+                        <th class="text-end">Sep</th>
+                        <th class="text-end">Oct</th>
+                        <th class="text-end">Nov</th>
+                        <th class="text-end">Dec</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in budget.lines.all %}
+                    <tr>
+                        <td class="fw-medium">{{ line.account.code }} - {{ line.account.name }}</td>
+                        <td class="text-end">{{ line.jan|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.feb|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.mar|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.apr|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.may|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.jun|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.jul|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.aug|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.sep|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.oct|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.nov|floatformat:0 }}</td>
+                        <td class="text-end">{{ line.dec|floatformat:0 }}</td>
+                        <td class="text-end fw-bold">{{ line.amount|floatformat:2 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="14" class="text-center py-3 text-muted">No budget lines</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

@@ -1,0 +1,247 @@
+{% extends 'base.html' %}
+{% load settings_tags %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'settings:role_list' %}">Roles</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold">
+                <i class="fas fa-shield-alt me-2 text-primary"></i>Module Permissions
+            </h6>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" onclick="selectAll()">
+                    <i class="fas fa-check-double me-1"></i>Select All
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="clearAll()">
+                    <i class="fas fa-times me-1"></i>Clear All
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="permissionsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 25%">Module</th>
+                            <th class="text-center" style="width: 15%">
+                                <div class="d-flex flex-column align-items-center">
+                                    <i class="fas fa-eye mb-1 text-info"></i>
+                                    <span>View</span>
+                                </div>
+                            </th>
+                            <th class="text-center" style="width: 15%">
+                                <div class="d-flex flex-column align-items-center">
+                                    <i class="fas fa-plus mb-1 text-success"></i>
+                                    <span>Create</span>
+                                </div>
+                            </th>
+                            <th class="text-center" style="width: 15%">
+                                <div class="d-flex flex-column align-items-center">
+                                    <i class="fas fa-edit mb-1 text-warning"></i>
+                                    <span>Edit</span>
+                                </div>
+                            </th>
+                            <th class="text-center" style="width: 15%">
+                                <div class="d-flex flex-column align-items-center">
+                                    <i class="fas fa-trash mb-1 text-danger"></i>
+                                    <span>Delete</span>
+                                </div>
+                            </th>
+                            <th class="text-center" style="width: 15%">
+                                <span class="text-muted small">Row Actions</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for module_code, module_name in modules %}
+                        {% with mp=current_permissions|get_item:module_code %}
+                        <tr data-module="{{ module_code }}">
+                            <td class="fw-medium">
+                                <i class="fas fa-folder me-2 text-secondary"></i>
+                                {{ module_name }}
+                            </td>
+                            <td class="text-center">
+                                <div class="form-check d-flex justify-content-center">
+                                    <input type="checkbox" class="form-check-input perm-checkbox view-perm" 
+                                           name="{{ module_code }}_view" id="{{ module_code }}_view"
+                                           {% if mp.view %}checked{% endif %}>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="form-check d-flex justify-content-center">
+                                    <input type="checkbox" class="form-check-input perm-checkbox create-perm" 
+                                           name="{{ module_code }}_create" id="{{ module_code }}_create"
+                                           {% if mp.create %}checked{% endif %}>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="form-check d-flex justify-content-center">
+                                    <input type="checkbox" class="form-check-input perm-checkbox edit-perm" 
+                                           name="{{ module_code }}_edit" id="{{ module_code }}_edit"
+                                           {% if mp.edit %}checked{% endif %}>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="form-check d-flex justify-content-center">
+                                    <input type="checkbox" class="form-check-input perm-checkbox delete-perm" 
+                                           name="{{ module_code }}_delete" id="{{ module_code }}_delete"
+                                           {% if mp.delete %}checked{% endif %}>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-success me-1" onclick="selectRow('{{ module_code }}')" title="Select All">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearRow('{{ module_code }}')" title="Clear All">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endwith %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Permission Presets -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold">
+                <i class="fas fa-magic me-2 text-primary"></i>Quick Presets
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-info" onclick="presetViewOnly()">
+                    <i class="fas fa-eye me-1"></i>View Only (All Modules)
+                </button>
+                <button type="button" class="btn btn-outline-success" onclick="presetFullAccess()">
+                    <i class="fas fa-crown me-1"></i>Full Access (All)
+                </button>
+                <button type="button" class="btn btn-outline-primary" onclick="presetSalesTeam()">
+                    <i class="fas fa-shopping-cart me-1"></i>Sales Team
+                </button>
+                <button type="button" class="btn btn-outline-warning" onclick="presetFinanceTeam()">
+                    <i class="fas fa-coins me-1"></i>Finance Team
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="presetProjectManager()">
+                    <i class="fas fa-project-diagram me-1"></i>Project Manager
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Save Permissions
+            </button>
+            <a href="{% url 'settings:role_list' %}" class="btn btn-light">Cancel</a>
+        </div>
+    </div>
+</form>
+
+{% block extra_js %}
+<script>
+// Select all permissions for a specific row (module)
+function selectRow(module) {
+    document.querySelectorAll(`tr[data-module="${module}"] .perm-checkbox`).forEach(cb => {
+        cb.checked = true;
+    });
+}
+
+// Clear all permissions for a specific row (module)
+function clearRow(module) {
+    document.querySelectorAll(`tr[data-module="${module}"] .perm-checkbox`).forEach(cb => {
+        cb.checked = false;
+    });
+}
+
+// Select all permissions
+function selectAll() {
+    document.querySelectorAll('.perm-checkbox').forEach(cb => {
+        cb.checked = true;
+    });
+}
+
+// Clear all permissions
+function clearAll() {
+    document.querySelectorAll('.perm-checkbox').forEach(cb => {
+        cb.checked = false;
+    });
+}
+
+// Preset: View Only
+function presetViewOnly() {
+    clearAll();
+    document.querySelectorAll('.view-perm').forEach(cb => {
+        cb.checked = true;
+    });
+}
+
+// Preset: Full Access
+function presetFullAccess() {
+    selectAll();
+}
+
+// Preset: Sales Team - CRM, Sales (full), Inventory (view), Finance (view)
+function presetSalesTeam() {
+    clearAll();
+    // CRM - full access
+    selectRow('crm');
+    // Sales - full access
+    selectRow('sales');
+    // Inventory - view only
+    document.getElementById('inventory_view').checked = true;
+    // Finance - view only
+    document.getElementById('finance_view').checked = true;
+    // Documents - view only
+    document.getElementById('documents_view').checked = true;
+}
+
+// Preset: Finance Team
+function presetFinanceTeam() {
+    clearAll();
+    // Finance - full access
+    selectRow('finance');
+    // Sales - view and create (for invoices)
+    document.getElementById('sales_view').checked = true;
+    document.getElementById('sales_create').checked = true;
+    // Purchase - view and create (for bills)
+    document.getElementById('purchase_view').checked = true;
+    document.getElementById('purchase_create').checked = true;
+    // Inventory - view only
+    document.getElementById('inventory_view').checked = true;
+    // Documents - view only
+    document.getElementById('documents_view').checked = true;
+}
+
+// Preset: Project Manager
+function presetProjectManager() {
+    clearAll();
+    // Projects - full access
+    selectRow('projects');
+    // HR - view employees
+    document.getElementById('hr_view').checked = true;
+    // Documents - full access
+    selectRow('documents');
+    // CRM - view
+    document.getElementById('crm_view').checked = true;
+}
+</script>
+{% endblock %}
+{% endblock %}

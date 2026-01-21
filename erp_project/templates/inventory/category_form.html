@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'inventory:category_list' %}">Categories</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Category Name <span class="text-danger">*</span></label>
+                    <input type="text" name="name" class="form-control" value="{{ object.name }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Parent Category</label>
+                    <select name="parent" class="form-select">
+                        <option value="">None (Root Category)</option>
+                        {% for cat in form.fields.parent.queryset %}
+                        {% if cat.pk != object.pk %}
+                        <option value="{{ cat.id }}" {% if object.parent_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" class="form-control" rows="2">{{ object.description }}</textarea>
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save</button>
+                <a href="{% url 'inventory:category_list' %}" class="btn btn-light">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+

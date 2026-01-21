@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage chart of accounts</p>
+    </div>
+    <div>
+        {% if can_create %}
+        <button class="btn btn-primary" onclick="toggleInlineForm('accountForm')">
+            <i class="fas fa-plus me-2"></i>Add Account
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Inline Form -->
+<div id="accountForm" class="inline-form-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0 fw-semibold"><i class="fas fa-chart-bar me-2"></i>Add New Account</h6>
+        <button type="button" class="btn-close" onclick="cancelInlineForm('accountForm')"></button>
+    </div>
+    <form method="post">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Code <span class="text-danger">*</span></label>
+                <input type="text" name="code" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Name <span class="text-danger">*</span></label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Type <span class="text-danger">*</span></label>
+                <select name="account_type" class="form-select" required>
+                    {% for value, label in account_types %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Parent Account</label>
+                <select name="parent" class="form-select">
+                    <option value="">None</option>
+                    {% for acc in accounts %}
+                    <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="mt-3">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Save</button>
+            <button type="button" class="btn btn-light" onclick="cancelInlineForm('accountForm')">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <input type="text" name="search" class="form-control" placeholder="Search code, name..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="type" class="form-select">
+                    <option value="">All Types</option>
+                    {% for value, label in account_types %}
+                    <option value="{{ value }}" {% if request.GET.type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>
+                <a href="{% url 'finance:account_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Parent</th>
+                        <th class="text-end">Balance</th>
+                        <th class="text-center" width="100">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for account in accounts %}
+                    <tr>
+                        <td class="fw-medium">{{ account.code }}</td>
+                        <td>{{ account.name }}</td>
+                        <td>
+                            {% if account.account_type == 'asset' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af;">Asset</span>
+                            {% elif account.account_type == 'liability' %}
+                            <span class="badge" style="background:#fef3c7;color:#92400e;">Liability</span>
+                            {% elif account.account_type == 'equity' %}
+                            <span class="badge" style="background:#f3e8ff;color:#7c3aed;">Equity</span>
+                            {% elif account.account_type == 'income' %}
+                            <span class="badge badge-active">Income</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Expense</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ account.parent.code|default:"-" }}</td>
+                        <td class="text-end {% if account.balance < 0 %}text-danger{% endif %}">{{ account.balance|floatformat:2 }}</td>
+                        <td class="text-center">
+                            {% if can_edit and not account.is_system %}
+                            <a href="{% url 'finance:account_edit' account.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_delete and not account.is_system %}
+                            <a href="{% url 'finance:account_delete' account.pk %}" class="btn btn-action btn-outline-danger" title="Delete" onclick="return confirm('Delete this account?');">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="fas fa-chart-bar fa-3x mb-3 d-block"></i>
+                            No accounts found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

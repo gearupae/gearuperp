@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% load settings_tags %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Manage bank accounts for reconciliation</small>
+    </div>
+    {% if can_create %}
+    <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#addModal">
+        <i class="fas fa-plus me-2"></i>New Bank Account
+    </button>
+    {% endif %}
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Account Name</th>
+                        <th>Bank</th>
+                        <th>Account Number</th>
+                        <th>GL Account</th>
+                        <th class="text-end">Balance (AED)</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ba in bank_accounts %}
+                    <tr>
+                        <td class="fw-medium">{{ ba.name }}</td>
+                        <td>{{ ba.bank_name }}</td>
+                        <td><code>{{ ba.account_number }}</code></td>
+                        <td>{{ ba.gl_account.code }} - {{ ba.gl_account.name }}</td>
+                        <td class="text-end fw-bold {% if ba.current_balance < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ ba.current_balance|floatformat:2 }}
+                        </td>
+                        <td class="text-end">
+                            {% if can_edit %}
+                            <a href="{% url 'finance:bankaccount_edit' ba.pk %}" class="btn btn-sm btn-outline-dark">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            <a href="{% url 'finance:bank_ledger' %}?bank={{ ba.pk }}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-book"></i> Ledger
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="fas fa-university fa-3x mb-3 d-block opacity-25"></i>
+                            No bank accounts found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">New Bank Account</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Account Name</label>
+                            {{ form.name }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Bank Name</label>
+                            {{ form.bank_name }}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Account Number</label>
+                            {{ form.account_number }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Branch</label>
+                            {{ form.branch }}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">IBAN</label>
+                            {{ form.iban }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">SWIFT Code</label>
+                            {{ form.swift_code }}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Currency</label>
+                            {{ form.currency }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">GL Account</label>
+                            {{ form.gl_account }}
+                            <small class="text-muted">Select the corresponding asset account</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-dark">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

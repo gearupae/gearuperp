@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:journal_list' %}">Journal Entries</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">Entry Details</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Date <span class="text-danger">*</span></label>
+                    {{ form.date }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Reference</label>
+                    {{ form.reference }}
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-semibold">Entry Lines</h6>
+            <button type="button" class="btn btn-sm btn-primary" onclick="addLineRow()">
+                <i class="fas fa-plus me-1"></i>Add Line
+            </button>
+        </div>
+        <div class="card-body p-0">
+            {{ lines_formset.management_form }}
+            <div class="table-responsive">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:35%">Account</th>
+                            <th style="width:25%">Description</th>
+                            <th style="width:15%">Debit</th>
+                            <th style="width:15%">Credit</th>
+                            <th style="width:10%"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="linesBody">
+                        {% for line_form in lines_formset %}
+                        <tr class="line-row">
+                            <td>
+                                {{ line_form.id }}
+                                <select name="{{ line_form.prefix }}-account" class="form-select">
+                                    <option value="">Select Account</option>
+                                    {% for acc in accounts %}
+                                    <option value="{{ acc.id }}" {% if line_form.instance.account_id == acc.id %}selected{% endif %}>
+                                        {{ acc.code }} - {{ acc.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <input type="text" name="{{ line_form.prefix }}-description" class="form-control" value="{{ line_form.instance.description }}">
+                            </td>
+                            <td>
+                                <input type="number" name="{{ line_form.prefix }}-debit" class="form-control line-debit" value="{{ line_form.instance.debit|default:0 }}" step="0.01" min="0" onchange="calculateTotals()">
+                            </td>
+                            <td>
+                                <input type="number" name="{{ line_form.prefix }}-credit" class="form-control line-credit" value="{{ line_form.instance.credit|default:0 }}" step="0.01" min="0" onchange="calculateTotals()">
+                            </td>
+                            <td class="text-center">
+                                {% if line_form.instance.pk %}
+                                <input type="checkbox" name="{{ line_form.prefix }}-DELETE" class="d-none delete-check">
+                                {% endif %}
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeLineRow(this)">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2" class="text-end fw-bold">Totals:</td>
+                            <td class="fw-bold" id="totalDebit">0.00</td>
+                            <td class="fw-bold" id="totalCredit">0.00</td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-end fw-bold">Difference:</td>
+                            <td colspan="2" id="difference" class="fw-bold">0.00</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save Entry</button>
+    <a href="{% url 'finance:journal_list' %}" class="btn btn-light">Cancel</a>
+</form>
+
+{% block extra_js %}
+<script>
+let formCount = {{ lines_formset.total_form_count }};
+const accountsOptions = `<option value="">Select Account</option>{% for acc in accounts %}<option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>{% endfor %}`;
+
+function addLineRow() {
+    const tbody = document.getElementById('linesBody');
+    const newRow = document.createElement('tr');
+    newRow.className = 'line-row';
+    newRow.innerHTML = `
+        <td><select name="lines-${formCount}-account" class="form-select">${accountsOptions}</select></td>
+        <td><input type="text" name="lines-${formCount}-description" class="form-control"></td>
+        <td><input type="number" name="lines-${formCount}-debit" class="form-control line-debit" value="0" step="0.01" min="0" onchange="calculateTotals()"></td>
+        <td><input type="number" name="lines-${formCount}-credit" class="form-control line-credit" value="0" step="0.01" min="0" onchange="calculateTotals()"></td>
+        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeLineRow(this)"><i class="fas fa-times"></i></button></td>
+    `;
+    tbody.appendChild(newRow);
+    formCount++;
+    document.getElementById('id_lines-TOTAL_FORMS').value = formCount;
+}
+
+function removeLineRow(btn) {
+    const row = btn.closest('tr');
+    const deleteCheck = row.querySelector('.delete-check');
+    if (deleteCheck) { deleteCheck.checked = true; row.style.display = 'none'; }
+    else { row.remove(); }
+    calculateTotals();
+}
+
+function calculateTotals() {
+    let totalDebit = 0, totalCredit = 0;
+    document.querySelectorAll('.line-row').forEach(row => {
+        if (row.style.display === 'none') return;
+        totalDebit += parseFloat(row.querySelector('.line-debit')?.value) || 0;
+        totalCredit += parseFloat(row.querySelector('.line-credit')?.value) || 0;
+    });
+    document.getElementById('totalDebit').textContent = totalDebit.toFixed(2);
+    document.getElementById('totalCredit').textContent = totalCredit.toFixed(2);
+    
+    const diff = Math.abs(totalDebit - totalCredit);
+    const diffEl = document.getElementById('difference');
+    diffEl.textContent = diff.toFixed(2);
+    diffEl.className = diff === 0 ? 'fw-bold text-success' : 'fw-bold text-danger';
+}
+
+document.addEventListener('DOMContentLoaded', calculateTotals);
+</script>
+{% endblock %}
+{% endblock %}
+
+

@@ -1,0 +1,84 @@
+"""
+Core models and mixins used across all apps.
+"""
+from django.db import models
+from django.conf import settings
+from django.utils import timezone
+
+
+class TimeStampedModel(models.Model):
+    """
+    Abstract base model with created_at and updated_at fields.
+    """
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class UserTrackingModel(models.Model):
+    """
+    Abstract base model with created_by and updated_by fields.
+    """
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='%(app_label)s_%(class)s_created'
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='%(app_label)s_%(class)s_updated'
+    )
+
+    class Meta:
+        abstract = True
+
+
+class ActiveModel(models.Model):
+    """
+    Abstract base model with is_active field.
+    """
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        abstract = True
+
+
+class BaseModel(TimeStampedModel, UserTrackingModel, ActiveModel):
+    """
+    Base model combining all common fields.
+    Every model in the ERP should inherit from this.
+    
+    Fields:
+    - created_at
+    - updated_at
+    - created_by
+    - updated_by
+    - is_active
+    """
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        # Get the current user from thread local storage
+        from apps.core.middleware import get_current_user
+        user = get_current_user()
+        
+        if not self.pk:
+            # New record
+            if user and user.is_authenticated:
+                self.created_by = user
+        
+        if user and user.is_authenticated:
+            self.updated_by = user
+            
+        super().save(*args, **kwargs)
+
+

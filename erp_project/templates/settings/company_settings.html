@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <h4 class="mb-1 fw-bold">{{ title }}</h4>
+    <p class="text-muted mb-0">Configure your company information and preferences</p>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-4">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <h5 class="fw-semibold mb-3">
+                <i class="fas fa-building me-2 text-primary"></i>Company Information
+            </h5>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label">Company Name <span class="text-danger">*</span></label>
+                    <input type="text" name="company_name" class="form-control" value="{{ object.company_name }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Tax ID / TRN</label>
+                    <input type="text" name="tax_id" class="form-control" value="{{ object.tax_id }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control" value="{{ object.email }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Phone</label>
+                    <input type="text" name="phone" class="form-control" value="{{ object.phone }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Address</label>
+                    <textarea name="address" class="form-control" rows="3">{{ object.address }}</textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Company Logo</label>
+                    <input type="file" name="logo" class="form-control" accept="image/*">
+                    {% if object.logo %}
+                    <div class="mt-2">
+                        <img src="{{ object.logo.url }}" alt="Logo" class="img-thumbnail" style="max-height: 60px;">
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <hr class="my-4">
+            
+            <h5 class="fw-semibold mb-3">
+                <i class="fas fa-cog me-2 text-primary"></i>System Preferences
+            </h5>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Currency</label>
+                    <select name="currency" class="form-select">
+                        <option value="AED" {% if object.currency == 'AED' %}selected{% endif %}>AED - UAE Dirham</option>
+                        <option value="USD" {% if object.currency == 'USD' %}selected{% endif %}>USD - US Dollar</option>
+                        <option value="EUR" {% if object.currency == 'EUR' %}selected{% endif %}>EUR - Euro</option>
+                        <option value="GBP" {% if object.currency == 'GBP' %}selected{% endif %}>GBP - British Pound</option>
+                        <option value="INR" {% if object.currency == 'INR' %}selected{% endif %}>INR - Indian Rupee</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Fiscal Year Start Month</label>
+                    <select name="fiscal_year_start" class="form-select">
+                        {% for i in "123456789012"|make_list %}
+                        <option value="{{ forloop.counter }}" {% if object.fiscal_year_start == forloop.counter %}selected{% endif %}>
+                            {{ forloop.counter|date:"F" }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Timezone</label>
+                    <select name="timezone" class="form-select">
+                        <option value="Asia/Dubai" {% if object.timezone == 'Asia/Dubai' %}selected{% endif %}>Asia/Dubai (UAE)</option>
+                        <option value="UTC" {% if object.timezone == 'UTC' %}selected{% endif %}>UTC</option>
+                        <option value="Asia/Kolkata" {% if object.timezone == 'Asia/Kolkata' %}selected{% endif %}>Asia/Kolkata</option>
+                        <option value="Europe/London" {% if object.timezone == 'Europe/London' %}selected{% endif %}>Europe/London</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Date Format</label>
+                    <select name="date_format" class="form-select">
+                        <option value="%d/%m/%Y" {% if object.date_format == '%d/%m/%Y' %}selected{% endif %}>DD/MM/YYYY</option>
+                        <option value="%m/%d/%Y" {% if object.date_format == '%m/%d/%Y' %}selected{% endif %}>MM/DD/YYYY</option>
+                        <option value="%Y-%m-%d" {% if object.date_format == '%Y-%m-%d' %}selected{% endif %}>YYYY-MM-DD</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-3 border-top">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-2"></i>Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+

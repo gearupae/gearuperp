@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Enter opening balances for GL, Bank, AR, or AP</small>
+    </div>
+    <a href="{% url 'finance:openingbalance_list' %}" class="btn btn-outline-dark">
+        <i class="fas fa-arrow-left me-2"></i>Back
+    </a>
+</div>
+
+<form method="post" id="openingBalanceForm">
+    {% csrf_token %}
+    
+    <!-- Entry Header -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold">Entry Details</h6>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Entry Type <span class="text-danger">*</span></label>
+                    {{ form.entry_type }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Fiscal Year <span class="text-danger">*</span></label>
+                    {{ form.fiscal_year }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Entry Date <span class="text-danger">*</span></label>
+                    {{ form.entry_date }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entry Lines -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold">Opening Balance Lines</h6>
+            <button type="button" class="btn btn-sm btn-outline-dark" id="addLine">
+                <i class="fas fa-plus me-2"></i>Add Line
+            </button>
+        </div>
+        <div class="card-body p-0">
+            {{ formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="linesTable">
+                    <thead class="bg-light">
+                        <tr>
+                            <th style="width: 200px;">Account</th>
+                            <th style="width: 150px;">Customer</th>
+                            <th style="width: 150px;">Vendor</th>
+                            <th style="width: 150px;">Bank Account</th>
+                            <th style="width: 100px;">Ref. Number</th>
+                            <th style="width: 100px;">Ref. Date</th>
+                            <th style="width: 100px;">Due Date</th>
+                            <th style="width: 100px;">Debit</th>
+                            <th style="width: 100px;">Credit</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="formsetBody">
+                        {% for line_form in formset %}
+                        <tr class="formset-row">
+                            <td>
+                                {{ line_form.id }}
+                                {{ line_form.account }}
+                            </td>
+                            <td>{{ line_form.customer }}</td>
+                            <td>{{ line_form.vendor }}</td>
+                            <td>{{ line_form.bank_account }}</td>
+                            <td>{{ line_form.reference_number }}</td>
+                            <td>{{ line_form.reference_date }}</td>
+                            <td>{{ line_form.due_date }}</td>
+                            <td>{{ line_form.debit }}</td>
+                            <td>{{ line_form.credit }}</td>
+                            <td class="text-center">
+                                {{ line_form.DELETE }}
+                                <button type="button" class="btn btn-sm btn-outline-danger delete-row" title="Remove">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="bg-light">
+                        <tr>
+                            <th colspan="7" class="text-end">Totals:</th>
+                            <th class="text-end" id="totalDebit">0.00</th>
+                            <th class="text-end" id="totalCredit">0.00</th>
+                            <th></th>
+                        </tr>
+                        <tr>
+                            <th colspan="7" class="text-end">Difference:</th>
+                            <th colspan="2" class="text-center" id="difference">0.00</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold">Notes</h6>
+        </div>
+        <div class="card-body">
+            {{ form.notes }}
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2">
+        <a href="{% url 'finance:openingbalance_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        <button type="submit" class="btn btn-dark">
+            <i class="fas fa-save me-2"></i>Save Entry
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Calculate totals
+    function calculateTotals() {
+        let totalDebit = 0;
+        let totalCredit = 0;
+        
+        $('.formset-row:not(.d-none)').each(function() {
+            const debit = parseFloat($(this).find('[name$="-debit"]').val()) || 0;
+            const credit = parseFloat($(this).find('[name$="-credit"]').val()) || 0;
+            totalDebit += debit;
+            totalCredit += credit;
+        });
+        
+        $('#totalDebit').text(totalDebit.toFixed(2));
+        $('#totalCredit').text(totalCredit.toFixed(2));
+        
+        const difference = totalDebit - totalCredit;
+        $('#difference').text(Math.abs(difference).toFixed(2));
+        
+        if (Math.abs(difference) < 0.01) {
+            $('#difference').removeClass('text-danger').addClass('text-success');
+        } else {
+            $('#difference').removeClass('text-success').addClass('text-danger');
+        }
+    }
+    
+    // Add new line
+    const totalForms = $('#id_lines-TOTAL_FORMS');
+    
+    $('#addLine').click(function() {
+        const formCount = parseInt(totalForms.val());
+        const newRow = $('.formset-row:first').clone();
+        
+        newRow.find('input, select').each(function() {
+            const name = $(this).attr('name');
+            if (name) {
+                $(this).attr('name', name.replace(/-\d+-/, '-' + formCount + '-'));
+                $(this).attr('id', $(this).attr('id').replace(/-\d+-/, '-' + formCount + '-'));
+            }
+            if ($(this).attr('type') !== 'hidden') {
+                $(this).val('');
+            }
+        });
+        
+        newRow.removeClass('d-none');
+        newRow.find('[name$="-DELETE"]').prop('checked', false);
+        $('#formsetBody').append(newRow);
+        totalForms.val(formCount + 1);
+        
+        // Re-init select2 if used
+        if ($.fn.select2) {
+            newRow.find('select').select2({ theme: 'bootstrap-5', width: '100%' });
+        }
+    });
+    
+    // Delete row
+    $(document).on('click', '.delete-row', function() {
+        const row = $(this).closest('tr');
+        row.find('[name$="-DELETE"]').prop('checked', true);
+        row.addClass('d-none');
+        calculateTotals();
+    });
+    
+    // Recalculate on input change
+    $(document).on('change input', '[name$="-debit"], [name$="-credit"]', calculateTotals);
+    
+    // Initial calculation
+    calculateTotals();
+    
+    // Initialize select2
+    if ($.fn.select2) {
+        $('select').select2({ theme: 'bootstrap-5', width: '100%' });
+    }
+});
+</script>
+{% endblock %}
+
+

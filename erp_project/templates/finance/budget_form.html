@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:budget_list' %}">Budgets</a></li>
+            <li class="breadcrumb-item active">New Budget</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-primary"></i>Budget Information</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Budget Name</label>
+                    {{ form.name }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Fiscal Year</label>
+                    {{ form.fiscal_year }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Period Type</label>
+                    {{ form.period_type }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Department (Optional)</label>
+                    {{ form.department }}
+                </div>
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Notes</label>
+                    {{ form.notes }}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Budget Lines</h6>
+        </div>
+        <div class="card-body p-0">
+            {{ lines_formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0" id="budget-lines-table">
+                    <thead class="bg-light">
+                        <tr>
+                            <th style="width: 200px;">Account</th>
+                            <th>Jan</th>
+                            <th>Feb</th>
+                            <th>Mar</th>
+                            <th>Apr</th>
+                            <th>May</th>
+                            <th>Jun</th>
+                            <th>Jul</th>
+                            <th>Aug</th>
+                            <th>Sep</th>
+                            <th>Oct</th>
+                            <th>Nov</th>
+                            <th>Dec</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for form_line in lines_formset %}
+                        <tr class="budget-line-row">
+                            <td>{{ form_line.account }}</td>
+                            <td>{{ form_line.jan }}</td>
+                            <td>{{ form_line.feb }}</td>
+                            <td>{{ form_line.mar }}</td>
+                            <td>{{ form_line.apr }}</td>
+                            <td>{{ form_line.may }}</td>
+                            <td>{{ form_line.jun }}</td>
+                            <td>{{ form_line.jul }}</td>
+                            <td>{{ form_line.aug }}</td>
+                            <td>{{ form_line.sep }}</td>
+                            <td>{{ form_line.oct }}</td>
+                            <td>{{ form_line.nov }}</td>
+                            <td>{{ form_line.dec }}</td>
+                            <td class="text-center">
+                                {{ form_line.DELETE }}
+                                {{ form_line.id }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <button type="submit" class="btn btn-dark">
+                <i class="fas fa-save me-2"></i>Save Budget
+            </button>
+            <a href="{% url 'finance:budget_list' %}" class="btn btn-light">Cancel</a>
+        </div>
+    </div>
+</form>
+
+<style>
+    #budget-lines-table input[type="number"] {
+        width: 80px;
+        font-size: 12px;
+        padding: 4px;
+    }
+    #budget-lines-table select {
+        font-size: 12px;
+    }
+</style>
+{% endblock %}
+
+

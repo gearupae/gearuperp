@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage asset categories and depreciation settings</p>
+    </div>
+    {% if can_create %}
+    <a href="{% url 'assets:category_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>Add Category
+    </a>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Depreciation Method</th>
+                        <th class="text-center">Useful Life</th>
+                        <th class="text-center">Salvage %</th>
+                        <th class="text-center" width="100">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in categories %}
+                    <tr>
+                        <td class="fw-medium">{{ cat.code }}</td>
+                        <td>{{ cat.name }}</td>
+                        <td>{{ cat.get_depreciation_method_display }}</td>
+                        <td class="text-center">{{ cat.useful_life_years }} years</td>
+                        <td class="text-center">{{ cat.salvage_value_percent }}%</td>
+                        <td class="text-center">
+                            <a href="{% url 'assets:category_edit' cat.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="fas fa-tags fa-3x mb-3 d-block"></i>
+                            No categories found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

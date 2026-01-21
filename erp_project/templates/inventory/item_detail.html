@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'inventory:item_list' %}">Items</a></li>
+            <li class="breadcrumb-item active">{{ item.item_code }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">{{ item.item_code }}</h4>
+            <span class="text-muted">{{ item.name }}</span>
+        </div>
+        <div>
+            {% if can_edit %}
+            <a href="{% url 'inventory:item_edit' item.pk %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Edit
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header"><h6 class="mb-0 fw-semibold">Item Details</h6></div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Category</h6>
+                        <p class="mb-0">{{ item.category.name|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Type</h6>
+                        <p class="mb-0">{{ item.get_item_type_display }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Unit</h6>
+                        <p class="mb-0">{{ item.unit }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Purchase Price</h6>
+                        <p class="mb-0">AED {{ item.purchase_price|floatformat:2 }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Selling Price</h6>
+                        <p class="mb-0">AED {{ item.selling_price|floatformat:2 }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">VAT Rate</h6>
+                        <p class="mb-0">{{ item.vat_rate }}%</p>
+                    </div>
+                    {% if item.description %}
+                    <div class="col-12">
+                        <h6 class="text-muted mb-2">Description</h6>
+                        <p class="mb-0">{{ item.description }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        {% if item.item_type == 'product' %}
+        <div class="card mb-4">
+            <div class="card-header"><h6 class="mb-0 fw-semibold">Stock by Warehouse</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Warehouse</th>
+                                <th class="text-end">Quantity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stock in stock_records %}
+                            <tr>
+                                <td>{{ stock.warehouse.name }}</td>
+                                <td class="text-end">{{ stock.quantity }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="2" class="text-center py-4 text-muted">No stock records</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td class="fw-bold">Total Stock</td>
+                                {% with stock_qty=item.total_stock_calc|default:0 %}
+                                <td class="text-end fw-bold {% if stock_qty < item.minimum_stock %}text-danger{% endif %}">{{ stock_qty }}</td>
+                                {% endwith %}
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header"><h6 class="mb-0 fw-semibold">Recent Movements</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Warehouse</th>
+                                <th class="text-end">Quantity</th>
+                                <th>Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for movement in movements %}
+                            <tr>
+                                <td>{{ movement.movement_date|date:"d/m/Y H:i" }}</td>
+                                <td>
+                                    {% if movement.movement_type == 'in' %}
+                                    <span class="badge badge-active">Stock In</span>
+                                    {% elif movement.movement_type == 'out' %}
+                                    <span class="badge badge-inactive">Stock Out</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ movement.get_movement_type_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ movement.warehouse.name }}</td>
+                                <td class="text-end">{{ movement.quantity }}</td>
+                                <td>{{ movement.reference|default:"-" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">No movements</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Status</h6>
+                {% if item.status == 'active' %}
+                <span class="badge badge-active fs-6">Active</span>
+                {% else %}
+                <span class="badge badge-inactive fs-6">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if item.item_type == 'product' %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Stock Status</h6>
+                {% with stock_qty=item.total_stock_calc|default:0 %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Current Stock</span>
+                    <span class="fw-bold {% if stock_qty < item.minimum_stock %}text-danger{% endif %}">{{ stock_qty }}</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span>Minimum Level</span>
+                    <span>{{ item.minimum_stock }}</span>
+                </div>
+                {% if stock_qty < item.minimum_stock %}
+                <div class="alert alert-danger mt-3 mb-0 py-2">
+                    <small><i class="fas fa-exclamation-triangle me-1"></i>Low stock warning!</small>
+                </div>
+                {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Audit Information</h6>
+                <div class="mb-2">
+                    <small class="text-muted">Created</small>
+                    <p class="mb-0 small">{{ item.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+                <div>
+                    <small class="text-muted">Last Updated</small>
+                    <p class="mb-0 small">{{ item.updated_at|date:"d/m/Y H:i" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

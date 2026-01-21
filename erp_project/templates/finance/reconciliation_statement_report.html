@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item">Reports</li>
+                    <li class="breadcrumb-item active">Reconciliation Statement</li>
+                </ol>
+            </nav>
+        </div>
+        {% if selected_bank and statement_data %}
+        <button class="btn btn-outline-dark" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label">Bank Account</label>
+                    <select name="bank" class="form-select">
+                        <option value="">Select Bank Account</option>
+                        {% for bank in bank_accounts %}
+                        <option value="{{ bank.id }}" {% if selected_bank.id == bank.id %}selected{% endif %}>
+                            {{ bank.name }} - {{ bank.bank_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">As of Date</label>
+                    <input type="date" name="date" class="form-control" value="{{ as_of_date }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-dark">
+                        <i class="fas fa-search me-1"></i>Generate
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_bank and statement_data %}
+    <!-- Report Content -->
+    <div class="card">
+        <div class="card-header bg-dark text-white text-center">
+            <h5 class="mb-1">Bank Reconciliation Statement</h5>
+            <p class="mb-0">{{ selected_bank.name }} - {{ selected_bank.bank_name }}</p>
+            <small>As of {{ as_of_date }}</small>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <!-- Bank Balance Section -->
+                    <div class="border rounded p-3 mb-3">
+                        <h6 class="border-bottom pb-2 mb-3">Bank Statement Balance</h6>
+                        <table class="table table-sm mb-0">
+                            <tr>
+                                <td>Balance per Bank Statement</td>
+                                <td class="text-end fw-bold">AED {{ statement_data.bank_balance|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td class="ps-3">Add: Outstanding Deposits</td>
+                                <td class="text-end text-success">{{ statement_data.outstanding_deposits|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td class="ps-3">Less: Outstanding Checks</td>
+                                <td class="text-end text-danger">({{ statement_data.outstanding_checks|floatformat:2 }})</td>
+                            </tr>
+                            <tr class="table-light">
+                                <td><strong>Adjusted Bank Balance</strong></td>
+                                <td class="text-end fw-bold">AED {{ statement_data.adjusted_bank_balance|floatformat:2 }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <!-- GL Balance Section -->
+                    <div class="border rounded p-3 mb-3">
+                        <h6 class="border-bottom pb-2 mb-3">General Ledger Balance</h6>
+                        <table class="table table-sm mb-0">
+                            <tr>
+                                <td>Balance per GL</td>
+                                <td class="text-end fw-bold">AED {{ statement_data.gl_balance|floatformat:2 }}</td>
+                            </tr>
+                            <tr class="table-light">
+                                <td><strong>GL Balance</strong></td>
+                                <td class="text-end fw-bold">AED {{ statement_data.gl_balance|floatformat:2 }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Difference -->
+            <div class="{% if statement_data.is_reconciled %}alert alert-success{% else %}alert alert-danger{% endif %} text-center">
+                <h5 class="mb-0">
+                    <strong>Difference: AED {{ statement_data.difference|floatformat:2 }}</strong>
+                    {% if statement_data.is_reconciled %}
+                    <i class="fas fa-check-circle ms-2"></i> Reconciled
+                    {% else %}
+                    <i class="fas fa-exclamation-circle ms-2"></i> Not Reconciled
+                    {% endif %}
+                </h5>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-university fa-3x text-muted mb-3"></i>
+            <p class="text-muted">Select a bank account to generate the reconciliation statement.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+

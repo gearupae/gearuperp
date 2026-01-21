@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'purchase:recurringexpense_list' %}">Recurring Expenses</a></li>
+            <li class="breadcrumb-item active">{% if object %}Edit{% else %}New{% endif %}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-primary"></i>Basic Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Name <span class="text-danger">*</span></label>
+                            {{ form.name }}
+                            <small class="text-muted">e.g., Office Rent, Internet Subscription</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Vendor <span class="text-danger">*</span></label>
+                            {{ form.vendor }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        {{ form.description }}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-coins me-2 text-primary"></i>Amount & Accounting</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Amount (excl. VAT) <span class="text-danger">*</span></label>
+                            {{ form.amount }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Tax Code (VAT)</label>
+                            {{ form.tax_code }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Expense Account <span class="text-danger">*</span></label>
+                            {{ form.expense_account }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-calendar-alt me-2 text-primary"></i>Schedule</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Frequency <span class="text-danger">*</span></label>
+                            {{ form.frequency }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Start Date <span class="text-danger">*</span></label>
+                            {{ form.start_date }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">End Date</label>
+                            {{ form.end_date }}
+                            <small class="text-muted">Leave blank for indefinite</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-money-bill-wave me-2 text-primary"></i>Payment Configuration</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Payment Mode <span class="text-danger">*</span></label>
+                            {{ form.payment_mode }}
+                            <small class="text-muted d-block">
+                                <strong>AP:</strong> Creates payable to vendor<br>
+                                <strong>Bank:</strong> Direct debit from bank account
+                            </small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Bank Account</label>
+                            {{ form.bank_account }}
+                            <small class="text-muted">Required if payment mode is "Direct Bank"</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-cog me-2 text-primary"></i>Settings</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        {{ form.status }}
+                    </div>
+                    <div class="form-check mb-3">
+                        {{ form.auto_post }}
+                        <label class="form-check-label" for="id_auto_post">
+                            Auto-post journal entry
+                        </label>
+                        <small class="text-muted d-block">
+                            When enabled, journal entries are automatically posted when expense is generated.
+                        </small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card border-0 shadow-sm mb-3 bg-light">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-route me-2 text-info"></i>Accounting Flow</h6>
+                </div>
+                <div class="card-body small">
+                    <p class="mb-2"><strong>On each execution:</strong></p>
+                    <code class="d-block">
+                        Dr Expense Account<br>
+                        Dr VAT Recoverable (if applicable)<br>
+                        Cr Accounts Payable / Bank
+                    </code>
+                    <hr>
+                    <p class="mb-1 text-muted">
+                        <i class="fas fa-check-circle text-success me-1"></i>
+                        Respects Fiscal Year & Period Locking
+                    </p>
+                    <p class="mb-0 text-muted">
+                        <i class="fas fa-check-circle text-success me-1"></i>
+                        Skips locked periods automatically
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <button type="submit" class="btn btn-dark">
+                <i class="fas fa-save me-2"></i>{% if object %}Update{% else %}Create{% endif %} Recurring Expense
+            </button>
+            <a href="{% url 'purchase:recurringexpense_list' %}" class="btn btn-light">Cancel</a>
+        </div>
+    </div>
+</form>
+{% endblock %}
+

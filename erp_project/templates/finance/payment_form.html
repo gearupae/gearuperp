@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:payment_list' %}">Payments</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Payment Type <span class="text-danger">*</span></label>
+                    {{ form.payment_type }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Payment Method <span class="text-danger">*</span></label>
+                    {{ form.payment_method }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Payment Date <span class="text-danger">*</span></label>
+                    {{ form.payment_date }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Party Name <span class="text-danger">*</span></label>
+                    {{ form.party_name }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Amount <span class="text-danger">*</span></label>
+                    {{ form.amount }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Reference</label>
+                    {{ form.reference }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Notes</label>
+                    {{ form.notes }}
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save Payment</button>
+                <a href="{% url 'finance:payment_list' %}" class="btn btn-light">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+

@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'inventory:item_list' %}">Items</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">Basic Information</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Item Name <span class="text-danger">*</span></label>
+                    {{ form.name }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Category</label>
+                    {{ form.category }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Type</label>
+                    {{ form.item_type }}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">Pricing & Stock</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Purchase Price</label>
+                    {{ form.purchase_price }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Selling Price</label>
+                    {{ form.selling_price }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Unit</label>
+                    {{ form.unit }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">VAT Rate (%)</label>
+                    {{ form.vat_rate }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Minimum Stock Level</label>
+                    {{ form.minimum_stock }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Status</label>
+                    {{ form.status }}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save</button>
+    <a href="{% url 'inventory:item_list' %}" class="btn btn-light">Cancel</a>
+</form>
+{% endblock %}
+
+

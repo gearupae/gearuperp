@@ -1,0 +1,29 @@
+from django.urls import path
+from . import views
+
+app_name = 'projects'
+
+urlpatterns = [
+    # Projects
+    path('', views.ProjectListView.as_view(), name='project_list'),
+    path('create/', views.ProjectCreateView.as_view(), name='project_create'),
+    path('<int:pk>/', views.ProjectDetailView.as_view(), name='project_detail'),
+    path('<int:pk>/edit/', views.ProjectUpdateView.as_view(), name='project_edit'),
+    
+    # Tasks
+    path('tasks/<int:pk>/status/<str:status>/', views.task_update_status, name='task_status'),
+    
+    # Timesheets
+    path('timesheets/', views.TimesheetListView.as_view(), name='timesheet_list'),
+    
+    # Project Expenses
+    path('expenses/', views.ProjectExpenseListView.as_view(), name='expense_list'),
+    path('expenses/create/', views.ProjectExpenseCreateView.as_view(), name='expense_create'),
+    path('expenses/<int:pk>/', views.ProjectExpenseDetailView.as_view(), name='expense_detail'),
+    path('expenses/<int:pk>/edit/', views.ProjectExpenseUpdateView.as_view(), name='expense_edit'),
+    path('expenses/<int:pk>/approve/', views.expense_approve, name='expense_approve'),
+    path('expenses/<int:pk>/reject/', views.expense_reject, name='expense_reject'),
+    path('expenses/<int:pk>/post/', views.expense_post_to_accounting, name='expense_post'),
+]
+
+

@@ -1,0 +1,684 @@
+{% load static %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+    <div class="container-fluid">
+        <!-- Brand -->
+        <a class="navbar-brand d-flex align-items-center" href="{% url 'dashboard' %}">
+            <img src="{% static 'img/logo.png' %}" alt="ERP" height="36">
+        </a>
+        
+        <!-- Mobile Toggle -->
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        
+        <!-- Navigation Links -->
+        <div class="collapse navbar-collapse" id="mainNavbar">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <!-- CRM -->
+                {% if is_superuser or 'crm' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'crm' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-users me-1"></i>CRM
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'crm:customer_list' %}">
+                                <i class="fas fa-user-tie me-2"></i>Customers
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Sales -->
+                {% if is_superuser or 'sales' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'sales' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-shopping-cart me-1"></i>Sales
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'sales:quotation_list' %}">
+                                <i class="fas fa-file-invoice me-2"></i>Quotations
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'sales:invoice_list' %}">
+                                <i class="fas fa-receipt me-2"></i>Invoices
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Purchase -->
+                {% if is_superuser or 'purchase' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'purchase' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-truck me-1"></i>Purchase
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'purchase:vendor_list' %}">
+                                <i class="fas fa-industry me-2"></i>Vendors
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'purchase:pr_list' %}">
+                                <i class="fas fa-clipboard-list me-2"></i>Purchase Requests
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'purchase:po_list' %}">
+                                <i class="fas fa-file-alt me-2"></i>Purchase Orders
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'purchase:bill_list' %}">
+                                <i class="fas fa-file-invoice-dollar me-2"></i>Vendor Bills
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'purchase:expenseclaim_list' %}">
+                                <i class="fas fa-receipt me-2"></i>Expense Claims
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'purchase:recurringexpense_list' %}">
+                                <i class="fas fa-sync-alt me-2"></i>Recurring Expenses
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Inventory -->
+                {% if is_superuser or 'inventory' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'inventory' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-boxes me-1"></i>Inventory
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'inventory:item_list' %}">
+                                <i class="fas fa-box me-2"></i>Items
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'inventory:category_list' %}">
+                                <i class="fas fa-layer-group me-2"></i>Categories
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'inventory:warehouse_list' %}">
+                                <i class="fas fa-warehouse me-2"></i>Warehouses
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'inventory:stock_list' %}">
+                                <i class="fas fa-chart-bar me-2"></i>Stock Levels
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'inventory:movement_list' %}">
+                                <i class="fas fa-exchange-alt me-2"></i>Movements
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Fixed Assets -->
+                {% if is_superuser or 'assets' in user_permissions or 'finance' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'assets' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-building me-1"></i>Assets
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'assets:asset_list' %}">
+                                <i class="fas fa-building me-2"></i>Fixed Assets
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'assets:category_list' %}">
+                                <i class="fas fa-tags me-2"></i>Categories
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'assets:run_depreciation' %}">
+                                <i class="fas fa-calculator me-2"></i>Run Depreciation
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'assets:register_report' %}">
+                                <i class="fas fa-list me-2"></i>Asset Register
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'assets:depreciation_report' %}">
+                                <i class="fas fa-chart-line me-2"></i>Depreciation Report
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Finance (with nested Reports submenu) -->
+                {% if is_superuser or 'finance' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'finance' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-coins me-1"></i>Finance
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark finance-dropdown" style="min-width: 220px;">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:account_list' %}">
+                                <i class="fas fa-sitemap me-2"></i>Chart of Accounts
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:journal_list' %}">
+                                <i class="fas fa-book me-2"></i>Journal Entries
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:payment_list' %}">
+                                <i class="fas fa-money-bill-wave me-2"></i>Payments
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:bankaccount_list' %}">
+                                <i class="fas fa-university me-2"></i>Bank Accounts
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:banktransfer_list' %}">
+                                <i class="fas fa-exchange-alt me-2"></i>Bank Transfers
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:bankstatement_list' %}">
+                                <i class="fas fa-file-alt me-2"></i>Bank Statements
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:bankreconciliation_list' %}">
+                                <i class="fas fa-sync-alt me-2"></i>Bank Reconciliation
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:budget_list' %}">
+                                <i class="fas fa-piggy-bank me-2"></i>Budgets
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:vatreturn_list' %}">
+                                <i class="fas fa-file-invoice me-2"></i>VAT Returns
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:taxcode_list' %}">
+                                <i class="fas fa-percentage me-2"></i>Tax Codes
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:openingbalance_list' %}">
+                                <i class="fas fa-play-circle me-2"></i>Opening Balances
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:writeoff_list' %}">
+                                <i class="fas fa-eraser me-2"></i>Write-Offs / Adjustments
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:exchangerate_list' %}">
+                                <i class="fas fa-dollar-sign me-2"></i>Exchange Rates
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:fiscalyear_list' %}">
+                                <i class="fas fa-calendar-alt me-2"></i>Fiscal Years
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:period_list' %}">
+                                <i class="fas fa-lock me-2"></i>Period Locking
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:account_mapping_list' %}">
+                                <i class="fas fa-random me-2"></i>Account Mapping
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'finance:accounting_settings' %}">
+                                <i class="fas fa-sliders-h me-2"></i>Accounting Settings
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        
+                        <!-- Reports Trigger -->
+                        <li>
+                            <a class="dropdown-item reports-trigger" href="#" id="reportsTrigger">
+                                <span><i class="fas fa-chart-pie me-2"></i>Reports</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Projects -->
+                {% if is_superuser or 'projects' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'projects' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-project-diagram me-1"></i>Projects
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'projects:project_list' %}">
+                                <i class="fas fa-tasks me-2"></i>All Projects
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'projects:timesheet_list' %}">
+                                <i class="fas fa-clock me-2"></i>Timesheets
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'projects:expense_list' %}">
+                                <i class="fas fa-receipt me-2"></i>Project Expenses
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- HR -->
+                {% if is_superuser or 'hr' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if '/hr/' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-user-friends me-1"></i>HR
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'hr:employee_list' %}">
+                                <i class="fas fa-id-card me-2"></i>Employees
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'hr:department_list' %}">
+                                <i class="fas fa-sitemap me-2"></i>Departments
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'hr:leave_list' %}">
+                                <i class="fas fa-plane-departure me-2"></i>Leave
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'hr:payroll_list' %}">
+                                <i class="fas fa-money-check-alt me-2"></i>Payroll
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Documents -->
+                {% if is_superuser or 'documents' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'documents' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-folder-open me-1"></i>Documents
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'documents:document_list' %}">
+                                <i class="fas fa-file me-2"></i>All Documents
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'documents:type_list' %}">
+                                <i class="fas fa-folder me-2"></i>Document Types
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+            </ul>
+            
+            <!-- Right Side -->
+            <ul class="navbar-nav">
+                <!-- Settings Dropdown -->
+                {% if is_superuser or 'settings' in user_permissions %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if 'settings' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-cog me-1"></i>Settings
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'settings:user_list' %}">
+                                <i class="fas fa-users-cog me-2"></i>Users
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'settings:role_list' %}">
+                                <i class="fas fa-user-shield me-2"></i>Roles
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'settings:company' %}">
+                                <i class="fas fa-building me-2"></i>Company
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'settings:audit_log' %}">
+                                <i class="fas fa-history me-2"></i>Audit Log
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+                {% endif %}
+                
+                <!-- Notifications -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link position-relative" href="#" data-bs-toggle="dropdown">
+                        <i class="fas fa-bell"></i>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 0.6rem;">
+                            3
+                        </span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" style="width: 300px;">
+                        <li><h6 class="dropdown-header">Notifications</h6></li>
+                        <li>
+                            <a class="dropdown-item py-2" href="#">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-file-invoice text-primary me-3"></i>
+                                    <div>
+                                        <p class="mb-0 small">New quotation created</p>
+                                        <small class="text-muted">5 minutes ago</small>
+                                    </div>
+                                </div>
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-center small" href="#">View All</a></li>
+                    </ul>
+                </li>
+                
+                <!-- User Menu -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" data-bs-toggle="dropdown">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 30px; height: 30px; font-size: 0.8rem;">
+                            {{ user.first_name.0|default:user.username.0|upper }}
+                        </div>
+                        <span class="d-none d-lg-inline">{{ user.first_name|default:user.username }}</span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                        <li>
+                            <span class="dropdown-item-text">
+                                <strong>{{ user.get_full_name|default:user.username }}</strong>
+                                <br>
+                                <small class="text-muted">{{ user.email }}</small>
+                            </span>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="#">
+                                <i class="fas fa-user me-2"></i>Profile
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="{% url 'logout' %}">
+                                <i class="fas fa-sign-out-alt me-2"></i>Logout
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- Reports Panel (Separate from dropdown) -->
+<div id="reportsPanel">
+    <h6 class="dropdown-header">Financial Statements</h6>
+    <a class="dropdown-item" href="{% url 'finance:trial_balance' %}">
+        <i class="fas fa-balance-scale me-2"></i>Trial Balance
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:profit_loss' %}">
+        <i class="fas fa-chart-line me-2"></i>Profit & Loss
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:balance_sheet' %}">
+        <i class="fas fa-file-invoice-dollar me-2"></i>Balance Sheet
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:cash_flow' %}">
+        <i class="fas fa-water me-2"></i>Cash Flow
+    </a>
+    
+    <hr class="dropdown-divider">
+    <h6 class="dropdown-header">Ledgers</h6>
+    <a class="dropdown-item" href="{% url 'finance:general_ledger' %}">
+        <i class="fas fa-book-open me-2"></i>General Ledger
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:journal_register' %}">
+        <i class="fas fa-list-alt me-2"></i>Journal Register
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:bank_ledger' %}">
+        <i class="fas fa-university me-2"></i>Bank Ledger
+    </a>
+    
+    <hr class="dropdown-divider">
+    <h6 class="dropdown-header">Receivables & Payables</h6>
+    <a class="dropdown-item" href="{% url 'finance:ar_aging' %}">
+        <i class="fas fa-user-clock me-2"></i>AR Aging
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:ap_aging' %}">
+        <i class="fas fa-clock me-2"></i>AP Aging
+    </a>
+    
+    <hr class="dropdown-divider">
+    <h6 class="dropdown-header">Budget & Analysis</h6>
+    <a class="dropdown-item" href="{% url 'finance:budget_vs_actual' %}">
+        <i class="fas fa-chart-bar me-2"></i>Budget vs Actual
+    </a>
+    
+    <hr class="dropdown-divider">
+    <h6 class="dropdown-header">Bank Reconciliation</h6>
+    <a class="dropdown-item" href="{% url 'finance:reconciliation_statement_report' %}">
+        <i class="fas fa-file-alt me-2"></i>Reconciliation Statement
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:unreconciled_transactions_report' %}">
+        <i class="fas fa-question-circle me-2"></i>Unreconciled Transactions
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:reconciliation_adjustments_report' %}">
+        <i class="fas fa-edit me-2"></i>Adjustments
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:cleared_vs_uncleared_report' %}">
+        <i class="fas fa-check-double me-2"></i>Cleared vs Uncleared
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:bank_vs_gl_report' %}">
+        <i class="fas fa-balance-scale me-2"></i>Bank vs GL
+    </a>
+    
+    <hr class="dropdown-divider">
+    <h6 class="dropdown-header">UAE Statutory</h6>
+    <a class="dropdown-item" href="{% url 'finance:vat_report' %}">
+        <i class="fas fa-landmark me-2"></i>VAT Report (FTA)
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:vat_audit_report' %}">
+        <i class="fas fa-search-dollar me-2"></i>VAT Audit Report
+    </a>
+    <a class="dropdown-item" href="{% url 'finance:corporate_tax_report' %}">
+        <i class="fas fa-briefcase me-2"></i>Corporate Tax
+    </a>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var reportsTrigger = document.getElementById('reportsTrigger');
+    var reportsPanel = document.getElementById('reportsPanel');
+    var financeDropdown = document.querySelector('.finance-dropdown');
+    
+    if (reportsTrigger && reportsPanel) {
+        reportsTrigger.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Get position of finance dropdown
+            var financeRect = financeDropdown.getBoundingClientRect();
+            
+            // Position the reports panel to the right of finance dropdown
+            reportsPanel.style.left = (financeRect.right + 5) + 'px';
+            reportsPanel.style.top = financeRect.top + 'px';
+            
+            // Toggle visibility
+            reportsPanel.classList.toggle('show');
+        });
+        
+        // Close panel when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!reportsPanel.contains(e.target) && e.target !== reportsTrigger && !reportsTrigger.contains(e.target)) {
+                reportsPanel.classList.remove('show');
+            }
+        });
+        
+        // Close panel when finance dropdown closes
+        var financeNavItem = document.querySelector('.nav-item.dropdown:has(.finance-dropdown)');
+        if (financeNavItem) {
+            financeNavItem.addEventListener('hidden.bs.dropdown', function() {
+                reportsPanel.classList.remove('show');
+            });
+        }
+        
+        // Also close when any nav dropdown closes
+        document.querySelectorAll('.nav-item.dropdown').forEach(function(item) {
+            item.addEventListener('hidden.bs.dropdown', function() {
+                reportsPanel.classList.remove('show');
+            });
+        });
+    }
+});
+</script>
+
+<style>
+/* Finance menu scrollable */
+.finance-dropdown {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+/* Custom scrollbar for dark dropdown */
+.finance-dropdown::-webkit-scrollbar {
+    width: 6px;
+}
+.finance-dropdown::-webkit-scrollbar-track {
+    background: #343a40;
+}
+.finance-dropdown::-webkit-scrollbar-thumb {
+    background: #6c757d;
+    border-radius: 3px;
+}
+.finance-dropdown::-webkit-scrollbar-thumb:hover {
+    background: #adb5bd;
+}
+/* Reports trigger button */
+.reports-trigger {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    cursor: pointer;
+}
+/* Reports Panel - Fixed position outside dropdown */
+#reportsPanel {
+    position: fixed;
+    top: 56px;
+    display: none;
+    background: #212529;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 0.5rem;
+    width: 280px;
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+    z-index: 1055;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5);
+    padding: 0.5rem 0;
+}
+#reportsPanel.show {
+    display: block;
+    animation: fadeInRight 0.15s ease-out;
+}
+@keyframes fadeInRight {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+#reportsPanel::-webkit-scrollbar {
+    width: 5px;
+}
+#reportsPanel::-webkit-scrollbar-track {
+    background: transparent;
+}
+#reportsPanel::-webkit-scrollbar-thumb {
+    background: #495057;
+    border-radius: 3px;
+}
+#reportsPanel::-webkit-scrollbar-thumb:hover {
+    background: #6c757d;
+}
+#reportsPanel .dropdown-header {
+    color: #6c757d;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 0.5rem 1rem 0.25rem;
+    margin-top: 0.25rem;
+}
+#reportsPanel .dropdown-header:first-child {
+    margin-top: 0;
+}
+#reportsPanel .dropdown-item {
+    color: #dee2e6;
+    padding: 0.45rem 1rem;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    transition: all 0.15s ease;
+}
+#reportsPanel .dropdown-item i {
+    width: 20px;
+    text-align: center;
+    opacity: 0.7;
+}
+#reportsPanel .dropdown-item:hover {
+    background: #495057;
+    color: #fff;
+    padding-left: 1.15rem;
+}
+#reportsPanel .dropdown-item:hover i {
+    opacity: 1;
+}
+#reportsPanel .dropdown-divider {
+    border-color: rgba(255,255,255,0.08);
+    margin: 0.35rem 0;
+}
+</style>

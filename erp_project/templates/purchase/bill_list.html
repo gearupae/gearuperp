@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage vendor bills</p>
+    </div>
+    <div>
+        {% if can_create %}
+        <a href="{% url 'purchase:bill_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Create Bill
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-file-invoice-dollar text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Billed</p>
+                        <h5 class="mb-0 fw-bold">AED {{ total_billed|floatformat:2 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Paid</p>
+                        <h5 class="mb-0 fw-bold">AED {{ total_paid|floatformat:2 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-clock text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Outstanding</p>
+                        <h5 class="mb-0 fw-bold">AED {{ total_outstanding|floatformat:2 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <input type="text" name="search" class="form-control" placeholder="Search Bill#, Vendor..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">All Status</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>
+                <a href="{% url 'purchase:bill_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Bill #</th>
+                        <th>Vendor</th>
+                        <th>Bill Date</th>
+                        <th>Due Date</th>
+                        <th>Status</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Balance</th>
+                        <th class="text-center" width="120">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bill in bills %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'purchase:bill_detail' bill.pk %}" class="fw-medium text-decoration-none">{{ bill.bill_number }}</a>
+                        </td>
+                        <td>{{ bill.vendor.name }}</td>
+                        <td>{{ bill.bill_date|date:"d/m/Y" }}</td>
+                        <td>{{ bill.due_date|date:"d/m/Y" }}</td>
+                        <td>
+                            {% if bill.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif bill.status == 'pending' %}
+                            <span class="badge" style="background:#fef3c7;color:#92400e;">Pending</span>
+                            {% elif bill.status == 'paid' %}
+                            <span class="badge badge-active">Paid</span>
+                            {% elif bill.status == 'partial' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af;">Partial</span>
+                            {% elif bill.status == 'overdue' %}
+                            <span class="badge badge-inactive">Overdue</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ bill.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ bill.total_amount|floatformat:2 }}</td>
+                        <td class="text-end">{{ bill.paid_amount|floatformat:2 }}</td>
+                        <td class="text-end fw-medium">{{ bill.balance|floatformat:2 }}</td>
+                        <td class="text-center">
+                            <a href="{% url 'purchase:bill_detail' bill.pk %}" class="btn btn-action btn-outline-info" title="View">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if can_edit %}
+                            <a href="{% url 'purchase:bill_edit' bill.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_delete %}
+                            <a href="{% url 'purchase:bill_delete' bill.pk %}" class="btn btn-action btn-outline-danger" title="Delete" onclick="return confirm('Delete this bill?');">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="fas fa-file-invoice-dollar fa-3x mb-3 d-block"></i>
+                            No vendor bills found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage journal entries</p>
+    </div>
+    <div>
+        {% if can_create %}
+        <a href="{% url 'finance:journal_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Create Entry
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <input type="text" name="search" class="form-control" placeholder="Search entry #, reference..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">All Status</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>
+                <a href="{% url 'finance:journal_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Entry #</th>
+                        <th>Date</th>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th class="text-end">Debit</th>
+                        <th class="text-end">Credit</th>
+                        <th>Status</th>
+                        <th class="text-center" width="100">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' entry.pk %}" class="fw-medium text-decoration-none">{{ entry.entry_number }}</a>
+                        </td>
+                        <td>{{ entry.date|date:"d/m/Y" }}</td>
+                        <td>{{ entry.reference|default:"-" }}</td>
+                        <td>{{ entry.description|truncatechars:40|default:"-" }}</td>
+                        <td class="text-end">{{ entry.total_debit|floatformat:2 }}</td>
+                        <td class="text-end">{{ entry.total_credit|floatformat:2 }}</td>
+                        <td>
+                            {% if entry.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif entry.status == 'posted' %}
+                            <span class="badge badge-active">Posted</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Reversed</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'finance:journal_detail' entry.pk %}" class="btn btn-action btn-outline-info" title="View">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if can_edit and entry.status == 'draft' %}
+                            <a href="{% url 'finance:journal_edit' entry.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-book fa-3x mb-3 d-block"></i>
+                            No journal entries found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

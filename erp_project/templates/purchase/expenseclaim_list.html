@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Employee expense reimbursement claims</small>
+    </div>
+    {% if can_create %}
+    <a href="{% url 'purchase:expenseclaim_create' %}" class="btn btn-dark">
+        <i class="fas fa-plus me-2"></i>New Claim
+    </a>
+    {% endif %}
+</div>
+
+<!-- Metric Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-receipt text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Claims</p>
+                        <h5 class="mb-0 fw-bold">{{ total_claims|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-clock text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Pending Approval</p>
+                        <h5 class="mb-0 fw-bold">{{ pending_claims|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Approved (Unpaid)</p>
+                        <h5 class="mb-0 fw-bold">{{ approved_unpaid|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-coins text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Amount</p>
+                        <h5 class="mb-0 fw-bold">AED {{ total_amount|floatformat:2|intcomma }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-center">
+            <div class="col-auto">
+                <input type="text" name="search" class="form-control form-control-sm" 
+                       placeholder="Search..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-auto">
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All Status</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-dark">Filter</button>
+                <a href="{% url 'purchase:expenseclaim_list' %}" class="btn btn-sm btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Claim #</th>
+                        <th>Employee</th>
+                        <th>Date</th>
+                        <th class="text-end">Amount (AED)</th>
+                        <th class="text-end">VAT</th>
+                        <th>Status</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for claim in claims %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'purchase:expenseclaim_detail' claim.pk %}" class="fw-medium text-dark">
+                                {{ claim.claim_number }}
+                            </a>
+                        </td>
+                        <td>{{ claim.employee.get_full_name|default:claim.employee.username }}</td>
+                        <td>{{ claim.claim_date|date:"d/m/Y" }}</td>
+                        <td class="text-end fw-bold">{{ claim.total_amount|floatformat:2|intcomma }}</td>
+                        <td class="text-end">{{ claim.total_vat|floatformat:2|intcomma }}</td>
+                        <td>
+                            {% if claim.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif claim.status == 'submitted' %}
+                            <span class="badge bg-warning">Submitted</span>
+                            {% elif claim.status == 'approved' %}
+                            <span class="badge bg-success">Approved</span>
+                            {% elif claim.status == 'rejected' %}
+                            <span class="badge bg-danger">Rejected</span>
+                            {% elif claim.status == 'paid' %}
+                            <span class="badge bg-primary">Paid</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'purchase:expenseclaim_detail' claim.pk %}" class="btn btn-sm btn-outline-dark">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if claim.status == 'draft' %}
+                            <a href="{% url 'purchase:expenseclaim_submit' claim.pk %}" class="btn btn-sm btn-primary">
+                                <i class="fas fa-paper-plane"></i> Submit
+                            </a>
+                            {% endif %}
+                            {% if can_approve and claim.status == 'submitted' %}
+                            <a href="{% url 'purchase:expenseclaim_approve' claim.pk %}" 
+                               class="btn btn-sm btn-success"
+                               onclick="return confirm('Approve this expense claim and post to accounting?')">
+                                <i class="fas fa-check"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-receipt fa-3x mb-3 d-block opacity-25"></i>
+                            No expense claims found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if is_paginated %}
+<nav class="mt-3">
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+        {% endif %}
+        <li class="page-item active"><span class="page-link">{{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+

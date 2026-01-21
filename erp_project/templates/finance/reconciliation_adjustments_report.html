@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item">Reports</li>
+                    <li class="breadcrumb-item active">Reconciliation Adjustments</li>
+                </ol>
+            </nav>
+        </div>
+        <button class="btn btn-outline-dark" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Bank Account</label>
+                    <select name="bank" class="form-select">
+                        <option value="">All Banks</option>
+                        {% for bank in bank_accounts %}
+                        <option value="{{ bank.id }}" {% if selected_bank.id == bank.id %}selected{% endif %}>
+                            {{ bank.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">End Date</label>
+                    <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-dark">
+                        <i class="fas fa-search me-1"></i>Generate
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Adjustments Table -->
+    <div class="card">
+        <div class="card-header bg-info text-white">
+            <h6 class="mb-0">
+                <i class="fas fa-edit me-2"></i>Reconciliation Adjustment Entries
+                <span class="badge bg-light text-dark float-end">{{ adjustments.count }} entries</span>
+            </h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Journal #</th>
+                            <th>Date</th>
+                            <th>Reference</th>
+                            <th>Description</th>
+                            <th class="text-end">Debit</th>
+                            <th class="text-end">Credit</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in adjustments %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'finance:journal_detail' entry.pk %}">
+                                    {{ entry.entry_number }}
+                                </a>
+                            </td>
+                            <td>{{ entry.date|date:"d M Y" }}</td>
+                            <td>{{ entry.reference }}</td>
+                            <td>{{ entry.description|truncatewords:8 }}</td>
+                            <td class="text-end">{{ entry.total_debit|floatformat:2 }}</td>
+                            <td class="text-end">{{ entry.total_credit|floatformat:2 }}</td>
+                            <td>
+                                {% if entry.status == 'posted' %}
+                                <span class="badge bg-success">Posted</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ entry.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                No reconciliation adjustments found for the selected period.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:journal_list' %}">Journal Entries</a></li>
+            <li class="breadcrumb-item active">{{ entry.entry_number }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h4 class="mb-0 fw-bold">{{ entry.entry_number }}</h4>
+        <div>
+            {% if can_edit and entry.status == 'draft' %}
+            <a href="{% url 'finance:journal_edit' entry.pk %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Edit
+            </a>
+            {% endif %}
+            {% if can_post %}
+            <a href="{% url 'finance:journal_post' entry.pk %}" class="btn btn-success" onclick="return confirm('Post this journal entry? This action cannot be undone.');">
+                <i class="fas fa-check me-2"></i>Post
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Date</h6>
+                        <p class="mb-0">{{ entry.date|date:"d/m/Y" }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Reference</h6>
+                        <p class="mb-0">{{ entry.reference|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Status</h6>
+                        {% if entry.status == 'draft' %}
+                        <span class="badge bg-secondary">Draft</span>
+                        {% elif entry.status == 'posted' %}
+                        <span class="badge badge-active">Posted</span>
+                        {% else %}
+                        <span class="badge badge-inactive">Reversed</span>
+                        {% endif %}
+                    </div>
+                    {% if entry.description %}
+                    <div class="col-12">
+                        <h6 class="text-muted mb-2">Description</h6>
+                        <p class="mb-0">{{ entry.description }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header"><h6 class="mb-0 fw-semibold">Entry Lines</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Account</th>
+                                <th>Description</th>
+                                <th class="text-end">Debit</th>
+                                <th class="text-end">Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for line in entry.lines.all %}
+                            <tr>
+                                <td>{{ line.account.code }} - {{ line.account.name }}</td>
+                                <td>{{ line.description|default:"-" }}</td>
+                                <td class="text-end">{% if line.debit %}{{ line.debit|floatformat:2 }}{% endif %}</td>
+                                <td class="text-end">{% if line.credit %}{{ line.credit|floatformat:2 }}{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" class="text-end fw-bold">Totals:</td>
+                                <td class="text-end fw-bold">{{ entry.total_debit|floatformat:2 }}</td>
+                                <td class="text-end fw-bold">{{ entry.total_credit|floatformat:2 }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Balance Status</h6>
+                {% if entry.is_balanced %}
+                <div class="alert alert-success mb-0 py-2">
+                    <i class="fas fa-check-circle me-1"></i> Entry is balanced
+                </div>
+                {% else %}
+                <div class="alert alert-danger mb-0 py-2">
+                    <i class="fas fa-exclamation-circle me-1"></i> Entry is NOT balanced
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Audit Information</h6>
+                <div class="mb-2">
+                    <small class="text-muted">Created</small>
+                    <p class="mb-0 small">{{ entry.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+                <div>
+                    <small class="text-muted">Last Updated</small>
+                    <p class="mb-0 small">{{ entry.updated_at|date:"d/m/Y H:i" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

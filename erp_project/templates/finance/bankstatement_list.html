@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item active">Bank Statements</li>
+                </ol>
+            </nav>
+        </div>
+        {% if can_create %}
+        <a href="{% url 'finance:bankstatement_create' %}" class="btn btn-dark">
+            <i class="fas fa-plus me-1"></i>New Statement
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Bank Account</label>
+                    <select name="bank" class="form-select">
+                        <option value="">All Banks</option>
+                        {% for bank in bank_accounts %}
+                        <option value="{{ bank.id }}" {% if request.GET.bank == bank.id|stringformat:"d" %}selected{% endif %}>
+                            {{ bank.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">All Status</option>
+                        {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-outline-dark me-2">
+                        <i class="fas fa-filter me-1"></i>Filter
+                    </button>
+                    <a href="{% url 'finance:bankstatement_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i>Clear
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Statements Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Statement #</th>
+                            <th>Bank Account</th>
+                            <th>Period</th>
+                            <th class="text-end">Opening</th>
+                            <th class="text-end">Closing</th>
+                            <th class="text-center">Lines</th>
+                            <th class="text-center">Match %</th>
+                            <th>Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stmt in statements %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'finance:bankstatement_detail' stmt.pk %}" class="fw-medium">
+                                    {{ stmt.statement_number }}
+                                </a>
+                            </td>
+                            <td>{{ stmt.bank_account.name }}</td>
+                            <td>
+                                <small>{{ stmt.statement_start_date|date:"d M Y" }} - {{ stmt.statement_end_date|date:"d M Y" }}</small>
+                            </td>
+                            <td class="text-end">{{ stmt.opening_balance|floatformat:2 }}</td>
+                            <td class="text-end">{{ stmt.closing_balance|floatformat:2 }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary">{{ stmt.total_lines }}</span>
+                            </td>
+                            <td class="text-center">
+                                {% if stmt.total_lines > 0 %}
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar bg-success" style="width: {{ stmt.match_percentage }}%">
+                                        {{ stmt.match_percentage }}%
+                                    </div>
+                                </div>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stmt.status == 'draft' %}
+                                <span class="badge bg-secondary">Draft</span>
+                                {% elif stmt.status == 'in_progress' %}
+                                <span class="badge bg-warning text-dark">In Progress</span>
+                                {% elif stmt.status == 'reconciled' %}
+                                <span class="badge bg-success">Reconciled</span>
+                                {% elif stmt.status == 'locked' %}
+                                <span class="badge bg-dark">Locked</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'finance:bankstatement_detail' stmt.pk %}" 
+                                       class="btn btn-outline-dark" title="View/Reconcile">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-4">
+                                <i class="fas fa-file-alt fa-2x mb-2"></i>
+                                <p class="mb-0">No bank statements found</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.bank %}&bank={{ request.GET.bank }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Previous</a>
+            </li>
+            {% endif %}
+            {% for num in page_obj.paginator.page_range %}
+            <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+                <a class="page-link" href="?page={{ num }}{% if request.GET.bank %}&bank={{ request.GET.bank }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">{{ num }}</a>
+            </li>
+            {% endfor %}
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.bank %}&bank={{ request.GET.bank }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">Next</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
+
+

@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{% url 'finance:vatreturn_list' %}">VAT Returns</a></li>
+                <li class="breadcrumb-item active">{{ vat_return.return_number }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+    </div>
+    <div>
+        {% if vat_return.status == 'draft' %}
+        <span class="badge bg-secondary fs-6 me-2">Draft</span>
+        {% elif vat_return.status == 'submitted' %}
+        <span class="badge bg-warning fs-6 me-2">Submitted</span>
+        {% elif vat_return.status == 'accepted' %}
+        <span class="badge bg-success fs-6 me-2">Accepted by FTA</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- FTA VAT Return Format -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-dark text-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-file-invoice me-2"></i>UAE VAT Return - FTA Format</h6>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-bordered mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th style="width: 80px;">Box</th>
+                            <th>Description</th>
+                            <th class="text-end" style="width: 150px;">Amount (AED)</th>
+                            <th class="text-end" style="width: 150px;">VAT (AED)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="table-info">
+                            <td colspan="4" class="fw-bold">OUTPUT VAT (Sales)</td>
+                        </tr>
+                        <tr>
+                            <td>1</td>
+                            <td>Standard Rated Supplies in UAE (5%)</td>
+                            <td class="text-end">{{ vat_return.standard_rated_supplies|floatformat:2 }}</td>
+                            <td class="text-end">{{ vat_return.standard_rated_vat|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>Zero Rated Supplies</td>
+                            <td class="text-end">{{ vat_return.zero_rated_supplies|floatformat:2 }}</td>
+                            <td class="text-end">0.00</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>Exempt Supplies</td>
+                            <td class="text-end">{{ vat_return.exempt_supplies|floatformat:2 }}</td>
+                            <td class="text-end">0.00</td>
+                        </tr>
+                        <tr class="table-warning fw-bold">
+                            <td>5</td>
+                            <td>Total Value of Supplies</td>
+                            <td class="text-end">{{ vat_return.total_sales|floatformat:2 }}</td>
+                            <td class="text-end">{{ vat_return.output_vat|floatformat:2 }}</td>
+                        </tr>
+                        
+                        <tr class="table-info">
+                            <td colspan="4" class="fw-bold">INPUT VAT (Purchases)</td>
+                        </tr>
+                        <tr>
+                            <td>9</td>
+                            <td>Standard Rated Expenses</td>
+                            <td class="text-end">{{ vat_return.standard_rated_expenses|floatformat:2 }}</td>
+                            <td class="text-end">{{ vat_return.input_vat|floatformat:2 }}</td>
+                        </tr>
+                        <tr class="table-warning fw-bold">
+                            <td>10</td>
+                            <td>Total Recoverable Input VAT</td>
+                            <td class="text-end">{{ vat_return.total_purchases|floatformat:2 }}</td>
+                            <td class="text-end">{{ vat_return.input_vat|floatformat:2 }}</td>
+                        </tr>
+                        
+                        {% if vat_return.adjustments %}
+                        <tr>
+                            <td>-</td>
+                            <td>Adjustments</td>
+                            <td class="text-end">-</td>
+                            <td class="text-end">{{ vat_return.adjustments|floatformat:2 }}</td>
+                        </tr>
+                        {% endif %}
+                        
+                        <tr class="table-dark text-white fs-5">
+                            <td colspan="3" class="fw-bold">NET VAT {% if vat_return.is_refund %}(REFUND DUE){% else %}(PAYABLE){% endif %}</td>
+                            <td class="text-end fw-bold">{{ vat_return.net_vat|floatformat:2 }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        {% if vat_return.adjustment_reason %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-sticky-note me-2 text-warning"></i>Adjustment Reason</h6>
+            </div>
+            <div class="card-body">
+                {{ vat_return.adjustment_reason }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-primary"></i>Return Details</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted">Return Number</th>
+                        <td>{{ vat_return.return_number }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Period Type</th>
+                        <td>{{ vat_return.get_period_type_display }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Period Start</th>
+                        <td>{{ vat_return.period_start|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Period End</th>
+                        <td>{{ vat_return.period_end|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Due Date</th>
+                        <td>{{ vat_return.due_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    {% if vat_return.fta_reference %}
+                    <tr>
+                        <th class="text-muted">FTA Reference</th>
+                        <td>{{ vat_return.fta_reference }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if vat_return.filed_by %}
+                    <tr>
+                        <th class="text-muted">Filed By</th>
+                        <td>{{ vat_return.filed_by.username }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Filed On</th>
+                        <td>{{ vat_return.filed_date|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        
+        <div class="card border-0 shadow-sm {% if vat_return.is_refund %}bg-success{% else %}bg-danger{% endif %} text-white">
+            <div class="card-body text-center">
+                <h6 class="mb-2">{% if vat_return.is_refund %}VAT REFUND DUE{% else %}VAT PAYABLE{% endif %}</h6>
+                <h2 class="mb-0">AED {{ vat_return.net_vat|floatformat:2 }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

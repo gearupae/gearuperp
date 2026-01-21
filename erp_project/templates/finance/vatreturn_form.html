@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:vatreturn_list' %}">VAT Returns</a></li>
+            <li class="breadcrumb-item active">New Return</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="row">
+        <div class="col-md-8">
+            <!-- Period Information -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-calendar me-2 text-primary"></i>Return Period</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Period Type</label>
+                            {{ form.period_type }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Period Start</label>
+                            {{ form.period_start }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Period End</label>
+                            {{ form.period_end }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Due Date</label>
+                            {{ form.due_date }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Output VAT (Sales) -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-arrow-up me-2 text-danger"></i>Output VAT (Sales)</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Standard Rated Supplies (5%)</label>
+                            {{ form.standard_rated_supplies }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">VAT on Standard Rated</label>
+                            {{ form.standard_rated_vat }}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Zero Rated Supplies</label>
+                            {{ form.zero_rated_supplies }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Exempt Supplies</label>
+                            {{ form.exempt_supplies }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Input VAT (Purchases) -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-arrow-down me-2 text-success"></i>Input VAT (Purchases)</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Standard Rated Expenses</label>
+                            {{ form.standard_rated_expenses }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Recoverable Input VAT</label>
+                            {{ form.input_vat }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Adjustments -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-sliders-h me-2 text-warning"></i>Adjustments</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Adjustments (±)</label>
+                            {{ form.adjustments }}
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Adjustment Reason (Required if ≠ 0)</label>
+                            {{ form.adjustment_reason }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Notes</label>
+                {{ form.notes }}
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-light sticky-top" style="top: 80px;">
+                <div class="card-header bg-dark text-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-calculator me-2"></i>VAT Summary</h6>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        <small><i class="fas fa-info-circle me-1"></i> Net VAT is calculated automatically after saving.</small>
+                    </div>
+                    
+                    <h6 class="text-muted">FTA Box Mapping:</h6>
+                    <table class="table table-sm">
+                        <tr>
+                            <td>Box 1: Standard Rated (5%)</td>
+                        </tr>
+                        <tr>
+                            <td>Box 2: Zero Rated</td>
+                        </tr>
+                        <tr>
+                            <td>Box 3: Exempt</td>
+                        </tr>
+                        <tr>
+                            <td>Box 9-10: Input VAT</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <button type="submit" class="btn btn-dark">
+                <i class="fas fa-save me-2"></i>Save VAT Return
+            </button>
+            <a href="{% url 'finance:vatreturn_list' %}" class="btn btn-light">Cancel</a>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+

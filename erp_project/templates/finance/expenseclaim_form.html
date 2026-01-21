@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:expenseclaim_list' %}">Expense Claims</a></li>
+            <li class="breadcrumb-item active">New Claim</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-primary"></i>Claim Information</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Claim Date</label>
+                    {{ form.claim_date }}
+                </div>
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Expense Items</h6>
+        </div>
+        <div class="card-body p-0">
+            {{ items_formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0" id="items-table">
+                    <thead class="bg-light">
+                        <tr>
+                            <th style="width: 100px;">Date</th>
+                            <th style="width: 120px;">Category</th>
+                            <th>Description</th>
+                            <th style="width: 110px;">Amount</th>
+                            <th style="width: 100px;">VAT</th>
+                            <th style="width: 80px;">Receipt</th>
+                            <th style="width: 150px;">Expense Account</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for form_item in items_formset %}
+                        <tr class="item-row">
+                            <td>{{ form_item.date }}</td>
+                            <td>{{ form_item.category }}</td>
+                            <td>{{ form_item.description }}</td>
+                            <td>{{ form_item.amount }}</td>
+                            <td>{{ form_item.vat_amount }}</td>
+                            <td class="text-center">
+                                {{ form_item.has_receipt }}
+                                {{ form_item.receipt }}
+                            </td>
+                            <td>{{ form_item.expense_account }}</td>
+                            <td class="text-center">
+                                {{ form_item.DELETE }}
+                                {{ form_item.id }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>VAT Note:</strong> VAT can only be claimed with a valid receipt. Mark "Receipt" checkbox if you have supporting documentation.
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <button type="submit" class="btn btn-dark">
+                <i class="fas fa-save me-2"></i>Save Claim
+            </button>
+            <a href="{% url 'finance:expenseclaim_list' %}" class="btn btn-light">Cancel</a>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+

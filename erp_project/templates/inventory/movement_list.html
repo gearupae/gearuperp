@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <h4 class="mb-1 fw-bold">{{ title }}</h4>
+    <p class="text-muted mb-0">View stock movement history with accounting integration</p>
+</div>
+
+<!-- Metric Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-primary bg-opacity-10 rounded-3 p-3">
+                            <i class="fas fa-exchange-alt text-primary fa-lg"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <p class="mb-0 text-muted small">Total Movements</p>
+                        <h4 class="mb-0 fw-bold">{{ total_movements }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-success bg-opacity-10 rounded-3 p-3">
+                            <i class="fas fa-check-circle text-success fa-lg"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <p class="mb-0 text-muted small">Posted to GL</p>
+                        <h4 class="mb-0 fw-bold">{{ posted_movements }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-warning bg-opacity-10 rounded-3 p-3">
+                            <i class="fas fa-clock text-warning fa-lg"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <p class="mb-0 text-muted small">Pending Posting</p>
+                        <h4 class="mb-0 fw-bold">{{ unposted_movements }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="bg-info bg-opacity-10 rounded-3 p-3">
+                            <i class="fas fa-coins text-info fa-lg"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <p class="mb-0 text-muted small">Posted Value</p>
+                        <h4 class="mb-0 fw-bold">{{ total_value|floatformat:2 }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <input type="text" name="search" class="form-control" placeholder="Search items, reference..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-2">
+                <select name="type" class="form-select">
+                    <option value="">All Types</option>
+                    {% for value, label in type_choices %}
+                    <option value="{{ value }}" {% if request.GET.type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="posted" class="form-select">
+                    <option value="">All Status</option>
+                    <option value="1" {% if request.GET.posted == '1' %}selected{% endif %}>Posted</option>
+                    <option value="0" {% if request.GET.posted == '0' %}selected{% endif %}>Not Posted</option>
+                </select>
+            </div>
+            <div class="col-md-5">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>
+                <a href="{% url 'inventory:movement_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Movement #</th>
+                        <th>Date</th>
+                        <th>Item</th>
+                        <th>Warehouse</th>
+                        <th>Type</th>
+                        <th class="text-end">Qty</th>
+                        <th class="text-end">Value</th>
+                        <th>Status</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for movement in movements %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'inventory:movement_detail' movement.pk %}" class="text-decoration-none fw-medium">
+                                {{ movement.movement_number }}
+                            </a>
+                        </td>
+                        <td>{{ movement.movement_date|date:"d/m/Y" }}</td>
+                        <td>{{ movement.item.name }}</td>
+                        <td>{{ movement.warehouse.name }}</td>
+                        <td>
+                            {% if movement.movement_type == 'in' %}
+                            <span class="badge badge-active">Stock In</span>
+                            {% elif movement.movement_type == 'out' %}
+                            <span class="badge badge-inactive">Stock Out</span>
+                            {% elif movement.movement_type == 'transfer' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af;">Transfer</span>
+                            {% elif movement.movement_type == 'adjustment_plus' %}
+                            <span class="badge bg-info">Adj (+)</span>
+                            {% elif movement.movement_type == 'adjustment_minus' %}
+                            <span class="badge bg-secondary">Adj (-)</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ movement.get_movement_type_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ movement.quantity }}</td>
+                        <td class="text-end">{{ movement.total_cost|floatformat:2 }}</td>
+                        <td>
+                            {% if movement.posted %}
+                            <span class="badge badge-active"><i class="fas fa-check me-1"></i>Posted</span>
+                            {% elif movement.total_cost > 0 %}
+                            <span class="badge badge-warning"><i class="fas fa-clock me-1"></i>Pending</span>
+                            {% else %}
+                            <span class="badge bg-secondary">No Cost</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'inventory:movement_detail' movement.pk %}" class="btn btn-sm btn-light" title="View Details">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if can_post and not movement.posted and movement.total_cost > 0 %}
+                            <a href="{% url 'inventory:movement_post' movement.pk %}" class="btn btn-sm btn-primary" title="Post to GL" onclick="return confirm('Post this movement to accounting?')">
+                                <i class="fas fa-book"></i>
+                            </a>
+                            {% endif %}
+                            {% if movement.journal_entry %}
+                            <a href="{% url 'finance:journal_detail' movement.journal_entry.pk %}" class="btn btn-sm btn-info" title="View Journal Entry">
+                                <i class="fas fa-file-invoice"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="fas fa-exchange-alt fa-3x mb-3 d-block"></i>
+                            No movements found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if is_paginated %}
+<nav aria-label="Page navigation" class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ request.GET.urlencode }}">Previous</a>
+        </li>
+        {% endif %}
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        </li>
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ request.GET.urlencode }}">Next</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+<!-- Legend -->
+<div class="alert alert-light mt-4">
+    <h6 class="fw-bold mb-2"><i class="fas fa-info-circle me-2"></i>Accounting Integration</h6>
+    <ul class="mb-0 small">
+        <li><strong>Stock In:</strong> Dr Inventory Asset, Cr GRN Clearing</li>
+        <li><strong>Stock Out:</strong> Dr COGS, Cr Inventory Asset</li>
+        <li><strong>Adjustment (+):</strong> Dr Inventory Asset, Cr Stock Variance</li>
+        <li><strong>Adjustment (-):</strong> Dr Stock Variance, Cr Inventory Asset</li>
+    </ul>
+</div>
+{% endblock %}

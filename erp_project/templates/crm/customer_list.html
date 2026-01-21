@@ -1,0 +1,312 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage your customers and leads</p>
+    </div>
+    <div>
+        {% if can_create %}
+        <button class="btn btn-primary" onclick="toggleInlineForm('customerForm')">
+            <i class="fas fa-plus me-2"></i>Add Customer
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-users text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Customers</p>
+                        <h5 class="mb-0 fw-bold">{{ total_customers }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Active Customers</p>
+                        <h5 class="mb-0 fw-bold">{{ active_customers }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-user-clock text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Leads</p>
+                        <h5 class="mb-0 fw-bold">{{ total_leads }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-user-tag text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Prospects</p>
+                        <h5 class="mb-0 fw-bold">{{ prospects }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inline Create Form -->
+<div id="customerForm" class="inline-form-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="mb-0 fw-semibold">
+            <i class="fas fa-user-plus me-2 text-primary"></i>Add New Customer
+        </h5>
+        <button type="button" class="btn-close" onclick="cancelInlineForm('customerForm')"></button>
+    </div>
+    <form method="post" id="createCustomerForm">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Contact Name <span class="text-danger">*</span></label>
+                <input type="text" name="name" class="form-control" placeholder="Full Name" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Company</label>
+                <input type="text" name="company" class="form-control" placeholder="Company Name">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Type <span class="text-danger">*</span></label>
+                <select name="customer_type" class="form-select" required>
+                    <option value="lead">Lead</option>
+                    <option value="customer">Customer</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-control" placeholder="email@example.com">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Phone</label>
+                <input type="text" name="phone" class="form-control" placeholder="+971 XX XXX XXXX">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="active">Active</option>
+                    <option value="prospect">Prospect</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Address</label>
+                <textarea name="address" class="form-control" rows="2" placeholder="Full Address"></textarea>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea name="notes" class="form-control" rows="2" placeholder="Additional notes..."></textarea>
+            </div>
+        </div>
+        <div class="mt-4 pt-3 border-top">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Save Customer
+            </button>
+            <button type="button" class="btn btn-light" onclick="cancelInlineForm('customerForm')">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Search</label>
+                <input type="text" name="search" class="form-control" placeholder="Name, company, email, phone..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Type</label>
+                <select name="type" class="form-select">
+                    <option value="">All Types</option>
+                    <option value="lead" {% if request.GET.type == 'lead' %}selected{% endif %}>Lead</option>
+                    <option value="customer" {% if request.GET.type == 'customer' %}selected{% endif %}>Customer</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">All Status</option>
+                    <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="prospect" {% if request.GET.status == 'prospect' %}selected{% endif %}>Prospect</option>
+                    <option value="inactive" {% if request.GET.status == 'inactive' %}selected{% endif %}>Inactive</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="fas fa-filter me-1"></i>Filter
+                </button>
+                <a href="{% url 'crm:customer_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Customers Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Customer #</th>
+                        <th>Name</th>
+                        <th>Company</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th class="text-center" width="150">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in customers %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'crm:customer_detail' customer.pk %}" class="text-decoration-none fw-medium">
+                                {{ customer.customer_number }}
+                            </a>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-{{ customer.customer_type|yesno:'primary,success' }} text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px;">
+                                    {{ customer.name.0|upper }}
+                                </div>
+                                <span>{{ customer.name }}</span>
+                            </div>
+                        </td>
+                        <td>{{ customer.company|default:"-" }}</td>
+                        <td>
+                            {% if customer.email %}
+                            <a href="mailto:{{ customer.email }}" class="text-decoration-none">{{ customer.email }}</a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if customer.phone %}
+                            <a href="tel:{{ customer.phone }}" class="text-decoration-none">{{ customer.phone }}</a>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if customer.customer_type == 'lead' %}
+                                <span class="badge badge-lead">
+                                    <i class="fas fa-user-clock me-1"></i>Lead
+                                </span>
+                            {% else %}
+                                <span class="badge badge-customer">
+                                    <i class="fas fa-user-check me-1"></i>Customer
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if customer.status == 'active' %}
+                                <span class="badge badge-active">Active</span>
+                            {% elif customer.status == 'prospect' %}
+                                <span class="badge bg-warning-subtle text-warning">Prospect</span>
+                            {% else %}
+                                <span class="badge badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'crm:customer_detail' customer.pk %}" class="btn btn-action btn-outline-info" title="View">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if can_edit %}
+                            <a href="{% url 'crm:customer_edit' customer.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_edit and customer.customer_type == 'lead' %}
+                            <a href="{% url 'crm:customer_convert' customer.pk %}" class="btn btn-action btn-outline-success" title="Convert to Customer" onclick="return confirm('Convert {{ customer.name }} to a customer?');">
+                                <i class="fas fa-user-check"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_delete %}
+                            <a href="{% url 'crm:customer_delete' customer.pk %}" class="btn btn-action btn-outline-danger" title="Delete" onclick="return confirm('Are you sure you want to deactivate {{ customer.name }}?');">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-users fa-3x mb-3 d-block"></i>
+                            <p class="mb-2">No customers found</p>
+                            {% if can_create %}
+                            <button class="btn btn-primary btn-sm" onclick="toggleInlineForm('customerForm')">
+                                <i class="fas fa-plus me-1"></i>Add Your First Customer
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                <i class="fas fa-chevron-left me-1"></i>Previous
+            </a>
+        </li>
+        {% endif %}
+        
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        </li>
+        
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                Next<i class="fas fa-chevron-right ms-1"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+

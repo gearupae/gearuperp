@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'hr:leave_list' %}">Leave Requests</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    {% if form.errors %}
+    <div class="alert alert-danger">
+        <strong>Please correct the following errors:</strong>
+        <ul class="mb-0">
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}
+                <li><strong>{{ field|title }}:</strong> {{ error }}</li>
+                {% endfor %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">Leave Information</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% if is_admin %}
+                <div class="col-md-6">
+                    <label for="{{ form.employee.id_for_label }}" class="form-label">Employee <span class="text-danger">*</span></label>
+                    {{ form.employee }}
+                    {% if form.employee.errors %}<div class="text-danger small mt-1">{{ form.employee.errors|join:", " }}</div>{% endif %}
+                </div>
+                {% else %}
+                <div class="col-md-6">
+                    <label class="form-label">Employee</label>
+                    <input type="text" class="form-control" value="{{ employee_name|default:'' }}" readonly>
+                    {{ form.employee }}
+                </div>
+                {% endif %}
+                <div class="col-md-6">
+                    <label for="{{ form.leave_type.id_for_label }}" class="form-label">Leave Type <span class="text-danger">*</span></label>
+                    {{ form.leave_type }}
+                    {% if form.leave_type.errors %}<div class="text-danger small mt-1">{{ form.leave_type.errors|join:", " }}</div>{% endif %}
+                    <div id="leaveTypeInfo" class="mt-2"></div>
+                </div>
+                <div class="col-md-6">
+                    <label for="{{ form.start_date.id_for_label }}" class="form-label">Start Date <span class="text-danger">*</span></label>
+                    {{ form.start_date }}
+                    {% if form.start_date.errors %}<div class="text-danger small mt-1">{{ form.start_date.errors|join:", " }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label for="{{ form.end_date.id_for_label }}" class="form-label">End Date <span class="text-danger">*</span></label>
+                    {{ form.end_date }}
+                    {% if form.end_date.errors %}<div class="text-danger small mt-1">{{ form.end_date.errors|join:", " }}</div>{% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label for="{{ form.reason.id_for_label }}" class="form-label">Reason</label>
+                    {{ form.reason }}
+                    {% if form.reason.errors %}<div class="text-danger small mt-1">{{ form.reason.errors|join:", " }}</div>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-2">Leave Duration</h6>
+                    <h4 class="mb-0 fw-bold" id="leaveDays">0 days</h4>
+                    <small class="text-muted">Calculated automatically</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Submit</button>
+    <a href="{% url 'hr:leave_list' %}" class="btn btn-light">Cancel</a>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const startDate = document.getElementById('id_start_date');
+    const endDate = document.getElementById('id_end_date');
+    const leaveDays = document.getElementById('leaveDays');
+    const leaveType = document.getElementById('id_leave_type');
+    const leaveTypeInfo = document.getElementById('leaveTypeInfo');
+    
+    function calculateDays() {
+        if (startDate.value && endDate.value) {
+            const start = new Date(startDate.value);
+            const end = new Date(endDate.value);
+            if (end >= start) {
+                const diffTime = Math.abs(end - start);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                leaveDays.textContent = diffDays + ' day' + (diffDays !== 1 ? 's' : '');
+            } else {
+                leaveDays.textContent = 'Invalid dates';
+            }
+        } else {
+            leaveDays.textContent = '0 days';
+        }
+    }
+    
+    function updateLeaveTypeInfo() {
+        if (leaveType && leaveTypeInfo) {
+            const selectedOption = leaveType.options[leaveType.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                const leaveTypeText = selectedOption.text;
+                let infoHtml = '';
+                if (leaveTypeText.toLowerCase().includes('sick')) {
+                    infoHtml = '<div class="alert alert-info py-2 mb-0"><small><i class="fas fa-info-circle me-1"></i><strong>Medical Certificate Required</strong></small></div>';
+                } else if (leaveTypeText.toLowerCase().includes('maternity')) {
+                    infoHtml = '<div class="alert alert-info py-2 mb-0"><small><i class="fas fa-info-circle me-1"></i><strong>60 days (45 full pay, 15 half pay) - Medical Certificate Required</strong></small></div>';
+                } else if (leaveTypeText.toLowerCase().includes('probation')) {
+                    infoHtml = '<div class="alert alert-warning py-2 mb-0"><small><i class="fas fa-exclamation-triangle me-1"></i><strong>Unpaid leave - Medical Certificate Required</strong></small></div>';
+                }
+                leaveTypeInfo.innerHTML = infoHtml;
+            } else {
+                leaveTypeInfo.innerHTML = '';
+            }
+        }
+    }
+    
+    if (startDate) startDate.addEventListener('change', calculateDays);
+    if (endDate) endDate.addEventListener('change', calculateDays);
+    if (leaveType) leaveType.addEventListener('change', updateLeaveTypeInfo);
+    
+    // Calculate on page load if dates are already set
+    calculateDays();
+    updateLeaveTypeInfo();
+});
+</script>
+{% endblock %}
+

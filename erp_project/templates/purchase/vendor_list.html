@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage your suppliers and vendors</p>
+    </div>
+    <div>
+        {% if can_create %}
+        <button class="btn btn-primary" onclick="toggleInlineForm('vendorForm')">
+            <i class="fas fa-plus me-2"></i>Add Vendor
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-industry text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Vendors</p>
+                        <h5 class="mb-0 fw-bold">{{ total_vendors|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Active Vendors</p>
+                        <h5 class="mb-0 fw-bold">{{ active_vendors|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-file-invoice text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Purchase Orders</p>
+                        <h5 class="mb-0 fw-bold">{{ total_pos|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inline Form -->
+<div id="vendorForm" class="inline-form-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0 fw-semibold"><i class="fas fa-industry me-2"></i>Add New Vendor</h6>
+        <button type="button" class="btn-close" onclick="cancelInlineForm('vendorForm')"></button>
+    </div>
+    <form method="post">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Vendor Name <span class="text-danger">*</span></label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Contact Person</label>
+                <input type="text" name="contact_person" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Phone</label>
+                <input type="text" name="phone" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Address</label>
+                <input type="text" name="address" class="form-control">
+            </div>
+        </div>
+        <div class="mt-3">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Save</button>
+            <button type="button" class="btn btn-light" onclick="cancelInlineForm('vendorForm')">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <input type="text" name="search" class="form-control" placeholder="Search vendors..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-6">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-search me-1"></i>Search</button>
+                <a href="{% url 'purchase:vendor_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Vendors Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Vendor #</th>
+                        <th>Name</th>
+                        <th>Contact</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                        <th class="text-center" width="100">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vendor in vendors %}
+                    <tr>
+                        <td class="fw-medium">{{ vendor.vendor_number }}</td>
+                        <td>{{ vendor.name }}</td>
+                        <td>{{ vendor.contact_person|default:"-" }}</td>
+                        <td>{{ vendor.email|default:"-" }}</td>
+                        <td>{{ vendor.phone|default:"-" }}</td>
+                        <td>
+                            {% if vendor.status == 'active' %}
+                            <span class="badge badge-active">Active</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if can_edit %}
+                            <a href="{% url 'purchase:vendor_edit' vendor.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_delete %}
+                            <a href="{% url 'purchase:vendor_delete' vendor.pk %}" class="btn btn-action btn-outline-danger" title="Delete" onclick="return confirm('Delete this vendor?');">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-industry fa-3x mb-3 d-block"></i>
+                            No vendors found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

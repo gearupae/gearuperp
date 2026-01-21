@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb"><ol class="breadcrumb mb-2"><li class="breadcrumb-item"><a href="{% url 'hr:employee_list' %}">Employees</a></li><li class="breadcrumb-item active">{{ title }}</li></ol></nav>
+    <h4 class="mb-0 fw-bold">{{ title }}</h4>
+</div>
+<form method="post">
+    {% csrf_token %}
+    {% if form.errors %}
+    <div class="alert alert-danger">
+        <strong>Please correct the following errors:</strong>
+        <ul class="mb-0">
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}
+                <li><strong>{{ field|title }}:</strong> {{ error }}</li>
+                {% endfor %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">Personal Information</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">First Name <span class="text-danger">*</span></label>{{ form.first_name }}</div>
+                <div class="col-md-4"><label class="form-label">Last Name <span class="text-danger">*</span></label>{{ form.last_name }}</div>
+                <div class="col-md-4"><label class="form-label">Email <span class="text-danger">*</span></label>{{ form.email }}</div>
+                <div class="col-md-4"><label class="form-label">Phone</label>{{ form.phone }}</div>
+                <div class="col-md-4"><label class="form-label">Gender</label>{{ form.gender }}</div>
+                <div class="col-md-4"><label class="form-label">Date of Birth</label>{{ form.date_of_birth }}</div>
+                <div class="col-md-4"><label class="form-label">Status</label>{{ form.status }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">Employment Details</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Department</label>
+                    <select name="department" id="id_department" class="form-select">
+                        <option value="">-- Select Department --</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept.pk }}" {% if form.department.value == dept.pk %}selected{% endif %}>{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if form.department.errors %}<div class="text-danger small mt-1">{{ form.department.errors|join:", " }}</div>{% endif %}
+                    {% if departments.count == 0 %}
+                    <div class="alert alert-warning mt-2">
+                        <small><i class="fas fa-exclamation-triangle me-1"></i>No departments available. <a href="{% url 'hr:department_list' %}">Create departments</a> first.</small>
+                    </div>
+                    {% else %}
+                    <small class="text-muted d-block mt-1"><i class="fas fa-info-circle me-1"></i>{{ departments.count }} department(s) available</small>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Designation</label>
+                    <select name="designation" id="id_designation" class="form-select">
+                        <option value="">-- Select Designation --</option>
+                        {% for desg in designations %}
+                        <option value="{{ desg.pk }}" {% if form.designation.value == desg.pk %}selected{% endif %}>{{ desg.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if form.designation.errors %}<div class="text-danger small mt-1">{{ form.designation.errors|join:", " }}</div>{% endif %}
+                    {% if designations.count == 0 %}
+                    <div class="alert alert-warning mt-2">
+                        <small><i class="fas fa-exclamation-triangle me-1"></i>No designations available. Designations are synced from <a href="{% url 'settings:role_list' %}" target="_blank">Roles</a>. Please create roles first.</small>
+                    </div>
+                    {% else %}
+                    <small class="text-muted d-block mt-1"><i class="fas fa-info-circle me-1"></i>{{ designations.count }} designation(s) available (synced from <a href="{% url 'settings:role_list' %}" target="_blank">Roles</a>)</small>
+                    {% endif %}
+                </div>
+                <div class="col-md-4"><label class="form-label">Date of Joining</label>{{ form.date_of_joining }}</div>
+                <div class="col-md-4"><label class="form-label">Probation Period (Days)</label>{{ form.probation_period_days }}<small class="text-muted d-block mt-1">Default: 90 days (UAE standard)</small></div>
+                <div class="col-md-4"><label class="form-label">Basic Salary</label>{{ form.basic_salary }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0 fw-semibold">UAE Documents</h6></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Emirates ID</label>{{ form.emirates_id }}</div>
+                <div class="col-md-4"><label class="form-label">Visa Number</label>{{ form.visa_number }}</div>
+                <div class="col-md-4"><label class="form-label">Visa Expiry</label>{{ form.visa_expiry }}</div>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save</button>
+    <a href="{% url 'hr:employee_list' %}" class="btn btn-light">Cancel</a>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const deptSelect = document.getElementById('id_department');
+    const desgSelect = document.getElementById('id_designation');
+    
+    // Log available options for debugging
+    if (deptSelect) {
+        console.log('Department select found. Options:', deptSelect.options.length);
+        console.log('Department options:', Array.from(deptSelect.options).map(opt => ({value: opt.value, text: opt.text})));
+    }
+    
+    if (desgSelect) {
+        console.log('Designation select found. Options:', desgSelect.options.length);
+        console.log('Designation options:', Array.from(desgSelect.options).map(opt => ({value: opt.value, text: opt.text})));
+    }
+    
+    // Ensure native selects are visible and functional
+    if (deptSelect) {
+        deptSelect.style.display = 'block';
+    }
+    if (desgSelect) {
+        desgSelect.style.display = 'block';
+    }
+});
+</script>
+{% endblock %}
+

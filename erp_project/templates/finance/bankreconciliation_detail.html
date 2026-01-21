@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'finance:bankreconciliation_list' %}">Reconciliations</a></li>
+                    <li class="breadcrumb-item active">{{ reconciliation.reconciliation_number }}</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="d-flex gap-2">
+            {% if can_complete %}
+            <a href="{% url 'finance:bankreconciliation_complete' reconciliation.pk %}" class="btn btn-primary"
+               onclick="return confirm('Mark this reconciliation as complete?')">
+                <i class="fas fa-check me-1"></i>Complete
+            </a>
+            {% endif %}
+            {% if can_approve %}
+            <a href="{% url 'finance:bankreconciliation_approve' reconciliation.pk %}" class="btn btn-success"
+               onclick="return confirm('Approve this reconciliation?')">
+                <i class="fas fa-check-double me-1"></i>Approve
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Info -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Reconciliation Details</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td class="text-muted">Reconciliation #</td>
+                                    <td class="fw-medium">{{ reconciliation.reconciliation_number }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Bank Account</td>
+                                    <td>{{ reconciliation.bank_account.name }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Period</td>
+                                    <td>{{ reconciliation.period_start|date:"d M Y" }} - {{ reconciliation.period_end|date:"d M Y" }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Reconciliation Date</td>
+                                    <td>{{ reconciliation.reconciliation_date|date:"d M Y" }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Status</td>
+                                    <td>
+                                        {% if reconciliation.status == 'draft' %}
+                                        <span class="badge bg-secondary">Draft</span>
+                                        {% elif reconciliation.status == 'in_progress' %}
+                                        <span class="badge bg-warning text-dark">In Progress</span>
+                                        {% elif reconciliation.status == 'completed' %}
+                                        <span class="badge bg-primary">Completed</span>
+                                        {% elif reconciliation.status == 'approved' %}
+                                        <span class="badge bg-success">Approved</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                {% if reconciliation.bank_statement %}
+                                <tr>
+                                    <td class="text-muted">Bank Statement</td>
+                                    <td>
+                                        <a href="{% url 'finance:bankstatement_detail' reconciliation.bank_statement.pk %}">
+                                            {{ reconciliation.bank_statement.statement_number }}
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% if reconciliation.completed_by %}
+                                <tr>
+                                    <td class="text-muted">Completed By</td>
+                                    <td>{{ reconciliation.completed_by.get_full_name|default:reconciliation.completed_by.username }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Completed Date</td>
+                                    <td>{{ reconciliation.completed_date|date:"d M Y H:i" }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if reconciliation.approved_by %}
+                                <tr>
+                                    <td class="text-muted">Approved By</td>
+                                    <td>{{ reconciliation.approved_by.get_full_name|default:reconciliation.approved_by.username }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Approved Date</td>
+                                    <td>{{ reconciliation.approved_date|date:"d M Y H:i" }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Outstanding Items -->
+            {% if items %}
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-list me-2"></i>Outstanding Items</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Date</th>
+                                    <th>Reference</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Amount</th>
+                                    <th>Cleared</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in items %}
+                                <tr>
+                                    <td>
+                                        <span class="badge {% if item.item_type == 'outstanding_deposit' %}bg-success{% elif item.item_type == 'outstanding_check' %}bg-danger{% else %}bg-info{% endif %}">
+                                            {{ item.get_item_type_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ item.date|date:"d M Y" }}</td>
+                                    <td>{{ item.reference }}</td>
+                                    <td>{{ item.description|truncatewords:5 }}</td>
+                                    <td class="text-end">AED {{ item.amount|floatformat:2 }}</td>
+                                    <td>
+                                        {% if item.is_cleared %}
+                                        <span class="badge bg-success">Cleared {{ item.cleared_date|date:"d M" }}</span>
+                                        {% else %}
+                                        <span class="badge bg-warning text-dark">Outstanding</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Summary -->
+        <div class="col-lg-4">
+            <div class="card mb-3">
+                <div class="card-header bg-dark text-white">
+                    <h6 class="mb-0"><i class="fas fa-calculator me-2"></i>Reconciliation Summary</h6>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr>
+                            <td><strong>Bank Statement Balance</strong></td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td class="ps-3">Opening Balance</td>
+                            <td class="text-end">{{ reconciliation.statement_opening_balance|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td class="ps-3">Closing Balance</td>
+                            <td class="text-end fw-bold">{{ reconciliation.statement_closing_balance|floatformat:2 }}</td>
+                        </tr>
+                        <tr><td colspan="2"><hr class="my-2"></td></tr>
+                        <tr>
+                            <td><strong>Add: Outstanding Deposits</strong></td>
+                            <td class="text-end text-success">{{ reconciliation.outstanding_deposits|floatformat:2 }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Less: Outstanding Checks</strong></td>
+                            <td class="text-end text-danger">({{ reconciliation.outstanding_checks|floatformat:2 }})</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Adjustments</strong></td>
+                            <td class="text-end">{{ reconciliation.adjustments|floatformat:2 }}</td>
+                        </tr>
+                        <tr><td colspan="2"><hr class="my-2"></td></tr>
+                        <tr class="table-light">
+                            <td><strong>Adjusted Bank Balance</strong></td>
+                            <td class="text-end fw-bold">{{ reconciliation.reconciled_balance|floatformat:2 }}</td>
+                        </tr>
+                        <tr><td colspan="2"><hr class="my-2"></td></tr>
+                        <tr>
+                            <td><strong>GL Balance</strong></td>
+                            <td class="text-end fw-bold">{{ reconciliation.gl_closing_balance|floatformat:2 }}</td>
+                        </tr>
+                        <tr><td colspan="2"><hr class="my-2"></td></tr>
+                        <tr class="{% if reconciliation.is_reconciled %}table-success{% else %}table-danger{% endif %}">
+                            <td><strong>Difference</strong></td>
+                            <td class="text-end fw-bold">
+                                AED {{ reconciliation.difference|floatformat:2 }}
+                                {% if reconciliation.is_reconciled %}
+                                <i class="fas fa-check-circle text-success ms-1"></i>
+                                {% else %}
+                                <i class="fas fa-exclamation-circle text-danger ms-1"></i>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            {% if reconciliation.notes %}
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-sticky-note me-2"></i>Notes</h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">{{ reconciliation.notes }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Account transactions and running balance</p>
+    </div>
+    <div>
+        {% if selected_account %}
+        <a href="?account={{ selected_account.pk }}&start_date={{ start_date }}&end_date={{ end_date }}&format=excel" class="btn btn-success me-2">
+            <i class="fas fa-file-excel me-1"></i>Excel
+        </a>
+        {% endif %}
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Account</label>
+                <select name="account" class="form-select" required>
+                    <option value="">Select Account...</option>
+                    {% for acc in accounts %}
+                    <option value="{{ acc.pk }}" {% if selected_account.pk == acc.pk %}selected{% endif %}>
+                        {{ acc.code }} - {{ acc.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Start Date</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">End Date</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-search me-1"></i>View
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected_account %}
+<!-- Account Info -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Account</h6>
+                <h5 class="mb-0">{{ selected_account.code }} - {{ selected_account.name }}</h5>
+                <small class="text-muted">{{ selected_account.get_account_type_display }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Opening Balance</h6>
+                <h5 class="mb-0">AED {{ opening_balance|floatformat:2|intcomma }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Closing Balance</h6>
+                <h5 class="mb-0 {% if closing_balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    AED {{ closing_balance|floatformat:2|intcomma }}
+                </h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transactions -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Entry #</th>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th class="text-end">Debit (AED)</th>
+                        <th class="text-end">Credit (AED)</th>
+                        <th class="text-end">Balance (AED)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="table-light">
+                        <td colspan="4" class="fw-medium">Opening Balance</td>
+                        <td class="text-end">-</td>
+                        <td class="text-end">-</td>
+                        <td class="text-end fw-medium">{{ opening_balance|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% for txn in transactions %}
+                    <tr>
+                        <td>{{ txn.date }}</td>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' txn.journal_pk %}" class="text-decoration-none">
+                                {{ txn.entry_number }}
+                            </a>
+                        </td>
+                        <td>{{ txn.reference|default:"-" }}</td>
+                        <td>{{ txn.description|default:"-" }}</td>
+                        <td class="text-end">{% if txn.debit %}{{ txn.debit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                        <td class="text-end">{% if txn.credit %}{{ txn.credit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                        <td class="text-end fw-medium">{{ txn.balance|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">
+                            No transactions found for this period
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-dark">
+                    <tr>
+                        <th colspan="4">Closing Balance</th>
+                        <th class="text-end">-</th>
+                        <th class="text-end">-</th>
+                        <th class="text-end">{{ closing_balance|floatformat:2|intcomma }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="fas fa-book fa-4x text-muted mb-3"></i>
+        <h5>Select an Account</h5>
+        <p class="text-muted">Choose an account from the dropdown above to view its ledger.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+

@@ -1,0 +1,257 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{% url 'purchase:recurringexpense_list' %}">Recurring Expenses</a></li>
+                <li class="breadcrumb-item active">{{ recurring_expense.name }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+    </div>
+    <div>
+        {% if can_execute %}
+        <a href="{% url 'purchase:recurringexpense_execute' recurring_expense.pk %}" 
+           class="btn btn-success"
+           onclick="return confirm('Execute this recurring expense now? This will create a journal entry.')">
+            <i class="fas fa-play me-2"></i>Execute Now
+        </a>
+        {% endif %}
+        {% if can_pause %}
+        <a href="{% url 'purchase:recurringexpense_pause' recurring_expense.pk %}" 
+           class="btn btn-warning"
+           onclick="return confirm('Pause this recurring expense?')">
+            <i class="fas fa-pause me-2"></i>Pause
+        </a>
+        {% endif %}
+        {% if can_resume %}
+        <a href="{% url 'purchase:recurringexpense_resume' recurring_expense.pk %}" 
+           class="btn btn-success"
+           onclick="return confirm('Resume this recurring expense?')">
+            <i class="fas fa-play me-2"></i>Resume
+        </a>
+        {% endif %}
+        {% if can_edit %}
+        <a href="{% url 'purchase:recurringexpense_edit' recurring_expense.pk %}" class="btn btn-outline-dark">
+            <i class="fas fa-edit me-2"></i>Edit
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-primary"></i>Expense Details</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm mb-0">
+                            <tr>
+                                <th class="text-muted" style="width: 150px;">Name</th>
+                                <td class="fw-bold">{{ recurring_expense.name }}</td>
+                            </tr>
+                            <tr>
+                                <th class="text-muted">Vendor</th>
+                                <td>{{ recurring_expense.vendor.name }}</td>
+                            </tr>
+                            <tr>
+                                <th class="text-muted">Expense Account</th>
+                                <td>{{ recurring_expense.expense_account.code }} - {{ recurring_expense.expense_account.name }}</td>
+                            </tr>
+                            <tr>
+                                <th class="text-muted">Tax Code</th>
+                                <td>{{ recurring_expense.tax_code.name|default:"-" }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm mb-0">
+                            <tr>
+                                <th class="text-muted" style="width: 150px;">Amount (excl. VAT)</th>
+                                <td>AED {{ recurring_expense.amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <th class="text-muted">VAT Amount</th>
+                                <td>AED {{ recurring_expense.vat_amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <th class="text-muted">Total Amount</th>
+                                <td class="fw-bold">AED {{ recurring_expense.total_amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr>
+                                <th class="text-muted">Payment Mode</th>
+                                <td>{{ recurring_expense.get_payment_mode_display }}</td>
+                            </tr>
+                            {% if recurring_expense.bank_account %}
+                            <tr>
+                                <th class="text-muted">Bank Account</th>
+                                <td>{{ recurring_expense.bank_account.name }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+                {% if recurring_expense.description %}
+                <hr>
+                <p class="mb-0"><strong>Description:</strong> {{ recurring_expense.description }}</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2 text-primary"></i>Execution History</h6>
+                <span class="badge bg-secondary">{{ recurring_expense.total_generated }} total executions</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Execution Date</th>
+                                <th>Expense Date</th>
+                                <th class="text-end">Amount</th>
+                                <th>Journal Entry</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            <tr>
+                                <td>{{ log.execution_date|date:"d/m/Y" }}</td>
+                                <td>{{ log.expense_date|date:"d/m/Y" }}</td>
+                                <td class="text-end">AED {{ log.amount|floatformat:2|intcomma }}</td>
+                                <td>
+                                    {% if log.journal_entry %}
+                                    <a href="{% url 'finance:journal_detail' log.journal_entry.pk %}">
+                                        {{ log.journal_entry.entry_number }}
+                                    </a>
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if log.status == 'success' %}
+                                    <span class="badge bg-success">Success</span>
+                                    {% elif log.status == 'failed' %}
+                                    <span class="badge bg-danger" title="{{ log.error_message }}">Failed</span>
+                                    {% elif log.status == 'skipped' %}
+                                    <span class="badge bg-warning">Skipped</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">
+                                    No executions yet.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-calendar-alt me-2 text-primary"></i>Schedule</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted">Status</th>
+                        <td>
+                            {% if recurring_expense.status == 'active' %}
+                            <span class="badge bg-success">Active</span>
+                            {% elif recurring_expense.status == 'paused' %}
+                            <span class="badge bg-warning">Paused</span>
+                            {% elif recurring_expense.status == 'completed' %}
+                            <span class="badge bg-secondary">Completed</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Frequency</th>
+                        <td>{{ recurring_expense.get_frequency_display }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Start Date</th>
+                        <td>{{ recurring_expense.start_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">End Date</th>
+                        <td>{{ recurring_expense.end_date|date:"d/m/Y"|default:"Indefinite" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Next Run</th>
+                        <td class="fw-bold">{{ recurring_expense.next_run_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Last Run</th>
+                        <td>{{ recurring_expense.last_run_date|date:"d/m/Y"|default:"Never" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Auto-Post</th>
+                        <td>
+                            {% if recurring_expense.auto_post %}
+                            <span class="badge bg-success">Enabled</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Disabled</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card border-0 shadow-sm mb-3 bg-light">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-route me-2 text-info"></i>Accounting Flow</h6>
+            </div>
+            <div class="card-body small">
+                <p class="mb-2"><strong>On each execution:</strong></p>
+                <code class="d-block">
+                    Dr {{ recurring_expense.expense_account.code }} (Expense)<br>
+                    {% if recurring_expense.vat_amount > 0 %}
+                    Dr 1300 (VAT Recoverable)<br>
+                    {% endif %}
+                    Cr {% if recurring_expense.payment_mode == 'bank' %}Bank{% else %}2000 (AP){% endif %}
+                </code>
+                <hr>
+                <p class="mb-0 text-muted">
+                    <i class="fas fa-info-circle text-info me-1"></i>
+                    Total per execution: <strong>AED {{ recurring_expense.total_amount|floatformat:2|intcomma }}</strong>
+                </p>
+            </div>
+        </div>
+        
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-chart-bar me-2 text-primary"></i>Statistics</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted">Total Executions</th>
+                        <td class="fw-bold">{{ recurring_expense.total_generated }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Total Posted</th>
+                        <td>AED {{ recurring_expense.total_generated|default:0|floatformat:0 }}x {{ recurring_expense.total_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

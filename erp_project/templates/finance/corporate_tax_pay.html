@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Pay Corporate Tax to FTA</p>
+    </div>
+    <a href="{% url 'finance:corporate_tax_report' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back to Report
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-credit-card me-2"></i>Payment Details</h6>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">Bank Account <span class="text-danger">*</span></label>
+                            <select name="bank_account" class="form-select" required>
+                                <option value="">Select Bank Account</option>
+                                {% for bank in bank_accounts %}
+                                <option value="{{ bank.pk }}">{{ bank.account_name }} ({{ bank.bank_name }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Payment Date <span class="text-danger">*</span></label>
+                            <input type="date" name="payment_date" class="form-control" 
+                                   value="{{ today }}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label">Reference / Transaction ID</label>
+                            <input type="text" name="reference" class="form-control" 
+                                   placeholder="e.g., FTA-TRX-12345">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text">AED</span>
+                                <input type="text" class="form-control" 
+                                       value="{{ computation.balance_due|floatformat:2|intcomma }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Journal Preview -->
+                    <div class="card bg-light mb-4">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-book me-2"></i>Journal Entry Preview</h6>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Account</th>
+                                        <th class="text-end">Debit</th>
+                                        <th class="text-end">Credit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Corporate Tax Payable</td>
+                                        <td class="text-end">{{ computation.balance_due|floatformat:2|intcomma }}</td>
+                                        <td class="text-end text-muted">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td>&nbsp;&nbsp;Bank Account</td>
+                                        <td class="text-end text-muted">-</td>
+                                        <td class="text-end">{{ computation.balance_due|floatformat:2|intcomma }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-end gap-2">
+                        <a href="{% url 'finance:corporate_tax_report' %}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-check me-1"></i>Confirm Payment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-file-invoice-dollar me-2"></i>Tax Summary</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless">
+                    <tr>
+                        <td class="text-muted">Fiscal Year</td>
+                        <td class="text-end fw-medium">{{ computation.fiscal_year.name }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Taxable Income</td>
+                        <td class="text-end">AED {{ computation.taxable_income|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Tax Rate</td>
+                        <td class="text-end">{{ computation.tax_rate }}%</td>
+                    </tr>
+                    <tr class="border-top">
+                        <td class="text-muted">Tax Payable</td>
+                        <td class="text-end">AED {{ computation.tax_payable|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Already Paid</td>
+                        <td class="text-end">AED {{ computation.paid_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr class="table-warning fw-bold">
+                        <td>Balance Due</td>
+                        <td class="text-end">AED {{ computation.balance_due|floatformat:2|intcomma }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        {% if computation.provision_posted %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>Provision Details</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-1">
+                    <strong>Date:</strong> {{ computation.provision_date|date:"d M Y" }}
+                </p>
+                {% if computation.journal_entry %}
+                <p class="mb-0">
+                    <strong>Journal:</strong> 
+                    <a href="{% url 'finance:journal_detail' computation.journal_entry.pk %}">
+                        {{ computation.journal_entry.entry_number }}
+                    </a>
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'purchase:po_list' %}">Purchase Orders</a></li>
+            <li class="breadcrumb-item active">{{ po.po_number }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">{{ po.po_number }}</h4>
+            <span class="text-muted">{{ po.vendor.name }}</span>
+        </div>
+        <div>
+            {% if can_edit %}
+            <a href="{% url 'purchase:po_edit' po.pk %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Edit
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Vendor</h6>
+                        <p class="fw-medium mb-0">{{ po.vendor.name }}</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Order Date</h6>
+                        <p class="mb-0">{{ po.order_date|date:"d/m/Y" }}</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Expected Delivery</h6>
+                        <p class="mb-0">{{ po.expected_delivery_date|date:"d/m/Y"|default:"-" }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header"><h6 class="mb-0 fw-semibold">Line Items</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-end">Price</th>
+                                <th class="text-center">VAT</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in po.items.all %}
+                            <tr>
+                                <td>{{ item.description }}</td>
+                                <td class="text-center">{{ item.quantity }}</td>
+                                <td class="text-end">{{ item.unit_price|floatformat:2 }}</td>
+                                <td class="text-center">{{ item.vat_rate }}%</td>
+                                <td class="text-end">{{ item.total|floatformat:2 }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-end">Subtotal:</td>
+                                <td class="text-end fw-medium">AED {{ po.subtotal|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" class="text-end">VAT:</td>
+                                <td class="text-end fw-medium">AED {{ po.vat_amount|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" class="text-end fw-bold">Total:</td>
+                                <td class="text-end fw-bold">AED {{ po.total_amount|floatformat:2 }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Status</h6>
+                {% if po.status == 'draft' %}
+                <span class="badge bg-secondary fs-6">Draft</span>
+                {% elif po.status == 'sent' %}
+                <span class="badge fs-6" style="background:#dbeafe;color:#1e40af;">Sent</span>
+                {% elif po.status == 'confirmed' %}
+                <span class="badge badge-active fs-6">Confirmed</span>
+                {% elif po.status == 'received' %}
+                <span class="badge fs-6" style="background:#dcfce7;color:#166534;">Received</span>
+                {% else %}
+                <span class="badge bg-secondary fs-6">{{ po.get_status_display }}</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Summary</h6>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Subtotal</span>
+                    <span>AED {{ po.subtotal|floatformat:2 }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>VAT</span>
+                    <span>AED {{ po.vat_amount|floatformat:2 }}</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <span class="fw-bold">Total</span>
+                    <span class="fw-bold">AED {{ po.total_amount|floatformat:2 }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

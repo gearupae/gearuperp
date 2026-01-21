@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage system users and their roles</p>
+    </div>
+    <div>
+        {% if is_superuser or 'create' in user_permissions.settings %}
+        <button class="btn btn-primary" onclick="toggleInlineForm('userForm')">
+            <i class="fas fa-plus me-2"></i>Add User
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Inline Create Form -->
+<div id="userForm" class="inline-form-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="mb-0 fw-semibold">
+            <i class="fas fa-user-plus me-2 text-primary"></i>Add New User
+        </h5>
+        <button type="button" class="btn-close" onclick="cancelInlineForm('userForm')"></button>
+    </div>
+    <form method="post" action="{% url 'settings:user_create' %}">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Username <span class="text-danger">*</span></label>
+                <input type="text" name="username" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Email <span class="text-danger">*</span></label>
+                <input type="email" name="email" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" name="is_active" checked>
+                    <label class="form-check-label">Active</label>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">First Name <span class="text-danger">*</span></label>
+                <input type="text" name="first_name" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Last Name <span class="text-danger">*</span></label>
+                <input type="text" name="last_name" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Roles</label>
+                <select name="roles" class="form-select select2" multiple>
+                    {% for role in roles %}
+                    <option value="{{ role.id }}">{{ role.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Password <span class="text-danger">*</span></label>
+                <input type="password" name="password1" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
+                <input type="password" name="password2" class="form-control" required>
+            </div>
+        </div>
+        <div class="mt-4 pt-3 border-top">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Save User
+            </button>
+            <button type="button" class="btn btn-light" onclick="cancelInlineForm('userForm')">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<!-- Users Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover datatable mb-0">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Full Name</th>
+                        <th>Email</th>
+                        <th>Roles</th>
+                        <th>Status</th>
+                        <th>Last Login</th>
+                        <th class="text-center" width="120">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px;">
+                                    {{ user.first_name.0|default:user.username.0|upper }}
+                                </div>
+                                <span class="fw-medium">{{ user.username }}</span>
+                            </div>
+                        </td>
+                        <td>{{ user.get_full_name|default:"-" }}</td>
+                        <td>{{ user.email|default:"-" }}</td>
+                        <td>
+                            {% for ur in user.user_roles.all %}
+                                <span class="badge bg-secondary">{{ ur.role.name }}</span>
+                            {% empty %}
+                                <span class="text-muted">-</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                                <span class="badge badge-active">Active</span>
+                            {% else %}
+                                <span class="badge badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.last_login %}
+                                {{ user.last_login|date:"d/m/Y H:i" }}
+                            {% else %}
+                                <span class="text-muted">Never</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if is_superuser or 'edit' in user_permissions.settings %}
+                            <a href="{% url 'settings:user_edit' user.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            {% if is_superuser or 'delete' in user_permissions.settings %}
+                            <a href="{% url 'settings:user_toggle' user.pk %}" class="btn btn-action btn-outline-{{ user.is_active|yesno:'warning,success' }}" title="{{ user.is_active|yesno:'Deactivate,Activate' }}">
+                                <i class="fas fa-{{ user.is_active|yesno:'ban,check' }}"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-users fa-3x mb-3 d-block"></i>
+                            No users found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

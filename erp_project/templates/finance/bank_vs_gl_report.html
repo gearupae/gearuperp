@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item">Reports</li>
+                    <li class="breadcrumb-item active">Bank vs GL Comparison</li>
+                </ol>
+            </nav>
+        </div>
+        <button class="btn btn-outline-dark" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">As of Date</label>
+                    <input type="date" name="date" class="form-control" value="{{ as_of_date }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-dark">
+                        <i class="fas fa-refresh me-1"></i>Refresh
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="card">
+        <div class="card-header bg-dark text-white">
+            <h6 class="mb-0"><i class="fas fa-balance-scale me-2"></i>Bank vs GL Ledger Comparison - {{ as_of_date }}</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Bank Account</th>
+                            <th>Bank Name</th>
+                            <th class="text-end">GL Balance</th>
+                            <th class="text-end">Bank Balance</th>
+                            <th class="text-end">Difference</th>
+                            <th>Last Reconciled</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for data in comparison_data %}
+                        <tr>
+                            <td>
+                                <strong>{{ data.bank.name }}</strong>
+                                <br><small class="text-muted">{{ data.bank.account_number }}</small>
+                            </td>
+                            <td>{{ data.bank.bank_name }}</td>
+                            <td class="text-end">AED {{ data.gl_balance|floatformat:2 }}</td>
+                            <td class="text-end">AED {{ data.bank_balance|floatformat:2 }}</td>
+                            <td class="text-end {% if data.difference != 0 %}text-danger fw-bold{% endif %}">
+                                AED {{ data.difference|floatformat:2 }}
+                            </td>
+                            <td>
+                                {% if data.last_reconciled %}
+                                {{ data.last_reconciled|date:"d M Y" }}
+                                {% else %}
+                                <span class="text-muted">Never</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if data.is_reconciled %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-check me-1"></i>Reconciled
+                                </span>
+                                {% else %}
+                                <span class="badge bg-danger">
+                                    <i class="fas fa-exclamation me-1"></i>Difference
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                No bank accounts configured.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="card mt-4">
+        <div class="card-body">
+            <h6 class="mb-3">Legend</h6>
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-1"><span class="badge bg-success">Reconciled</span> - GL and Bank balances match</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-1"><span class="badge bg-danger">Difference</span> - Balances do not match, investigation required</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

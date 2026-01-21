@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'sales:invoice_list' %}">Invoices</a></li>
+            <li class="breadcrumb-item active">{{ invoice.invoice_number }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">{{ invoice.invoice_number }}</h4>
+            <span class="text-muted">{{ invoice.customer.name }}</span>
+        </div>
+        <div>
+            {% if can_post %}
+            <form method="post" action="{% url 'sales:invoice_post' invoice.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success" onclick="return confirm('Post this invoice to accounting?');">
+                    <i class="fas fa-book me-2"></i>Post to Accounting
+                </button>
+            </form>
+            {% endif %}
+            {% if invoice.status != 'draft' and invoice.balance > 0 %}
+            <a href="{% url 'sales:invoice_receive_payment' invoice.pk %}" class="btn btn-success">
+                <i class="fas fa-money-bill-wave me-2"></i>Receive Payment
+            </a>
+            {% endif %}
+            {% if can_edit %}
+            <a href="{% url 'sales:invoice_edit' invoice.pk %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Edit
+            </a>
+            {% endif %}
+            <a href="{% url 'sales:invoice_pdf' invoice.pk %}" class="btn btn-outline-danger" target="_blank">
+                <i class="fas fa-file-pdf me-2"></i>PDF Invoice
+            </a>
+            <button class="btn btn-outline-secondary" onclick="window.print()">
+                <i class="fas fa-print me-2"></i>Print
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <!-- Invoice Info -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Bill To</h6>
+                        <p class="fw-medium mb-0">{{ invoice.customer.name }}</p>
+                        {% if invoice.customer.company %}
+                        <small class="text-muted">{{ invoice.customer.company }}</small>
+                        {% endif %}
+                        {% if invoice.customer.address %}
+                        <p class="small text-muted mb-0 mt-1">{{ invoice.customer.address }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Invoice Date</h6>
+                        <p class="mb-0">{{ invoice.invoice_date|date:"d/m/Y" }}</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Due Date</h6>
+                        <p class="mb-0">{{ invoice.due_date|date:"d/m/Y" }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Line Items -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Line Items</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-end">Unit Price</th>
+                                <th class="text-center">VAT %</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in invoice.items.all %}
+                            <tr>
+                                <td>{{ item.description }}</td>
+                                <td class="text-center">{{ item.quantity }}</td>
+                                <td class="text-end">{{ item.unit_price|floatformat:2 }}</td>
+                                <td class="text-center">{{ item.vat_rate }}%</td>
+                                <td class="text-end">{{ item.total|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">No items</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-end">Subtotal:</td>
+                                <td class="text-end fw-medium">AED {{ invoice.subtotal|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" class="text-end">VAT:</td>
+                                <td class="text-end fw-medium">AED {{ invoice.vat_amount|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="4" class="text-end fw-bold">Total:</td>
+                                <td class="text-end fw-bold">AED {{ invoice.total_amount|floatformat:2 }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        {% if invoice.notes %}
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Notes</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-0">{{ invoice.notes|linebreaks }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Status -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Status</h6>
+                <div class="mb-3">
+                    {% if invoice.status == 'draft' %}
+                        <span class="badge bg-secondary fs-6">Draft</span>
+                    {% elif invoice.status == 'posted' %}
+                        <span class="badge fs-6" style="background-color: #dcfce7; color: #166534;">Posted</span>
+                    {% elif invoice.status == 'sent' %}
+                        <span class="badge fs-6" style="background-color: #dbeafe; color: #1e40af;">Sent</span>
+                    {% elif invoice.status == 'paid' %}
+                        <span class="badge badge-active fs-6">Paid</span>
+                    {% elif invoice.status == 'partial' %}
+                        <span class="badge fs-6" style="background-color: #fef3c7; color: #92400e;">Partial</span>
+                    {% elif invoice.status == 'overdue' %}
+                        <span class="badge badge-inactive fs-6">Overdue</span>
+                    {% elif invoice.status == 'cancelled' %}
+                        <span class="badge bg-danger fs-6">Cancelled</span>
+                    {% else %}
+                        <span class="badge bg-secondary fs-6">{{ invoice.get_status_display }}</span>
+                    {% endif %}
+                </div>
+                
+                {% if can_edit and invoice.status != 'draft' %}
+                <hr>
+                <h6 class="text-muted mb-3">Update Status</h6>
+                <div class="d-grid gap-2">
+                    {% if invoice.status == 'posted' %}
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'sent' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-paper-plane me-2"></i>Mark as Sent
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'paid' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">
+                            <i class="fas fa-check me-2"></i>Mark as Paid
+                        </button>
+                    </form>
+                    {% elif invoice.status == 'sent' %}
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'paid' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">
+                            <i class="fas fa-check me-2"></i>Mark as Paid
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'partial' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                            <i class="fas fa-percentage me-2"></i>Partially Paid
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'overdue' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Mark Overdue
+                        </button>
+                    </form>
+                    {% elif invoice.status == 'partial' %}
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'paid' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">
+                            <i class="fas fa-check me-2"></i>Mark as Paid
+                        </button>
+                    </form>
+                    {% elif invoice.status == 'overdue' %}
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'paid' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">
+                            <i class="fas fa-check me-2"></i>Mark as Paid
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'partial' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                            <i class="fas fa-percentage me-2"></i>Partially Paid
+                        </button>
+                    </form>
+                    {% endif %}
+                    
+                    {% if invoice.status != 'cancelled' and invoice.status != 'paid' %}
+                    <form method="post" action="{% url 'sales:invoice_status' invoice.pk 'cancelled' %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Cancel this invoice?');">
+                            <i class="fas fa-ban me-2"></i>Cancel Invoice
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if invoice.journal_entry %}
+        <!-- Accounting -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Accounting</h6>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>Journal Entry</span>
+                    <a href="{% url 'finance:journal_detail' invoice.journal_entry.pk %}" class="text-decoration-none">
+                        {{ invoice.journal_entry.entry_number }}
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Payment Summary -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Payment Summary</h6>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Total Amount</span>
+                    <span>AED {{ invoice.total_amount|floatformat:2 }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Paid Amount</span>
+                    <span class="text-success">AED {{ invoice.paid_amount|floatformat:2 }}</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <span class="fw-bold">Balance Due</span>
+                    <span class="fw-bold {% if invoice.balance > 0 %}text-danger{% endif %}">AED {{ invoice.balance|floatformat:2 }}</span>
+                </div>
+            </div>
+        </div>
+        
+        {% if invoice.quotation %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Related Quotation</h6>
+                <a href="{% url 'sales:quotation_detail' invoice.quotation.pk %}" class="text-decoration-none">
+                    {{ invoice.quotation.quotation_number }}
+                </a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Audit Info -->
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Audit Information</h6>
+                <div class="mb-2">
+                    <small class="text-muted">Created</small>
+                    <p class="mb-0 small">{{ invoice.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+                <div>
+                    <small class="text-muted">Last Updated</small>
+                    <p class="mb-0 small">{{ invoice.updated_at|date:"d/m/Y H:i" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

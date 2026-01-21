@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Manage purchase requests</p>
+    </div>
+    <div>
+        {% if can_create %}
+        <a href="{% url 'purchase:pr_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Create PR
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <input type="text" name="search" class="form-control" placeholder="Search PR#..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">All Status</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>
+                <a href="{% url 'purchase:pr_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>PR #</th>
+                        <th>Date</th>
+                        <th>Requested By</th>
+                        <th>Required By</th>
+                        <th>Status</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-center" width="150">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pr in purchase_requests %}
+                    <tr>
+                        <td class="fw-medium">{{ pr.pr_number }}</td>
+                        <td>{{ pr.date|date:"d/m/Y" }}</td>
+                        <td>{{ pr.requested_by.get_full_name|default:pr.requested_by.username }}</td>
+                        <td>{{ pr.required_by_date|date:"d/m/Y"|default:"-" }}</td>
+                        <td>
+                            {% if pr.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif pr.status == 'pending' %}
+                            <span class="badge" style="background:#fef3c7;color:#92400e;">Pending</span>
+                            {% elif pr.status == 'approved' %}
+                            <span class="badge badge-active">Approved</span>
+                            {% elif pr.status == 'rejected' %}
+                            <span class="badge badge-inactive">Rejected</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ pr.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">AED {{ pr.total_amount|floatformat:2 }}</td>
+                        <td class="text-center">
+                            {% if can_edit %}
+                            <a href="{% url 'purchase:pr_edit' pr.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_approve and pr.status == 'pending' %}
+                            <a href="{% url 'purchase:pr_approve' pr.pk %}" class="btn btn-action btn-outline-success" title="Approve" onclick="return confirm('Approve this PR?');">
+                                <i class="fas fa-check"></i>
+                            </a>
+                            <a href="{% url 'purchase:pr_reject' pr.pk %}" class="btn btn-action btn-outline-danger" title="Reject" onclick="return confirm('Reject this PR?');">
+                                <i class="fas fa-times"></i>
+                            </a>
+                            {% endif %}
+                            {% if can_delete %}
+                            <a href="{% url 'purchase:pr_delete' pr.pk %}" class="btn btn-action btn-outline-danger" title="Delete" onclick="return confirm('Delete this PR?');">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-clipboard-list fa-3x mb-3 d-block"></i>
+                            No purchase requests found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

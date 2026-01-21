@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">UAE VAT Return (FTA Format)</p>
+    </div>
+    <div>
+        <a href="?start_date={{ start_date }}&end_date={{ end_date }}&format=excel" class="btn btn-success me-2">
+            <i class="fas fa-file-excel me-1"></i>Excel
+        </a>
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Current Period Summary -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-chart-pie me-2"></i>Current Period VAT Summary</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-muted mb-2">Total Sales (Taxable)</h6>
+                    <h4 class="mb-0">AED {{ current_sales|floatformat:2|intcomma }}</h4>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-muted mb-2">Output VAT (5%)</h6>
+                    <h4 class="mb-0 text-danger">AED {{ current_output_vat|floatformat:2|intcomma }}</h4>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-muted mb-2">Total Purchases</h6>
+                    <h4 class="mb-0">AED {{ current_purchases|floatformat:2|intcomma }}</h4>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 h-100">
+                    <h6 class="text-muted mb-2">Input VAT (Recoverable)</h6>
+                    <h4 class="mb-0 text-success">AED {{ current_input_vat|floatformat:2|intcomma }}</h4>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 h-100 {% if is_refund %}bg-success-subtle{% else %}bg-danger-subtle{% endif %}">
+                    <h6 class="text-muted mb-2">Net VAT {% if is_refund %}(Refund){% else %}(Payable){% endif %}</h6>
+                    <h4 class="mb-0 {% if is_refund %}text-success{% else %}text-danger{% endif %}">
+                        AED {{ current_net_vat|floatformat:2|intcomma }}
+                    </h4>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VAT Return Form (FTA Format) -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-file-alt me-2"></i>VAT Return Form (FTA 201)</h6>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-bordered mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th width="60%">Description</th>
+                    <th class="text-end">Amount (AED)</th>
+                    <th class="text-end">VAT Amount (AED)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="table-primary">
+                    <td colspan="3" class="fw-bold">OUTPUT VAT (Sales)</td>
+                </tr>
+                <tr>
+                    <td>Box 1: Standard Rated Supplies (5%)</td>
+                    <td class="text-end">{{ current_sales|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ current_output_vat|floatformat:2|intcomma }}</td>
+                </tr>
+                <tr>
+                    <td>Box 2: Zero-Rated Supplies</td>
+                    <td class="text-end">0.00</td>
+                    <td class="text-end">0.00</td>
+                </tr>
+                <tr>
+                    <td>Box 3: Exempt Supplies</td>
+                    <td class="text-end">0.00</td>
+                    <td class="text-end">-</td>
+                </tr>
+                <tr class="table-light fw-bold">
+                    <td>Total Output VAT</td>
+                    <td class="text-end">{{ current_sales|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ current_output_vat|floatformat:2|intcomma }}</td>
+                </tr>
+                
+                <tr class="table-success">
+                    <td colspan="3" class="fw-bold">INPUT VAT (Purchases)</td>
+                </tr>
+                <tr>
+                    <td>Box 9: Standard Rated Expenses</td>
+                    <td class="text-end">{{ current_purchases|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ current_input_vat|floatformat:2|intcomma }}</td>
+                </tr>
+                <tr class="table-light fw-bold">
+                    <td>Total Input VAT</td>
+                    <td class="text-end">{{ current_purchases|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ current_input_vat|floatformat:2|intcomma }}</td>
+                </tr>
+                
+                <tr class="table-dark fw-bold">
+                    <td colspan="2">Net VAT {% if is_refund %}Refundable{% else %}Payable{% endif %}</td>
+                    <td class="text-end fs-5">{{ current_net_vat|floatformat:2|intcomma }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Past VAT Returns -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>VAT Return History</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Return #</th>
+                        <th>Period</th>
+                        <th>Due Date</th>
+                        <th class="text-end">Output VAT</th>
+                        <th class="text-end">Input VAT</th>
+                        <th class="text-end">Net VAT</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vat in vat_returns %}
+                    <tr>
+                        <td class="fw-medium">{{ vat.return_number }}</td>
+                        <td>{{ vat.period_start|date:"M Y" }} - {{ vat.period_end|date:"M Y" }}</td>
+                        <td>{{ vat.due_date }}</td>
+                        <td class="text-end">{{ vat.output_vat|floatformat:2|intcomma }}</td>
+                        <td class="text-end">{{ vat.input_vat|floatformat:2|intcomma }}</td>
+                        <td class="text-end {% if vat.net_vat < 0 %}text-success{% else %}text-danger{% endif %}">
+                            {{ vat.net_vat|floatformat:2|intcomma }}
+                        </td>
+                        <td>
+                            {% if vat.status == 'draft' %}
+                                <span class="badge bg-secondary">Draft</span>
+                            {% elif vat.status == 'submitted' %}
+                                <span class="badge bg-warning">Submitted</span>
+                            {% elif vat.status == 'accepted' %}
+                                <span class="badge bg-success">Accepted</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-file-invoice fa-3x mb-3 d-block"></i>
+                            No VAT returns filed yet
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

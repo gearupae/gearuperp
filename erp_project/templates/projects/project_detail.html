@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb"><ol class="breadcrumb mb-2"><li class="breadcrumb-item"><a href="{% url 'projects:project_list' %}">Projects</a></li><li class="breadcrumb-item active">{{ project.project_code }}</li></ol></nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div><h4 class="mb-1 fw-bold">{{ project.name }}</h4><span class="text-muted">{{ project.project_code }}</span></div>
+        {% if can_edit %}<a href="{% url 'projects:project_edit' project.pk %}" class="btn btn-primary"><i class="fas fa-edit me-2"></i>Edit</a>{% endif %}
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4"><h6 class="text-muted mb-2">Customer</h6><p class="mb-0">{{ project.customer.name|default:"-" }}</p></div>
+                    <div class="col-md-4"><h6 class="text-muted mb-2">Manager</h6><p class="mb-0">{{ project.manager.get_full_name|default:"-" }}</p></div>
+                    <div class="col-md-4"><h6 class="text-muted mb-2">Budget</h6><p class="mb-0">AED {{ project.budget|floatformat:2 }}</p></div>
+                    <div class="col-md-4"><h6 class="text-muted mb-2">Start Date</h6><p class="mb-0">{{ project.start_date|date:"d/m/Y"|default:"-" }}</p></div>
+                    <div class="col-md-4"><h6 class="text-muted mb-2">End Date</h6><p class="mb-0">{{ project.end_date|date:"d/m/Y"|default:"-" }}</p></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold">Tasks</h6>
+                {% if can_edit %}<button class="btn btn-sm btn-primary" onclick="toggleInlineForm('taskForm')"><i class="fas fa-plus me-1"></i>Add Task</button>{% endif %}
+            </div>
+            <div id="taskForm" class="inline-form-container m-3" style="display:none;">
+                <form method="post">{% csrf_token %}
+                    {% if task_form.errors %}
+                    <div class="alert alert-danger">
+                        <strong>Please correct the following errors:</strong>
+                        <ul class="mb-0">
+                            {% for field, errors in task_form.errors.items %}
+                                {% for error in errors %}
+                                <li><strong>{{ field|title }}:</strong> {{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="{{ task_form.name.id_for_label }}" class="form-label">Task Name <span class="text-danger">*</span></label>
+                            {{ task_form.name }}
+                            {% if task_form.name.errors %}<div class="text-danger small mt-1">{{ task_form.name.errors|join:", " }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <label for="{{ task_form.priority.id_for_label }}" class="form-label">Priority</label>
+                            {{ task_form.priority }}
+                            {% if task_form.priority.errors %}<div class="text-danger small mt-1">{{ task_form.priority.errors|join:", " }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <label for="{{ task_form.due_date.id_for_label }}" class="form-label">Due Date</label>
+                            {{ task_form.due_date }}
+                            {% if task_form.due_date.errors %}<div class="text-danger small mt-1">{{ task_form.due_date.errors|join:", " }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ task_form.assigned_to.id_for_label }}" class="form-label">Assigned To</label>
+                            {{ task_form.assigned_to }}
+                            {% if task_form.assigned_to.errors %}<div class="text-danger small mt-1">{{ task_form.assigned_to.errors|join:", " }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ task_form.status.id_for_label }}" class="form-label">Status</label>
+                            {{ task_form.status }}
+                            {% if task_form.status.errors %}<div class="text-danger small mt-1">{{ task_form.status.errors|join:", " }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ task_form.estimated_hours.id_for_label }}" class="form-label">Estimated Hours</label>
+                            {{ task_form.estimated_hours }}
+                            {% if task_form.estimated_hours.errors %}<div class="text-danger small mt-1">{{ task_form.estimated_hours.errors|join:", " }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-12">
+                            <label for="{{ task_form.description.id_for_label }}" class="form-label">Description</label>
+                            {{ task_form.description }}
+                            {% if task_form.description.errors %}<div class="text-danger small mt-1">{{ task_form.description.errors|join:", " }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="mt-3"><button type="submit" class="btn btn-primary btn-sm">Save</button><button type="button" class="btn btn-light btn-sm" onclick="cancelInlineForm('taskForm')">Cancel</button></div>
+                </form>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead><tr><th>Task</th><th>Assigned To</th><th>Priority</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
+                        <tbody>
+                            {% for task in tasks %}
+                            <tr>
+                                <td>{{ task.name }}</td>
+                                <td>{{ task.assigned_to.get_full_name|default:"-" }}</td>
+                                <td>{% if task.priority == 'high' %}<span class="badge badge-inactive">High</span>{% elif task.priority == 'medium' %}<span class="badge" style="background:#fef3c7;color:#92400e;">Medium</span>{% else %}<span class="badge bg-secondary">Low</span>{% endif %}</td>
+                                <td>{{ task.due_date|date:"d/m/Y"|default:"-" }}</td>
+                                <td>{% if task.status == 'completed' %}<span class="badge badge-active">Done</span>{% elif task.status == 'in_progress' %}<span class="badge" style="background:#dbeafe;color:#1e40af;">In Progress</span>{% else %}<span class="badge bg-secondary">Pending</span>{% endif %}</td>
+                                <td>
+                                    {% if task.status != 'completed' %}<a href="{% url 'projects:task_status' task.pk 'completed' %}" class="btn btn-action btn-outline-success" title="Mark Complete"><i class="fas fa-check"></i></a>{% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}<tr><td colspan="6" class="text-center py-4 text-muted">No tasks yet</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Status</h6>
+                {% if project.status == 'completed' %}<span class="badge badge-active fs-6">Completed</span>
+                {% elif project.status == 'in_progress' %}<span class="badge fs-6" style="background:#dbeafe;color:#1e40af;">In Progress</span>
+                {% else %}<span class="badge bg-secondary fs-6">{{ project.get_status_display }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Progress</h6>
+                <div class="d-flex justify-content-between mb-2"><span>Tasks Completed</span><span class="fw-bold">{{ project.completed_tasks }}/{{ project.total_tasks }}</span></div>
+                <div class="progress" style="height:8px;">
+                    <div class="progress-bar bg-success" style="width:{% widthratio project.completed_tasks project.total_tasks 100 %}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleInlineForm(formId) {
+    const form = document.getElementById(formId);
+    if (form) {
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        // Scroll to form if showing
+        if (form.style.display === 'block') {
+            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+}
+
+function cancelInlineForm(formId) {
+    const form = document.getElementById(formId);
+    if (form) {
+        form.style.display = 'none';
+        // Reset form
+        const formElement = form.querySelector('form');
+        if (formElement) {
+            formElement.reset();
+        }
+    }
+}
+</script>
+{% endblock %}
+

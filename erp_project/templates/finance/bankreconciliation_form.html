@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1">{{ title }}</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'finance:bankreconciliation_list' %}">Reconciliations</a></li>
+                    <li class="breadcrumb-item active">{{ title }}</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Bank Account <span class="text-danger">*</span></label>
+                                {{ form.bank_account }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Bank Statement (Optional)</label>
+                                {{ form.bank_statement }}
+                                <small class="text-muted">Link to an existing bank statement</small>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Reconciliation Date <span class="text-danger">*</span></label>
+                                {{ form.reconciliation_date }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Period Start <span class="text-danger">*</span></label>
+                                {{ form.period_start }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Period End <span class="text-danger">*</span></label>
+                                {{ form.period_end }}
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Statement Opening Balance <span class="text-danger">*</span></label>
+                                {{ form.statement_opening_balance }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Statement Closing Balance <span class="text-danger">*</span></label>
+                                {{ form.statement_closing_balance }}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Notes</label>
+                            {{ form.notes }}
+                        </div>
+                        
+                        <hr>
+                        
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-dark">
+                                <i class="fas fa-save me-1"></i>Save Reconciliation
+                            </button>
+                            <a href="{% url 'finance:bankreconciliation_list' %}" class="btn btn-outline-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>About Reconciliation</h6>
+                </div>
+                <div class="card-body">
+                    <p class="small mb-2">Bank Reconciliation compares:</p>
+                    <ul class="small mb-3">
+                        <li><strong>GL Balance:</strong> Calculated from journal entries</li>
+                        <li><strong>Statement Balance:</strong> From your bank statement</li>
+                    </ul>
+                    <p class="small mb-0">
+                        Differences should be explained by outstanding deposits, checks, or bank charges.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

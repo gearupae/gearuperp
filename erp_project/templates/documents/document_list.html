@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div><h4 class="mb-1 fw-bold">{{ title }}</h4><p class="text-muted mb-0">Track document expiry</p></div>
+    {% if can_create %}<a href="{% url 'documents:document_create' %}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Add Document</a>{% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card {% if expired_count > 0 %}border-danger{% endif %}">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-danger bg-opacity-10 rounded p-3 me-3"><i class="fas fa-exclamation-circle text-danger"></i></div>
+                    <div><p class="text-muted mb-0 small">Expired Documents</p><h5 class="mb-0 fw-bold {% if expired_count > 0 %}text-danger{% endif %}">{{ expired_count }}</h5></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card {% if expiring_count > 0 %}border-warning{% endif %}">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3"><i class="fas fa-clock text-warning"></i></div>
+                    <div><p class="text-muted mb-0 small">Expiring Soon (30 days)</p><h5 class="mb-0 fw-bold {% if expiring_count > 0 %}text-warning{% endif %}">{{ expiring_count }}</h5></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4"><input type="text" name="search" class="form-control" placeholder="Search..." value="{{ request.GET.search }}"></div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">All</option>
+                    <option value="expired" {% if request.GET.status == 'expired' %}selected{% endif %}>Expired</option>
+                    <option value="expiring" {% if request.GET.status == 'expiring' %}selected{% endif %}>Expiring Soon</option>
+                    <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>Active</option>
+                </select>
+            </div>
+            <div class="col-md-5"><button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button><a href="{% url 'documents:document_list' %}" class="btn btn-light">Clear</a></div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead><tr><th>Type</th><th>Entity</th><th>Name</th><th>Document #</th><th>Expiry Date</th><th>Days Left</th><th>Status</th><th class="text-center" width="100">Actions</th></tr></thead>
+                <tbody>
+                    {% for doc in documents %}
+                    <tr>
+                        <td>{{ doc.document_type.name }}</td>
+                        <td>{{ doc.get_entity_type_display }}</td>
+                        <td>{{ doc.entity_name }}</td>
+                        <td>{{ doc.document_number|default:"-" }}</td>
+                        <td>{{ doc.expiry_date|date:"d/m/Y" }}</td>
+                        <td class="{% if doc.is_expired %}text-danger{% elif doc.is_expiring_soon %}text-warning{% endif %} fw-medium">{{ doc.days_until_expiry }} days</td>
+                        <td>{% if doc.is_expired %}<span class="badge badge-inactive">Expired</span>{% elif doc.is_expiring_soon %}<span class="badge" style="background:#fef3c7;color:#92400e;">Expiring</span>{% else %}<span class="badge badge-active">Active</span>{% endif %}</td>
+                        <td class="text-center">
+                            {% if can_edit %}<a href="{% url 'documents:document_edit' doc.pk %}" class="btn btn-action btn-outline-primary"><i class="fas fa-edit"></i></a>{% endif %}
+                            <a href="{% url 'documents:document_delete' doc.pk %}" class="btn btn-action btn-outline-danger" onclick="return confirm('Delete?');"><i class="fas fa-trash"></i></a>
+                        </td>
+                    </tr>
+                    {% empty %}<tr><td colspan="8" class="text-center py-5 text-muted"><i class="fas fa-folder-open fa-3x mb-3 d-block"></i>No documents found</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

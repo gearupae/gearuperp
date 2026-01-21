@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">GL, Bank, AR, AP opening balances for company onboarding</small>
+    </div>
+    <a href="{% url 'finance:openingbalance_create' %}" class="btn btn-dark">
+        <i class="fas fa-plus me-2"></i>New Opening Balance
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <select name="type" class="form-select">
+                    <option value="">All Types</option>
+                    {% for value, label in entry_types %}
+                    <option value="{{ value }}" {% if request.GET.type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <select name="status" class="form-select">
+                    <option value="">All Status</option>
+                    <option value="draft" {% if request.GET.status == 'draft' %}selected{% endif %}>Draft</option>
+                    <option value="posted" {% if request.GET.status == 'posted' %}selected{% endif %}>Posted</option>
+                    <option value="reversed" {% if request.GET.status == 'reversed' %}selected{% endif %}>Reversed</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-outline-dark">
+                    <i class="fas fa-filter me-2"></i>Filter
+                </button>
+                <a href="{% url 'finance:openingbalance_list' %}" class="btn btn-outline-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+            <div class="card-body text-center py-3">
+                <i class="fas fa-book fa-2x mb-2"></i>
+                <small class="d-block">GL Opening</small>
+                <h5 class="mb-0">{{ entries|length }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-info text-white">
+            <div class="card-body text-center py-3">
+                <i class="fas fa-university fa-2x mb-2"></i>
+                <small class="d-block">Bank Opening</small>
+                <h5 class="mb-0">-</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-success text-white">
+            <div class="card-body text-center py-3">
+                <i class="fas fa-user-check fa-2x mb-2"></i>
+                <small class="d-block">AR Opening</small>
+                <h5 class="mb-0">-</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-warning text-dark">
+            <div class="card-body text-center py-3">
+                <i class="fas fa-truck fa-2x mb-2"></i>
+                <small class="d-block">AP Opening</small>
+                <h5 class="mb-0">-</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Entry #</th>
+                        <th>Type</th>
+                        <th>Date</th>
+                        <th>Fiscal Year</th>
+                        <th class="text-end">Debit</th>
+                        <th class="text-end">Credit</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr>
+                        <td class="fw-medium">
+                            <a href="{% url 'finance:openingbalance_detail' entry.pk %}" class="text-decoration-none">
+                                {{ entry.entry_number }}
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ entry.get_entry_type_display }}</span>
+                        </td>
+                        <td>{{ entry.entry_date|date:"d/m/Y" }}</td>
+                        <td>{{ entry.fiscal_year.name }}</td>
+                        <td class="text-end">{{ entry.total_debit|floatformat:2 }}</td>
+                        <td class="text-end">{{ entry.total_credit|floatformat:2 }}</td>
+                        <td class="text-center">
+                            {% if entry.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif entry.status == 'posted' %}
+                            <span class="badge bg-success">Posted</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Reversed</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'finance:openingbalance_detail' entry.pk %}" class="btn btn-sm btn-outline-dark">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if entry.status == 'draft' %}
+                            <a href="{% url 'finance:openingbalance_edit' entry.pk %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="fas fa-file-invoice fa-3x mb-3"></i>
+                            <p class="mb-0">No opening balance entries found.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

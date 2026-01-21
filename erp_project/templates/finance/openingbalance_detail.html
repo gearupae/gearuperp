@@ -1,0 +1,204 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">{{ entry.get_entry_type_display }} • {{ entry.entry_date|date:"d/m/Y" }}</small>
+    </div>
+    <div class="btn-group">
+        <a href="{% url 'finance:openingbalance_list' %}" class="btn btn-outline-dark">
+            <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+        {% if entry.status == 'draft' %}
+        <a href="{% url 'finance:openingbalance_edit' entry.pk %}" class="btn btn-outline-primary">
+            <i class="fas fa-edit me-2"></i>Edit
+        </a>
+        <form method="post" action="{% url 'finance:openingbalance_post' entry.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success" onclick="return confirm('Post this opening balance entry?');">
+                <i class="fas fa-check me-2"></i>Post
+            </button>
+        </form>
+        {% endif %}
+        {% if entry.status == 'posted' %}
+        <form method="post" action="{% url 'finance:openingbalance_reverse' entry.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-warning" onclick="return confirm('Reverse this opening balance entry?');">
+                <i class="fas fa-undo me-2"></i>Reverse
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Status and Info Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-hashtag fa-2x text-primary mb-2"></i>
+                <small class="d-block text-muted">Entry Number</small>
+                <h5 class="mb-0 fw-bold">{{ entry.entry_number }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-info-circle fa-2x text-info mb-2"></i>
+                <small class="d-block text-muted">Status</small>
+                {% if entry.status == 'draft' %}
+                <h5 class="mb-0"><span class="badge bg-secondary fs-6">Draft</span></h5>
+                {% elif entry.status == 'posted' %}
+                <h5 class="mb-0"><span class="badge bg-success fs-6">Posted</span></h5>
+                {% else %}
+                <h5 class="mb-0"><span class="badge bg-warning fs-6">Reversed</span></h5>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-arrow-up fa-2x text-success mb-2"></i>
+                <small class="d-block text-muted">Total Debit</small>
+                <h5 class="mb-0 fw-bold text-success">{{ entry.total_debit|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center py-4">
+                <i class="fas fa-arrow-down fa-2x text-danger mb-2"></i>
+                <small class="d-block text-muted">Total Credit</small>
+                <h5 class="mb-0 fw-bold text-danger">{{ entry.total_credit|floatformat:2 }}</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Entry Details -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">Entry Details</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <th class="text-muted" style="width: 150px;">Entry Type:</th>
+                        <td>{{ entry.get_entry_type_display }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Fiscal Year:</th>
+                        <td>{{ entry.fiscal_year.name }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Entry Date:</th>
+                        <td>{{ entry.entry_date|date:"d/m/Y" }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-borderless mb-0">
+                    <tr>
+                        <th class="text-muted" style="width: 150px;">Created By:</th>
+                        <td>{{ entry.created_by.get_full_name|default:entry.created_by.username }}</td>
+                    </tr>
+                    {% if entry.posted_by %}
+                    <tr>
+                        <th class="text-muted">Posted By:</th>
+                        <td>{{ entry.posted_by.get_full_name|default:entry.posted_by.username }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Posted Date:</th>
+                        <td>{{ entry.posted_date|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if entry.journal_entry %}
+                    <tr>
+                        <th class="text-muted">Journal Entry:</th>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' entry.journal_entry.pk %}">
+                                {{ entry.journal_entry.entry_number }}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        {% if entry.description %}
+        <hr>
+        <p class="mb-0"><strong>Description:</strong> {{ entry.description }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Entry Lines -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">Opening Balance Lines</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Account</th>
+                        <th>Customer/Vendor</th>
+                        <th>Bank Account</th>
+                        <th>Reference</th>
+                        <th>Due Date</th>
+                        <th class="text-end">Debit</th>
+                        <th class="text-end">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in lines %}
+                    <tr>
+                        <td class="fw-medium">{{ line.account.code }} - {{ line.account.name }}</td>
+                        <td>
+                            {% if line.customer %}
+                            <span class="badge bg-success">{{ line.customer.name }}</span>
+                            {% elif line.vendor %}
+                            <span class="badge bg-warning text-dark">{{ line.vendor.name }}</span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ line.bank_account.name|default:"-" }}</td>
+                        <td>{{ line.reference_number|default:"-" }}</td>
+                        <td>{{ line.due_date|date:"d/m/Y"|default:"-" }}</td>
+                        <td class="text-end">{% if line.debit > 0 %}{{ line.debit|floatformat:2 }}{% endif %}</td>
+                        <td class="text-end">{% if line.credit > 0 %}{{ line.credit|floatformat:2 }}{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="bg-light">
+                    <tr>
+                        <th colspan="5" class="text-end">Totals:</th>
+                        <th class="text-end">{{ entry.total_debit|floatformat:2 }}</th>
+                        <th class="text-end">{{ entry.total_credit|floatformat:2 }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if entry.notes %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+        <h6 class="mb-0 fw-bold">Notes</h6>
+    </div>
+    <div class="card-body">
+        {{ entry.notes|linebreaks }}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+

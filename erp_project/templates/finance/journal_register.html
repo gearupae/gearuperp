@@ -1,0 +1,449 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{% url 'finance:account_list' %}">Finance</a></li>
+                <li class="breadcrumb-item">Reports</li>
+                <li class="breadcrumb-item active">Journal Register</li>
+            </ol>
+        </nav>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Complete audit trail of all journal entries</p>
+    </div>
+    <div class="d-flex gap-2">
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="fas fa-download me-1"></i>Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&export=csv"><i class="fas fa-file-csv me-2"></i>Export CSV</a></li>
+                <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}&export=excel"><i class="fas fa-file-excel me-2"></i>Export Excel</a></li>
+            </ul>
+        </div>
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-2">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-2 me-2">
+                        <i class="fas fa-book text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Entries</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.total_entries|intcomma }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-2 me-2">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Posted</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.posted_count|intcomma }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="bg-secondary bg-opacity-10 rounded p-2 me-2">
+                        <i class="fas fa-edit text-secondary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Draft</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.draft_count|intcomma }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-2 me-2">
+                        <i class="fas fa-undo text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Reversed</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.reversed_count|intcomma }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-2 me-2">
+                        <i class="fas fa-arrow-up text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Debit</p>
+                        <h6 class="mb-0 fw-bold">{{ summary.total_debit|floatformat:2|intcomma }}</h6>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card h-100">
+            <div class="card-body py-3">
+                <div class="d-flex align-items-center">
+                    <div class="bg-danger bg-opacity-10 rounded p-2 me-2">
+                        <i class="fas fa-arrow-down text-danger"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Credit</p>
+                        <h6 class="mb-0 fw-bold">{{ summary.total_credit|floatformat:2|intcomma }}</h6>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h6 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h6>
+        <button class="btn btn-sm btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFilters">
+            Advanced Filters
+        </button>
+    </div>
+    <div class="card-body py-3">
+        <form method="get" id="filterForm">
+            <!-- Basic Filters Row -->
+            <div class="row g-3 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Start Date</label>
+                    <input type="date" name="start_date" class="form-control form-control-sm" value="{{ start_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">End Date</label>
+                    <input type="date" name="end_date" class="form-control form-control-sm" value="{{ end_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Status</label>
+                    <select name="status" class="form-select form-select-sm">
+                        <option value="">All Status</option>
+                        {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Source Module</label>
+                    <select name="source_module" class="form-select form-select-sm">
+                        <option value="">All Sources</option>
+                        {% for value, label in source_module_choices %}
+                        <option value="{{ value }}" {% if request.GET.source_module == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+            </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted">Search</label>
+                    <input type="text" name="search" class="form-control form-control-sm" placeholder="Entry #, Reference..." value="{{ request.GET.search }}">
+            </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary btn-sm me-1">
+                    <i class="fas fa-filter me-1"></i>Filter
+                </button>
+                    <a href="{% url 'finance:journal_register' %}" class="btn btn-light btn-sm">Clear</a>
+                </div>
+            </div>
+            
+            <!-- Advanced Filters (Collapsible) -->
+            <div class="collapse mt-3" id="advancedFilters">
+                <hr>
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Fiscal Year</label>
+                        <select name="fiscal_year" class="form-select form-select-sm">
+                            <option value="">All Years</option>
+                            {% for fy in fiscal_years %}
+                            <option value="{{ fy.id }}" {% if request.GET.fiscal_year == fy.id|stringformat:"d" %}selected{% endif %}>{{ fy.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Period</label>
+                        <select name="period" class="form-select form-select-sm">
+                            <option value="">All Periods</option>
+                            {% for period in periods %}
+                            <option value="{{ period.id }}" {% if request.GET.period == period.id|stringformat:"d" %}selected{% endif %}>{{ period.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Account</label>
+                        <select name="account" class="form-select form-select-sm">
+                            <option value="">All Accounts</option>
+                            {% for acc in accounts %}
+                            <option value="{{ acc.id }}" {% if request.GET.account == acc.id|stringformat:"d" %}selected{% endif %}>{{ acc.code }} - {{ acc.name|truncatechars:20 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Created By</label>
+                        <select name="created_by" class="form-select form-select-sm">
+                            <option value="">All Users</option>
+                            {% for user in users %}
+                            <option value="{{ user.id }}" {% if request.GET.created_by == user.id|stringformat:"d" %}selected{% endif %}>{{ user.get_full_name|default:user.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Min Amount</label>
+                        <input type="number" name="min_amount" class="form-control form-control-sm" placeholder="0.00" step="0.01" value="{{ request.GET.min_amount }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Max Amount</label>
+                        <input type="number" name="max_amount" class="form-control form-control-sm" placeholder="0.00" step="0.01" value="{{ request.GET.max_amount }}">
+                    </div>
+                </div>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Entry Type</label>
+                        <select name="entry_type" class="form-select form-select-sm">
+                            <option value="">All Types</option>
+                            {% for value, label in entry_type_choices %}
+                            <option value="{{ value }}" {% if request.GET.entry_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted">Sort By</label>
+                        <select name="sort" class="form-select form-select-sm">
+                            <option value="-date" {% if request.GET.sort == "-date" or not request.GET.sort %}selected{% endif %}>Date (Newest)</option>
+                            <option value="date" {% if request.GET.sort == "date" %}selected{% endif %}>Date (Oldest)</option>
+                            <option value="entry_number" {% if request.GET.sort == "entry_number" %}selected{% endif %}>Entry # (Asc)</option>
+                            <option value="-entry_number" {% if request.GET.sort == "-entry_number" %}selected{% endif %}>Entry # (Desc)</option>
+                            <option value="-total_debit" {% if request.GET.sort == "-total_debit" %}selected{% endif %}>Amount (Highest)</option>
+                            <option value="total_debit" {% if request.GET.sort == "total_debit" %}selected{% endif %}>Amount (Lowest)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" name="reversal_only" value="1" id="reversalOnly" {% if request.GET.reversal_only == "1" %}checked{% endif %}>
+                            <label class="form-check-label small" for="reversalOnly">
+                                Reversals Only
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Journal Register Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 120px;">Entry #</th>
+                        <th style="width: 100px;">Date</th>
+                        <th style="width: 100px;">Period</th>
+                        <th style="width: 120px;">Source</th>
+                        <th style="width: 150px;">Reference</th>
+                        <th>Description</th>
+                        <th class="text-end" style="width: 120px;">Debit (AED)</th>
+                        <th class="text-end" style="width: 120px;">Credit (AED)</th>
+                        <th style="width: 100px;">Status</th>
+                        <th style="width: 120px;">Created By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in entries %}
+                    <tr class="{% if item.entry.status == 'reversed' %}table-warning{% elif item.entry.status == 'draft' %}table-light{% endif %}">
+                        <td>
+                            <a href="{% url 'finance:journal_register_detail' item.entry.pk %}" class="fw-medium text-decoration-none">
+                                {{ item.entry.entry_number }}
+                            </a>
+                            {% if item.entry.reversal_of %}
+                            <i class="fas fa-undo text-warning ms-1" title="Reversal Entry" data-bs-toggle="tooltip"></i>
+                            {% endif %}
+                            {% if item.entry.period and item.entry.period.is_locked %}
+                            <i class="fas fa-lock text-muted ms-1" title="Period Locked" data-bs-toggle="tooltip"></i>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.entry.date|date:"d/m/Y" }}</td>
+                        <td class="text-muted small">{{ item.entry.period.name|default:"-" }}</td>
+                        <td>
+                            <span class="badge {{ item.source_class }} rounded-pill">{{ item.source_label }}</span>
+                        </td>
+                        <td class="text-truncate" style="max-width: 150px;" title="{{ item.entry.reference }}">
+                            {{ item.entry.reference|default:"-" }}
+                        </td>
+                        <td class="text-truncate" style="max-width: 200px;" title="{{ item.entry.description }}">
+                            {{ item.entry.description|default:"-"|truncatewords:8 }}
+                        </td>
+                        <td class="text-end font-monospace">{{ item.entry.total_debit|floatformat:2|intcomma }}</td>
+                        <td class="text-end font-monospace">{{ item.entry.total_credit|floatformat:2|intcomma }}</td>
+                        <td>
+                            {% if item.entry.status == 'draft' %}
+                                <span class="badge bg-secondary">Draft</span>
+                            {% elif item.entry.status == 'posted' %}
+                                <span class="badge bg-success">Posted</span>
+                            {% elif item.entry.status == 'reversed' %}
+                            <span class="badge bg-warning text-dark">Reversed</span>
+                            {% endif %}
+                            {% if not item.entry.is_balanced %}
+                            <span class="badge bg-danger" title="Debit ≠ Credit">!</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-muted">
+                            {% if item.entry.created_by %}{{ item.entry.created_by.get_full_name|default:item.entry.created_by.username }}{% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">
+                            <i class="fas fa-book fa-3x mb-3 d-block opacity-25"></i>
+                            No journal entries found for the selected criteria
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer bg-light">
+        <nav aria-label="Journal register pagination">
+            <ul class="pagination pagination-sm justify-content-center mb-0">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page=1">
+                        <i class="fas fa-angle-double-left"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">
+                        <i class="fas fa-angle-left"></i>
+                    </a>
+                </li>
+                {% endif %}
+                
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ num }}">{{ num }}</a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">
+                        <i class="fas fa-angle-right"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.paginator.num_pages }}">
+                        <i class="fas fa-angle-double-right"></i>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        <p class="text-center text-muted small mb-0 mt-2">
+            Showing {{ page_obj.start_index }} - {{ page_obj.end_index }} of {{ page_obj.paginator.count }} entries
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Legend -->
+<div class="card mt-4">
+    <div class="card-body py-3">
+        <h6 class="mb-3"><i class="fas fa-info-circle me-2"></i>Legend</h6>
+        <div class="row g-2">
+            <div class="col-auto"><span class="badge bg-success rounded-pill">Sales Invoice</span></div>
+            <div class="col-auto"><span class="badge bg-primary rounded-pill">Purchase Bill</span></div>
+            <div class="col-auto"><span class="badge bg-purple rounded-pill">Payment</span></div>
+            <div class="col-auto"><span class="badge bg-secondary rounded-pill">Bank Transfer</span></div>
+            <div class="col-auto"><span class="badge bg-orange rounded-pill">Expense Claim</span></div>
+            <div class="col-auto"><span class="badge bg-danger rounded-pill">VAT Adjustment</span></div>
+            <div class="col-auto"><span class="badge bg-info rounded-pill">Opening Balance</span></div>
+            <div class="col-auto"><span class="badge bg-warning text-dark rounded-pill">Reversal</span></div>
+            <div class="col-auto"><span class="badge bg-dark rounded-pill">Adjustment</span></div>
+            <div class="col-auto"><span class="badge bg-light text-dark rounded-pill">Manual Journal</span></div>
+        </div>
+        <div class="row g-2 mt-2">
+            <div class="col-auto"><i class="fas fa-lock text-muted me-1"></i><span class="small text-muted">Period Locked</span></div>
+            <div class="col-auto"><i class="fas fa-undo text-warning me-1"></i><span class="small text-muted">Reversal Entry</span></div>
+            <div class="col-auto"><span class="badge bg-danger small">!</span><span class="small text-muted ms-1">Unbalanced Entry</span></div>
+        </div>
+    </div>
+</div>
+
+<style>
+.bg-purple {
+    background-color: #6f42c1 !important;
+}
+.bg-orange {
+    background-color: #fd7e14 !important;
+}
+@media print {
+    .btn, .card-header button, .pagination, form, nav.breadcrumb, .dropdown {
+        display: none !important;
+    }
+    .card {
+        border: 1px solid #ddd !important;
+    }
+    .table {
+        font-size: 10px !important;
+    }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Bootstrap tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+    
+    // Auto-expand advanced filters if any are set
+    var advancedParams = ['fiscal_year', 'period', 'account', 'created_by', 'min_amount', 'max_amount', 'entry_type', 'reversal_only'];
+    var urlParams = new URLSearchParams(window.location.search);
+    advancedParams.forEach(function(param) {
+        if (urlParams.get(param)) {
+            var advancedFilters = document.getElementById('advancedFilters');
+            if (advancedFilters) {
+                advancedFilters.classList.add('show');
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

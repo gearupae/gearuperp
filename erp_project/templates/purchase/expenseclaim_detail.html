@@ -1,0 +1,327 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-2">
+                <li class="breadcrumb-item"><a href="{% url 'purchase:expenseclaim_list' %}">Expense Claims</a></li>
+                <li class="breadcrumb-item active">{{ claim.claim_number }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+    </div>
+    <div>
+        {% if can_submit %}
+        <a href="{% url 'purchase:expenseclaim_submit' claim.pk %}" class="btn btn-primary"
+           onclick="return confirm('Submit this claim for approval?')">
+            <i class="fas fa-paper-plane me-2"></i>Submit for Approval
+        </a>
+        {% endif %}
+        {% if can_approve %}
+        <a href="{% url 'purchase:expenseclaim_approve' claim.pk %}" class="btn btn-success"
+           onclick="return confirm('Approve this claim and post to accounting?')">
+            <i class="fas fa-check me-2"></i>Approve
+        </a>
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">
+            <i class="fas fa-times me-2"></i>Reject
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Expense Items</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th class="text-end">Amount</th>
+                                <th class="text-end">VAT</th>
+                                <th>Receipt</th>
+                                <th>Account</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in claim.items.all %}
+                            <tr>
+                                <td>{{ item.date|date:"d/m/Y" }}</td>
+                                <td>{{ item.get_category_display }}</td>
+                                <td>{{ item.description }}</td>
+                                <td class="text-end">{{ item.amount|floatformat:2|intcomma }}</td>
+                                <td class="text-end">{{ item.vat_amount|floatformat:2|intcomma }}</td>
+                                <td>
+                                    {% if item.has_receipt %}
+                                    <span class="badge bg-success"><i class="fas fa-check"></i></span>
+                                    {% else %}
+                                    <span class="badge bg-secondary"><i class="fas fa-times"></i></span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.expense_account %}
+                                    {{ item.expense_account.code }}
+                                    {% else %}
+                                    <span class="text-muted">Default</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center py-3 text-muted">No items</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="bg-light">
+                            <tr class="fw-bold">
+                                <td colspan="3">Total</td>
+                                <td class="text-end">AED {{ claim.total_amount|floatformat:2|intcomma }}</td>
+                                <td class="text-end">AED {{ claim.total_vat|floatformat:2|intcomma }}</td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        {% if claim.status == 'approved' and can_pay %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-money-bill-wave me-2 text-success"></i>Process Payment</h6>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'purchase:expenseclaim_pay' claim.pk %}">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Bank Account <span class="text-danger">*</span></label>
+                            {{ payment_form.bank_account }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Payment Date <span class="text-danger">*</span></label>
+                            {{ payment_form.payment_date }}
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Reference</label>
+                            {{ payment_form.payment_reference }}
+                        </div>
+                        <div class="col-md-2 mb-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100"
+                                    onclick="return confirm('Process payment of AED {{ claim.total_amount|floatformat:2 }}?')">
+                                <i class="fas fa-check me-1"></i> Pay
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if claim.journal_entry %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-book me-2 text-info"></i>Approval Journal Entry</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted" style="width: 150px;">Entry Number</th>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' claim.journal_entry.pk %}">
+                                {{ claim.journal_entry.entry_number }}
+                            </a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Date</th>
+                        <td>{{ claim.journal_entry.date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Status</th>
+                        <td>
+                            {% if claim.journal_entry.status == 'posted' %}
+                            <span class="badge bg-success">Posted</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ claim.journal_entry.get_status_display }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if claim.payment_journal_entry %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-money-check me-2 text-success"></i>Payment Journal Entry</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted" style="width: 150px;">Entry Number</th>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' claim.payment_journal_entry.pk %}">
+                                {{ claim.payment_journal_entry.entry_number }}
+                            </a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Date</th>
+                        <td>{{ claim.payment_journal_entry.date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Bank</th>
+                        <td>{{ claim.paid_from_bank.name }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2 text-primary"></i>Claim Details</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted">Status</th>
+                        <td>
+                            {% if claim.status == 'draft' %}
+                            <span class="badge bg-secondary">Draft</span>
+                            {% elif claim.status == 'submitted' %}
+                            <span class="badge bg-warning">Submitted</span>
+                            {% elif claim.status == 'approved' %}
+                            <span class="badge bg-success">Approved</span>
+                            {% elif claim.status == 'rejected' %}
+                            <span class="badge bg-danger">Rejected</span>
+                            {% elif claim.status == 'paid' %}
+                            <span class="badge bg-primary">Paid</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Employee</th>
+                        <td>{{ claim.employee.get_full_name|default:claim.employee.username }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Claim Date</th>
+                        <td>{{ claim.claim_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Total Amount</th>
+                        <td class="fw-bold">AED {{ claim.total_amount|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Claimable VAT</th>
+                        <td>AED {{ claim.total_vat|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% if claim.approved_by %}
+                    <tr>
+                        <th class="text-muted">Approved By</th>
+                        <td>{{ claim.approved_by.get_full_name|default:claim.approved_by.username }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Approved On</th>
+                        <td>{{ claim.approved_date|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if claim.paid_date %}
+                    <tr>
+                        <th class="text-muted">Paid On</th>
+                        <td>{{ claim.paid_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Payment Ref</th>
+                        <td>{{ claim.payment_reference|default:"-" }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        
+        {% if claim.rejection_reason %}
+        <div class="card border-0 shadow-sm mb-3 border-danger">
+            <div class="card-header bg-danger text-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-ban me-2"></i>Rejection Reason</h6>
+            </div>
+            <div class="card-body">
+                {{ claim.rejection_reason }}
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if claim.description %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-sticky-note me-2 text-primary"></i>Description</h6>
+            </div>
+            <div class="card-body">
+                {{ claim.description }}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Accounting Flow Info -->
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-route me-2 text-info"></i>Accounting Flow</h6>
+            </div>
+            <div class="card-body small">
+                <p class="mb-2"><strong>On Approval:</strong></p>
+                <code class="d-block mb-2">
+                    Dr Expense Account<br>
+                    Dr VAT Recoverable<br>
+                    Cr Employee Payable
+                </code>
+                <p class="mb-2"><strong>On Payment:</strong></p>
+                <code class="d-block">
+                    Dr Employee Payable<br>
+                    Cr Bank Account
+                </code>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+{% if can_approve %}
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'purchase:expenseclaim_reject' claim.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Reject Expense Claim</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Rejection Reason</label>
+                        <textarea name="rejection_reason" class="form-control" rows="3" 
+                                  placeholder="Enter reason for rejection..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Reject Claim</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
