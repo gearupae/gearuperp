@@ -1,6 +1,7 @@
 """
 CRM Models - Customer/Lead Management
 """
+from decimal import Decimal
 from django.db import models
 from apps.core.models import BaseModel
 from apps.core.utils import generate_number
@@ -31,6 +32,8 @@ class Customer(BaseModel):
     country = models.CharField(max_length=100, default='United Arab Emirates')
     trn = models.CharField(max_length=20, blank=True, verbose_name='Tax Registration Number (TRN)', 
                           help_text='UAE VAT TRN for B2B invoices')
+    payment_terms = models.CharField(max_length=50, blank=True, default='Net 30')
+    credit_limit = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     customer_type = models.CharField(max_length=20, choices=CUSTOMER_TYPE_CHOICES, default='lead')
     notes = models.TextField(blank=True)

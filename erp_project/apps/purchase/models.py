@@ -25,6 +25,12 @@ class Vendor(BaseModel):
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, default='United Arab Emirates')
+    trn = models.CharField(max_length=20, blank=True, verbose_name='Tax Registration Number (TRN)',
+                          help_text='UAE VAT TRN for B2B transactions')
+    payment_terms = models.CharField(max_length=50, blank=True, default='Net 30')
+    credit_limit = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     notes = models.TextField(blank=True)
     
