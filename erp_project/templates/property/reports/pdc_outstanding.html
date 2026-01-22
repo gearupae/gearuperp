@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}PDC Outstanding Report{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">PDC Outstanding vs Cleared</h4>
+        <p class="text-muted mb-0">Summary of outstanding PDC cheques by period</p>
+    </div>
+    <div>
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-money-check text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Outstanding</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.total_outstanding|floatformat:0|intcomma }}</h5>
+                        <small class="text-muted">{{ summary.total_count }} cheques</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-inbox text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">In Hand (Received)</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.total_received|floatformat:0|intcomma }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-hourglass-half text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">In Clearing (Deposited)</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.total_deposited|floatformat:0|intcomma }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Cleared (This Year)</p>
+                        <h5 class="mb-0 fw-bold">{{ summary.total_cleared|floatformat:0|intcomma }}</h5>
+                        <small class="text-muted">{{ summary.cleared_count }} cheques</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Monthly Breakdown -->
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-calendar-alt me-2 text-primary"></i>Outstanding by Month</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="text-end">Received (In Hand)</th>
+                        <th class="text-end">Deposited (Clearing)</th>
+                        <th class="text-end">Total Outstanding</th>
+                        <th class="text-center">Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, data in monthly_data.items %}
+                    <tr>
+                        <td>{{ data.month }}</td>
+                        <td class="text-end">{{ data.received|floatformat:2|intcomma }}</td>
+                        <td class="text-end">{{ data.deposited|floatformat:2|intcomma }}</td>
+                        <td class="text-end fw-bold">{{ data.received|add:data.deposited|floatformat:2|intcomma }}</td>
+                        <td class="text-center">{{ data.count }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">No outstanding PDCs</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if monthly_data %}
+                <tfoot class="table-light">
+                    <tr class="fw-bold">
+                        <td>Total</td>
+                        <td class="text-end">{{ summary.total_received|floatformat:2|intcomma }}</td>
+                        <td class="text-end">{{ summary.total_deposited|floatformat:2|intcomma }}</td>
+                        <td class="text-end">{{ summary.total_outstanding|floatformat:2|intcomma }}</td>
+                        <td class="text-center">{{ summary.total_count }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Outstanding PDC List -->
+<div class="card">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-list me-2 text-primary"></i>Outstanding PDC Details</h5>
+        <a href="{% url 'property:pdc_list' %}?status=received" class="btn btn-sm btn-outline-primary">View All</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>PDC No</th>
+                        <th>Cheque No</th>
+                        <th>Cheque Date</th>
+                        <th>Tenant</th>
+                        <th class="text-end">Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pdc in outstanding_pdcs %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'property:pdc_detail' pdc.pk %}" class="text-decoration-none">
+                                {{ pdc.pdc_number }}
+                            </a>
+                        </td>
+                        <td>{{ pdc.cheque_number }}</td>
+                        <td>{{ pdc.cheque_date|date:"d M Y" }}</td>
+                        <td>{{ pdc.tenant.name }}</td>
+                        <td class="text-end">{{ pdc.amount|floatformat:2|intcomma }}</td>
+                        <td>
+                            {% if pdc.status == 'received' %}
+                            <span class="badge bg-info">Received</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Deposited</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">No outstanding PDCs</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

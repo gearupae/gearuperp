@@ -1,0 +1,911 @@
+"""
+Property Management Models - PDC & Bank Reconciliation
+Enterprise-grade handling of Post-Dated Cheques with proper accounting integration.
+
+Key Features:
+- Composite uniqueness for cheque identification
+- PDC Control Account handling
+- Ambiguous match detection in bank reconciliation
+- Manual allocation for multiple PDC matching
+- Cheque bounce handling with full audit trail
+"""
+from django.db import models
+from django.db.models import Sum, Q
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from decimal import Decimal
+from datetime import date
+from apps.core.models import BaseModel
+from apps.core.utils import generate_number
+
+
+class Property(BaseModel):
+    """
+    Property/Building for rental management.
+    """
+    property_number = models.CharField(max_length=50, unique=True, editable=False)
+    name = models.CharField(max_length=200)
+    address = models.TextField()
+    city = models.CharField(max_length=100, default='Dubai')
+    emirate = models.CharField(max_length=50, default='Dubai')
+    country = models.CharField(max_length=100, default='United Arab Emirates')
+    property_type = models.CharField(max_length=50, choices=[
+        ('residential', 'Residential'),
+        ('commercial', 'Commercial'),
+        ('mixed', 'Mixed Use'),
+        ('industrial', 'Industrial'),
+    ], default='residential')
+    total_units = models.PositiveIntegerField(default=0)
+    description = models.TextField(blank=True)
+    
+    # Accounting
+    ar_account = models.ForeignKey(
+        'finance.Account',
+        on_delete=models.PROTECT,
+        related_name='property_ar',
+        null=True, blank=True,
+        help_text='Trade Debtors - Property Account'
+    )
+    
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'Properties'
+    
+    def __str__(self):
+        return f"{self.property_number} - {self.name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.property_number:
+            self.property_number = generate_number('PROP', Property, 'property_number')
+        super().save(*args, **kwargs)
+
+
+class Unit(BaseModel):
+    """
+    Individual unit within a property.
+    """
+    unit_number = models.CharField(max_length=50)
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='units')
+    unit_type = models.CharField(max_length=50, choices=[
+        ('apartment', 'Apartment'),
+        ('villa', 'Villa'),
+        ('office', 'Office'),
+        ('shop', 'Shop/Retail'),
+        ('warehouse', 'Warehouse'),
+        ('parking', 'Parking'),
+        ('storage', 'Storage'),
+    ], default='apartment')
+    floor = models.CharField(max_length=20, blank=True)
+    area_sqft = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    bedrooms = models.PositiveIntegerField(default=0)
+    bathrooms = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=20, choices=[
+        ('available', 'Available'),
+        ('occupied', 'Occupied'),
+        ('maintenance', 'Under Maintenance'),
+        ('reserved', 'Reserved'),
+    ], default='available')
+    monthly_rent = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    class Meta:
+        ordering = ['property', 'unit_number']
+        unique_together = ['property', 'unit_number']
+    
+    def __str__(self):
+        return f"{self.property.name} - {self.unit_number}"
+
+
+class Tenant(BaseModel):
+    """
+    Tenant for property rental.
+    Links to CRM Customer for unified customer management.
+    """
+    tenant_number = models.CharField(max_length=50, unique=True, editable=False)
+    name = models.CharField(max_length=200)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    mobile = models.CharField(max_length=20, blank=True)
+    company = models.CharField(max_length=200, blank=True)
+    
+    # Emirates ID / Trade License
+    emirates_id = models.CharField(max_length=20, blank=True)
+    trade_license = models.CharField(max_length=50, blank=True)
+    trn = models.CharField(max_length=20, blank=True, verbose_name='Tax Registration Number')
+    
+    # Address
+    address = models.TextField(blank=True)
+    city = models.CharField(max_length=100, default='Dubai')
+    country = models.CharField(max_length=100, default='United Arab Emirates')
+    
+    # Status
+    status = models.CharField(max_length=20, choices=[
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+        ('blacklisted', 'Blacklisted'),
+    ], default='active')
+    
+    # Accounting - Tenant-specific AR sub-account
+    ar_account = models.ForeignKey(
+        'finance.Account',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='tenant_ar',
+        help_text='Tenant-specific Trade Debtors account'
+    )
+    
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['name']
+    
+    def __str__(self):
+        return f"{self.tenant_number} - {self.name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.tenant_number:
+            self.tenant_number = generate_number('TEN', Tenant, 'tenant_number')
+        super().save(*args, **kwargs)
+    
+    @property
+    def outstanding_balance(self):
+        """Calculate total outstanding balance for this tenant."""
+        from apps.finance.models import JournalLine
+        if not self.ar_account:
+            return Decimal('0.00')
+        balance = JournalLine.objects.filter(
+            account=self.ar_account,
+            journal_entry__status='posted'
+        ).aggregate(
+            total=Sum('debit') - Sum('credit')
+        )['total'] or Decimal('0.00')
+        return balance
+
+
+class Lease(BaseModel):
+    """
+    Lease/Tenancy contract.
+    """
+    lease_number = models.CharField(max_length=50, unique=True, editable=False)
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, related_name='leases', null=True, blank=True)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='leases')
+    
+    # Lease period
+    start_date = models.DateField()
+    end_date = models.DateField()
+    
+    # Rent details
+    annual_rent = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_frequency = models.CharField(max_length=20, choices=[
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('semi_annual', 'Semi-Annual'),
+        ('annual', 'Annual'),
+    ], default='monthly')
+    number_of_cheques = models.PositiveIntegerField(default=12)
+    
+    # Security deposit
+    security_deposit = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    deposit_paid = models.BooleanField(default=False)
+    
+    # Status
+    status = models.CharField(max_length=20, choices=[
+        ('draft', 'Draft'),
+        ('active', 'Active'),
+        ('expired', 'Expired'),
+        ('terminated', 'Terminated'),
+        ('renewed', 'Renewed'),
+    ], default='draft')
+    
+    # Ejari (UAE rental registration)
+    ejari_number = models.CharField(max_length=50, blank=True)
+    ejari_registered = models.BooleanField(default=False)
+    
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-start_date']
+    
+    def __str__(self):
+        return f"{self.lease_number} - {self.tenant.name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.lease_number:
+            self.lease_number = generate_number('LEASE', Lease, 'lease_number')
+        super().save(*args, **kwargs)
+    
+    @property
+    def monthly_rent(self):
+        """Calculate monthly rent amount."""
+        return self.annual_rent / 12
+    
+    @property
+    def payment_amount(self):
+        """Calculate amount per payment based on frequency."""
+        if self.payment_frequency == 'monthly':
+            return self.annual_rent / 12
+        elif self.payment_frequency == 'quarterly':
+            return self.annual_rent / 4
+        elif self.payment_frequency == 'semi_annual':
+            return self.annual_rent / 2
+        else:  # annual
+            return self.annual_rent
+    
+    @property
+    def num_cheques(self):
+        """Alias for number_of_cheques."""
+        return self.number_of_cheques
+    
+    @property
+    def days_until_expiry(self):
+        """Calculate days until lease expires."""
+        if self.end_date:
+            delta = self.end_date - date.today()
+            return delta.days if delta.days >= 0 else None
+        return None
+    
+    @property
+    def lease_type(self):
+        """Get lease type from unit type."""
+        if self.unit:
+            if self.unit.unit_type in ['apartment', 'villa']:
+                return 'residential'
+            else:
+                return 'commercial'
+        return 'residential'
+
+
+class PDCCheque(BaseModel):
+    """
+    Post-Dated Cheque (PDC) with composite uniqueness.
+    
+    UNIQUE IDENTIFICATION (Composite):
+    - Cheque Number
+    - Bank Name
+    - Cheque Date
+    - Amount
+    - Tenant ID
+    
+    This allows same cheque number/amount/bank for DIFFERENT tenants.
+    """
+    STATUS_CHOICES = [
+        ('received', 'Received'),
+        ('deposited', 'Deposited'),
+        ('cleared', 'Cleared'),
+        ('bounced', 'Bounced'),
+        ('returned', 'Returned to Tenant'),
+        ('replaced', 'Replaced'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    DEPOSIT_STATUS_CHOICES = [
+        ('pending', 'Pending Deposit'),
+        ('in_clearing', 'In Clearing'),
+        ('cleared', 'Cleared'),
+        ('bounced', 'Bounced'),
+    ]
+    
+    pdc_number = models.CharField(max_length=50, unique=True, editable=False)
+    
+    # Cheque details - composite uniqueness
+    cheque_number = models.CharField(max_length=50)
+    bank_name = models.CharField(max_length=200)
+    cheque_date = models.DateField(help_text='Post-dated cheque date')
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='pdc_cheques')
+    
+    # Additional cheque info
+    drawer_name = models.CharField(max_length=200, blank=True, help_text='Name on cheque')
+    drawer_account = models.CharField(max_length=50, blank=True)
+    
+    # Link to lease
+    lease = models.ForeignKey(Lease, on_delete=models.SET_NULL, null=True, blank=True, related_name='pdc_cheques')
+    
+    # Purpose
+    purpose = models.CharField(max_length=50, choices=[
+        ('rent', 'Rent Payment'),
+        ('security_deposit', 'Security Deposit'),
+        ('maintenance', 'Maintenance Fee'),
+        ('other', 'Other'),
+    ], default='rent')
+    payment_period_start = models.DateField(null=True, blank=True, help_text='Rent period start date')
+    payment_period_end = models.DateField(null=True, blank=True, help_text='Rent period end date')
+    
+    # Status tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='received')
+    deposit_status = models.CharField(max_length=20, choices=DEPOSIT_STATUS_CHOICES, default='pending')
+    
+    # Receipt details
+    received_date = models.DateField(default=date.today)
+    received_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='received_pdcs'
+    )
+    
+    # Deposit details
+    deposited_date = models.DateField(null=True, blank=True)
+    deposited_to_bank = models.ForeignKey(
+        'finance.BankAccount',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='deposited_pdcs'
+    )
+    deposited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='deposited_pdcs'
+    )
+    
+    # Clearing details
+    cleared_date = models.DateField(null=True, blank=True)
+    clearing_reference = models.CharField(max_length=100, blank=True)
+    
+    # Accounting
+    journal_entry = models.ForeignKey(
+        'finance.JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='pdc_cheques',
+        help_text='Journal entry on clearing'
+    )
+    pdc_control_journal = models.ForeignKey(
+        'finance.JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='pdc_control_entries',
+        help_text='Journal entry for PDC Control on deposit'
+    )
+    
+    # Bounce details
+    bounce_date = models.DateField(null=True, blank=True)
+    bounce_reason = models.CharField(max_length=200, blank=True)
+    bounce_charges = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    bounce_journal = models.ForeignKey(
+        'finance.JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bounced_pdcs'
+    )
+    
+    # Replacement tracking
+    replaced_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='replaces'
+    )
+    
+    # Bank reconciliation
+    bank_statement_line = models.ForeignKey(
+        'finance.BankStatementLine',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='matched_pdcs'
+    )
+    reconciled = models.BooleanField(default=False)
+    reconciled_date = models.DateField(null=True, blank=True)
+    reconciled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reconciled_pdcs'
+    )
+    
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['cheque_date']
+        # Composite uniqueness - allows same cheque number for different tenants
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cheque_number', 'bank_name', 'cheque_date', 'amount', 'tenant'],
+                name='unique_pdc_identification'
+            )
+        ]
+    
+    def __str__(self):
+        return f"PDC {self.pdc_number} - {self.cheque_number} ({self.tenant.name})"
+    
+    def save(self, *args, **kwargs):
+        if not self.pdc_number:
+            self.pdc_number = generate_number('PDC', PDCCheque, 'pdc_number')
+        super().save(*args, **kwargs)
+    
+    def clean(self):
+        """Validate PDC before saving."""
+        # Cheque date should not be in the past for new PDCs
+        if not self.pk and self.cheque_date and self.cheque_date < date.today():
+            raise ValidationError({'cheque_date': 'Post-dated cheque date cannot be in the past.'})
+        
+        # Amount must be positive
+        if self.amount <= 0:
+            raise ValidationError({'amount': 'Amount must be positive.'})
+    
+    def deposit(self, bank_account, user, deposit_date=None):
+        """
+        Deposit PDC to bank.
+        Creates PDC Control Account entry (not Bank directly).
+        
+        Journal Entry:
+        Dr PDC Control Account
+        Cr Trade Debtors - Property (Tenant)
+        """
+        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        
+        if self.status != 'received':
+            raise ValidationError('Only received PDCs can be deposited.')
+        
+        if not deposit_date:
+            deposit_date = date.today()
+        
+        # Get accounts from mapping
+        try:
+            pdc_control = AccountMapping.objects.get(transaction_type='pdc_control').debit_account
+        except AccountMapping.DoesNotExist:
+            pdc_control = Account.objects.filter(code__icontains='pdc', account_type='asset').first()
+            if not pdc_control:
+                raise ValidationError('PDC Control Account not configured.')
+        
+        ar_account = self.tenant.ar_account
+        if not ar_account:
+            raise ValidationError(f'Tenant {self.tenant.name} does not have AR account configured.')
+        
+        # Create journal entry for PDC deposit
+        journal = JournalEntry.objects.create(
+            date=deposit_date,
+            reference=f"PDC Deposit - {self.cheque_number}",
+            description=f"PDC deposited for {self.tenant.name} - Cheque: {self.cheque_number}",
+            source_module='manual',
+            entry_type='standard',
+            status='draft',
+            created_by=user
+        )
+        
+        # Dr PDC Control Account
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=pdc_control,
+            debit=self.amount,
+            credit=Decimal('0.00'),
+            description=f"PDC from {self.tenant.name}"
+        )
+        
+        # Cr Trade Debtors (Tenant AR)
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=ar_account,
+            debit=Decimal('0.00'),
+            credit=self.amount,
+            description=f"PDC {self.cheque_number} deposited"
+        )
+        
+        # Post journal
+        journal.status = 'posted'
+        journal.posted_by = user
+        journal.posted_at = timezone.now()
+        journal.save()
+        
+        # Update account balances
+        pdc_control.balance += self.amount
+        pdc_control.save()
+        ar_account.balance -= self.amount
+        ar_account.save()
+        
+        # Update PDC status
+        self.status = 'deposited'
+        self.deposit_status = 'in_clearing'
+        self.deposited_date = deposit_date
+        self.deposited_to_bank = bank_account
+        self.deposited_by = user
+        self.pdc_control_journal = journal
+        self.save()
+        
+        return journal
+    
+    def clear(self, user, clearing_date=None, clearing_reference=''):
+        """
+        Mark PDC as cleared in bank.
+        Moves from PDC Control to Bank.
+        
+        Journal Entry:
+        Dr Bank
+        Cr PDC Control Account
+        """
+        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        
+        if self.status != 'deposited' or self.deposit_status != 'in_clearing':
+            raise ValidationError('Only deposited PDCs in clearing can be cleared.')
+        
+        if not clearing_date:
+            clearing_date = date.today()
+        
+        # Get accounts
+        try:
+            pdc_control = AccountMapping.objects.get(transaction_type='pdc_control').debit_account
+        except AccountMapping.DoesNotExist:
+            pdc_control = Account.objects.filter(code__icontains='pdc', account_type='asset').first()
+        
+        bank_account = self.deposited_to_bank
+        if not bank_account or not bank_account.gl_account:
+            raise ValidationError('Bank account not configured for this PDC.')
+        
+        # Create clearing journal entry
+        journal = JournalEntry.objects.create(
+            date=clearing_date,
+            reference=f"PDC Cleared - {self.cheque_number}",
+            description=f"PDC cleared for {self.tenant.name} - Cheque: {self.cheque_number}",
+            source_module='manual',
+            entry_type='standard',
+            status='draft',
+            created_by=user
+        )
+        
+        # Dr Bank
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=bank_account.gl_account,
+            debit=self.amount,
+            credit=Decimal('0.00'),
+            description=f"PDC {self.cheque_number} cleared"
+        )
+        
+        # Cr PDC Control Account
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=pdc_control,
+            debit=Decimal('0.00'),
+            credit=self.amount,
+            description=f"PDC {self.cheque_number} cleared from control"
+        )
+        
+        # Post journal
+        journal.status = 'posted'
+        journal.posted_by = user
+        journal.posted_at = timezone.now()
+        journal.save()
+        
+        # Update account balances
+        bank_account.gl_account.balance += self.amount
+        bank_account.gl_account.save()
+        pdc_control.balance -= self.amount
+        pdc_control.save()
+        
+        # Update PDC status
+        self.status = 'cleared'
+        self.deposit_status = 'cleared'
+        self.cleared_date = clearing_date
+        self.clearing_reference = clearing_reference
+        self.journal_entry = journal
+        self.save()
+        
+        return journal
+    
+    def bounce(self, user, bounce_date=None, bounce_reason='', bounce_charges=Decimal('0.00')):
+        """
+        Mark PDC as bounced. Reverses the deposit entry.
+        
+        Journal Entry:
+        Dr Trade Debtors - Property (Tenant)
+        Cr Bank (if cleared) OR Cr PDC Control (if deposited)
+        
+        Optional (if bounce charges):
+        Dr Cheque Bounce Charges (Expense)
+        Cr Other Income / Bank
+        """
+        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        
+        if self.status not in ['deposited', 'cleared']:
+            raise ValidationError('Only deposited or cleared PDCs can bounce.')
+        
+        if not bounce_date:
+            bounce_date = date.today()
+        
+        # Get tenant AR account
+        ar_account = self.tenant.ar_account
+        if not ar_account:
+            raise ValidationError(f'Tenant {self.tenant.name} does not have AR account configured.')
+        
+        # Determine which account to credit (Bank or PDC Control)
+        if self.status == 'cleared':
+            credit_account = self.deposited_to_bank.gl_account
+        else:
+            try:
+                credit_account = AccountMapping.objects.get(transaction_type='pdc_control').debit_account
+            except AccountMapping.DoesNotExist:
+                credit_account = Account.objects.filter(code__icontains='pdc', account_type='asset').first()
+        
+        # Create bounce reversal journal entry
+        journal = JournalEntry.objects.create(
+            date=bounce_date,
+            reference=f"PDC Bounce - {self.cheque_number}",
+            description=f"Cheque bounced for {self.tenant.name} - Reason: {bounce_reason}",
+            source_module='manual',
+            entry_type='reversal',
+            status='draft',
+            created_by=user
+        )
+        
+        # Dr Trade Debtors (restore AR)
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=ar_account,
+            debit=self.amount,
+            credit=Decimal('0.00'),
+            description=f"PDC {self.cheque_number} bounced - AR restored"
+        )
+        
+        # Cr Bank/PDC Control
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=credit_account,
+            debit=Decimal('0.00'),
+            credit=self.amount,
+            description=f"PDC {self.cheque_number} bounced"
+        )
+        
+        # Handle bounce charges if any
+        if bounce_charges > 0:
+            try:
+                bounce_expense = Account.objects.get(code__icontains='bounce', account_type='expense')
+            except Account.DoesNotExist:
+                bounce_expense = Account.objects.filter(account_type='expense').first()
+            
+            # Dr Bounce Charges Expense
+            JournalLine.objects.create(
+                journal_entry=journal,
+                account=bounce_expense,
+                debit=bounce_charges,
+                credit=Decimal('0.00'),
+                description=f"Bounce charges for {self.cheque_number}"
+            )
+            
+            # Cr Trade Debtors (charge to tenant)
+            JournalLine.objects.create(
+                journal_entry=journal,
+                account=ar_account,
+                debit=Decimal('0.00'),
+                credit=bounce_charges,
+                description=f"Bounce charges billed to tenant"
+            )
+        
+        # Post journal
+        journal.status = 'posted'
+        journal.posted_by = user
+        journal.posted_at = timezone.now()
+        journal.save()
+        
+        # Update account balances
+        ar_account.balance += self.amount
+        ar_account.save()
+        credit_account.balance -= self.amount
+        credit_account.save()
+        
+        # Update PDC status
+        self.status = 'bounced'
+        self.deposit_status = 'bounced'
+        self.bounce_date = bounce_date
+        self.bounce_reason = bounce_reason
+        self.bounce_charges = bounce_charges
+        self.bounce_journal = journal
+        self.reconciled = False  # Unreconcile if was reconciled
+        self.save()
+        
+        return journal
+
+
+class PDCBankMatch(BaseModel):
+    """
+    Tracks potential matches between bank statement lines and PDCs.
+    Used for identifying ambiguous matches requiring manual allocation.
+    """
+    MATCH_STATUS_CHOICES = [
+        ('potential', 'Potential Match'),
+        ('ambiguous', 'Ambiguous - Multiple Matches'),
+        ('confirmed', 'Confirmed'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    bank_statement_line = models.ForeignKey(
+        'finance.BankStatementLine',
+        on_delete=models.CASCADE,
+        related_name='pdc_matches'
+    )
+    pdc = models.ForeignKey(PDCCheque, on_delete=models.CASCADE, related_name='bank_matches')
+    
+    match_status = models.CharField(max_length=20, choices=MATCH_STATUS_CHOICES, default='potential')
+    match_score = models.DecimalField(max_digits=5, decimal_places=2, default=0, 
+                                       help_text='Match confidence score (0-100)')
+    
+    # Match criteria flags
+    amount_matched = models.BooleanField(default=False)
+    date_matched = models.BooleanField(default=False)
+    cheque_number_matched = models.BooleanField(default=False)
+    bank_matched = models.BooleanField(default=False)
+    
+    # Manual allocation
+    allocated_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    allocated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='pdc_allocations'
+    )
+    allocated_at = models.DateTimeField(null=True, blank=True)
+    allocation_reason = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-match_score']
+        unique_together = ['bank_statement_line', 'pdc']
+    
+    def __str__(self):
+        return f"Match: {self.bank_statement_line} <-> {self.pdc}"
+
+
+class PDCAllocation(BaseModel):
+    """
+    Records manual allocation of a bank statement line to multiple PDCs.
+    Required when one bank transaction matches multiple PDCs.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('confirmed', 'Confirmed'),
+        ('reversed', 'Reversed'),
+    ]
+    
+    allocation_number = models.CharField(max_length=50, unique=True, editable=False)
+    bank_statement_line = models.ForeignKey(
+        'finance.BankStatementLine',
+        on_delete=models.PROTECT,
+        related_name='pdc_allocations'
+    )
+    
+    allocation_date = models.DateField(default=date.today)
+    total_amount = models.DecimalField(max_digits=15, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # Audit
+    allocated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_pdc_allocations'
+    )
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='confirmed_pdc_allocations'
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    
+    reason = models.TextField(blank=True, help_text='Reason for manual allocation')
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-allocation_date']
+    
+    def __str__(self):
+        return f"Allocation {self.allocation_number}"
+    
+    def save(self, *args, **kwargs):
+        if not self.allocation_number:
+            self.allocation_number = generate_number('ALLOC', PDCAllocation, 'allocation_number')
+        super().save(*args, **kwargs)
+    
+    def confirm(self, user):
+        """
+        Confirm allocation and mark all related PDCs as reconciled.
+        """
+        if self.status != 'draft':
+            raise ValidationError('Only draft allocations can be confirmed.')
+        
+        # Validate total allocation matches bank line
+        total_allocated = self.lines.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        if total_allocated != self.total_amount:
+            raise ValidationError(f'Total allocated ({total_allocated}) does not match bank line ({self.total_amount})')
+        
+        # Mark all PDCs as reconciled
+        for line in self.lines.all():
+            pdc = line.pdc
+            pdc.reconciled = True
+            pdc.reconciled_date = date.today()
+            pdc.reconciled_by = user
+            pdc.bank_statement_line = self.bank_statement_line
+            
+            # Clear PDC if not already cleared
+            if pdc.status == 'deposited' and pdc.deposit_status == 'in_clearing':
+                pdc.clear(user, clearing_date=self.allocation_date)
+            
+            pdc.save()
+        
+        # Update bank statement line
+        self.bank_statement_line.reconciliation_status = 'matched'
+        self.bank_statement_line.match_method = 'manual'
+        self.bank_statement_line.save()
+        
+        # Update allocation
+        self.status = 'confirmed'
+        self.confirmed_by = user
+        self.confirmed_at = timezone.now()
+        self.save()
+
+
+class PDCAllocationLine(models.Model):
+    """
+    Individual line in a PDC allocation.
+    """
+    allocation = models.ForeignKey(PDCAllocation, on_delete=models.CASCADE, related_name='lines')
+    pdc = models.ForeignKey(PDCCheque, on_delete=models.PROTECT, related_name='allocation_lines')
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    notes = models.CharField(max_length=200, blank=True)
+    
+    class Meta:
+        unique_together = ['allocation', 'pdc']
+    
+    def __str__(self):
+        return f"{self.allocation} - {self.pdc}: {self.amount}"
+
+
+class AmbiguousMatchLog(BaseModel):
+    """
+    Audit log for ambiguous matches detected during bank reconciliation.
+    No hard delete - maintains full audit trail.
+    """
+    RESOLUTION_CHOICES = [
+        ('pending', 'Pending Resolution'),
+        ('allocated', 'Manually Allocated'),
+        ('rejected', 'Rejected'),
+        ('auto_resolved', 'Auto-Resolved'),
+    ]
+    
+    bank_statement_line = models.ForeignKey(
+        'finance.BankStatementLine',
+        on_delete=models.PROTECT,
+        related_name='ambiguous_match_logs'
+    )
+    
+    detected_at = models.DateTimeField(auto_now_add=True)
+    detected_by_system = models.BooleanField(default=True)
+    
+    # Matching PDCs (stored as JSON for audit)
+    matching_pdc_ids = models.JSONField(default=list)
+    match_criteria = models.JSONField(default=dict, help_text='Criteria used for matching')
+    
+    # Resolution
+    resolution_status = models.CharField(max_length=20, choices=RESOLUTION_CHOICES, default='pending')
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='resolved_ambiguous_matches'
+    )
+    resolution_notes = models.TextField(blank=True)
+    
+    # Link to allocation if manually allocated
+    allocation = models.ForeignKey(
+        PDCAllocation,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ambiguous_match_logs'
+    )
+    
+    class Meta:
+        ordering = ['-detected_at']
+    
+    def __str__(self):
+        return f"Ambiguous Match - {self.bank_statement_line} ({len(self.matching_pdc_ids)} PDCs)"
+
+
+class PDCRegisterEntry(models.Model):
+    """
+    View/Report model for PDC Register.
+    This is a database view for reporting purposes.
+    """
+    class Meta:
+        managed = False
+        db_table = 'property_pdc_register_view'
+

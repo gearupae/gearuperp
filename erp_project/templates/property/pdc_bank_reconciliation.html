@@ -1,0 +1,274 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}PDC Bank Reconciliation{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">PDC Bank Reconciliation</h4>
+        <p class="text-muted mb-0">Match bank statement lines with PDC cheques</p>
+    </div>
+    <div>
+        <a href="{% url 'property:reconciliation_exceptions_report' %}" class="btn btn-outline-danger">
+            <i class="fas fa-exclamation-triangle me-1"></i> View Exceptions
+        </a>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Bank Account</label>
+                <select name="bank" class="form-select" onchange="this.form.submit()">
+                    <option value="">Select Bank Account...</option>
+                    {% for bank in banks %}
+                    <option value="{{ bank.pk }}" {% if selected_bank == bank.pk|stringformat:"i" %}selected{% endif %}>
+                        {{ bank.name }} ({{ bank.account_number }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if statements %}
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Bank Statement</label>
+                <select name="statement" class="form-select" onchange="this.form.submit()">
+                    <option value="">Select Statement...</option>
+                    {% for stmt in statements %}
+                    <option value="{{ stmt.pk }}" {% if selected_statement == stmt.pk|stringformat:"i" %}selected{% endif %}>
+                        {{ stmt.statement_number }} ({{ stmt.statement_start_date|date:"d M" }} - {{ stmt.statement_end_date|date:"d M Y" }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            {% if selected_statement %}
+            <div class="col-md-4">
+                <a href="{% url 'property:pdc_auto_match' selected_statement %}" class="btn btn-primary w-100">
+                    <i class="fas fa-bolt me-1"></i> Auto-Match PDCs
+                </a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{% if selected_statement %}
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Matched</p>
+                        <h5 class="mb-0 fw-bold text-success">{{ matched_lines|length }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-exclamation-triangle text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Ambiguous</p>
+                        <h5 class="mb-0 fw-bold text-warning">{{ ambiguous_count }}</h5>
+                        <small class="text-muted">Require Manual Allocation</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-secondary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-question-circle text-secondary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Unmatched</p>
+                        <h5 class="mb-0 fw-bold">{{ unmatched_lines|length }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ambiguous Matches -->
+{% if ambiguous_lines %}
+<div class="card mb-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Ambiguous Matches - Manual Allocation Required</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="alert alert-warning m-3 mb-0">
+            <i class="fas fa-info-circle me-2"></i>
+            These bank transactions match multiple PDC cheques. System cannot auto-reconcile. 
+            <strong>Manual allocation is mandatory.</strong>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th class="text-end">Credit</th>
+                        <th>Matching PDCs</th>
+                        <th class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in ambiguous_lines %}
+                    <tr class="table-warning">
+                        <td>{{ item.line.transaction_date|date:"d M Y" }}</td>
+                        <td>{{ item.line.reference|default:"-" }}</td>
+                        <td>{{ item.line.description|truncatechars:40 }}</td>
+                        <td class="text-end fw-bold">{{ item.line.credit|floatformat:2|intcomma }}</td>
+                        <td>
+                            <span class="badge bg-danger">{{ item.matches|length }} PDCs match</span>
+                            <br>
+                            <small class="text-muted">
+                                {% for pdc in item.matches|slice:":3" %}
+                                {{ pdc.tenant.name|truncatechars:15 }}{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                                {% if item.matches|length > 3 %}...{% endif %}
+                            </small>
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'property:pdc_manual_allocation' item.line.pk %}" class="btn btn-warning btn-sm">
+                                <i class="fas fa-edit me-1"></i> Allocate
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Matched Lines -->
+{% if matched_lines %}
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Matched Transactions</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th class="text-end">Credit</th>
+                        <th>Matched PDC</th>
+                        <th>Tenant</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in matched_lines %}
+                    <tr>
+                        <td>{{ item.line.transaction_date|date:"d M Y" }}</td>
+                        <td>{{ item.line.reference|default:"-" }}</td>
+                        <td>{{ item.line.description|truncatechars:40 }}</td>
+                        <td class="text-end">{{ item.line.credit|floatformat:2|intcomma }}</td>
+                        <td>
+                            {% for pdc in item.matches %}
+                            <a href="{% url 'property:pdc_detail' pdc.pk %}" class="text-decoration-none">{{ pdc.pdc_number }}</a>{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% for pdc in item.matches %}
+                            {{ pdc.tenant.name }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Unmatched Lines -->
+{% if unmatched_lines %}
+<div class="card mb-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-question-circle me-2 text-secondary"></i>Unmatched Transactions</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th class="text-end">Credit</th>
+                        <th>Potential PDCs</th>
+                        <th class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in unmatched_lines %}
+                    <tr>
+                        <td>{{ item.line.transaction_date|date:"d M Y" }}</td>
+                        <td>{{ item.line.reference|default:"-" }}</td>
+                        <td>{{ item.line.description|truncatechars:40 }}</td>
+                        <td class="text-end">{{ item.line.credit|floatformat:2|intcomma }}</td>
+                        <td>
+                            {% if item.matches %}
+                            {% for pdc in item.matches %}
+                            <a href="{% url 'property:pdc_detail' pdc.pk %}" class="text-decoration-none">{{ pdc.pdc_number }}</a>{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                            {% else %}
+                            <span class="text-muted">No matches</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if item.matches|length == 1 %}
+                            <button class="btn btn-success btn-sm" title="Auto-match available">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            {% elif item.matches|length > 1 %}
+                            <a href="{% url 'property:pdc_manual_allocation' item.line.pk %}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<!-- No Statement Selected -->
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="fas fa-university fa-3x text-muted mb-3 d-block"></i>
+        <h5 class="text-muted">Select a Bank Account and Statement</h5>
+        <p class="text-muted">Choose a bank account and statement to start reconciliation.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

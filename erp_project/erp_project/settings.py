@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'apps.hr',
     'apps.documents',
     'apps.assets',
+    'apps.property',
 ]
 
 MIDDLEWARE = [

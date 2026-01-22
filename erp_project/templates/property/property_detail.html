@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ property.name }} - Property Detail{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'property:property_list' %}">Properties</a></li>
+                <li class="breadcrumb-item active">{{ property.property_number }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ property.name }}</h4>
+    </div>
+    <a href="{% url 'property:property_update' property.pk %}" class="btn btn-primary">
+        <i class="fas fa-edit me-1"></i> Edit
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-building me-2 text-primary"></i>Property Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="text-muted small">Property Number</label>
+                        <p class="fw-bold mb-0">{{ property.property_number }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">Type</label>
+                        <p class="mb-0">{{ property.get_property_type_display }}</p>
+                    </div>
+                    <div class="col-12">
+                        <label class="text-muted small">Address</label>
+                        <p class="mb-0">{{ property.address }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">City</label>
+                        <p class="mb-0">{{ property.city }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">Emirate</label>
+                        <p class="mb-0">{{ property.emirate }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Units -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-door-open me-2 text-primary"></i>Units</h5>
+                <span class="badge bg-primary">{{ units.count }} units</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Unit No</th>
+                                <th>Type</th>
+                                <th>Floor</th>
+                                <th class="text-end">Area (sqft)</th>
+                                <th class="text-end">Monthly Rent</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for unit in units %}
+                            <tr>
+                                <td class="fw-medium">{{ unit.unit_number }}</td>
+                                <td>{{ unit.get_unit_type_display }}</td>
+                                <td>{{ unit.floor|default:"-" }}</td>
+                                <td class="text-end">{{ unit.area_sqft|floatformat:0 }}</td>
+                                <td class="text-end">{{ unit.monthly_rent|floatformat:2|intcomma }}</td>
+                                <td>
+                                    {% if unit.status == 'occupied' %}
+                                    <span class="badge badge-active">Occupied</span>
+                                    {% elif unit.status == 'available' %}
+                                    <span class="badge bg-primary">Available</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ unit.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="6" class="text-center text-muted py-4">No units found.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-chart-bar me-2 text-primary"></i>Statistics</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="text-muted small">Total Units</label>
+                    <p class="fs-4 fw-bold mb-0">{{ property.total_units }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small">Occupied</label>
+                    <p class="fs-5 text-success mb-0">{{ units|length }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

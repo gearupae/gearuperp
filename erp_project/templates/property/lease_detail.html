@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ lease.lease_number }} - Lease Detail{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'property:lease_list' %}">Leases</a></li>
+                <li class="breadcrumb-item active">{{ lease.lease_number }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">Lease {{ lease.lease_number }}</h4>
+    </div>
+    <div>
+        <a href="{% url 'property:bulk_pdc_create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i> Create PDCs
+        </a>
+        <a href="{% url 'property:lease_update' lease.pk %}" class="btn btn-outline-primary ms-2">
+            <i class="fas fa-edit me-1"></i> Edit
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-file-contract me-2 text-primary"></i>Lease Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="text-muted small">Tenant</label>
+                        <p class="fw-bold mb-0">
+                            <a href="{% url 'property:tenant_detail' lease.tenant.pk %}" class="text-decoration-none">{{ lease.tenant.name }}</a>
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">Unit</label>
+                        <p class="mb-0">{{ lease.unit|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">Start Date</label>
+                        <p class="mb-0">{{ lease.start_date|date:"d M Y" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">End Date</label>
+                        <p class="mb-0">{{ lease.end_date|date:"d M Y" }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="text-muted small">Annual Rent</label>
+                        <p class="fs-4 fw-bold text-primary mb-0">AED {{ lease.annual_rent|floatformat:2|intcomma }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="text-muted small">Payment Frequency</label>
+                        <p class="mb-0">{{ lease.get_payment_frequency_display }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="text-muted small">Number of Cheques</label>
+                        <p class="mb-0">{{ lease.number_of_cheques }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PDC Cheques -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-money-check me-2 text-primary"></i>PDC Cheques</h5>
+                <span class="badge bg-primary">{{ pdc_cheques.count }} cheques</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>PDC No</th>
+                                <th>Cheque No</th>
+                                <th>Date</th>
+                                <th class="text-end">Amount</th>
+                                <th>Status</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pdc in pdc_cheques %}
+                            <tr>
+                                <td><a href="{% url 'property:pdc_detail' pdc.pk %}" class="text-decoration-none">{{ pdc.pdc_number }}</a></td>
+                                <td>{{ pdc.cheque_number }}</td>
+                                <td>{{ pdc.cheque_date|date:"d M Y" }}</td>
+                                <td class="text-end">{{ pdc.amount|floatformat:2|intcomma }}</td>
+                                <td>
+                                    {% if pdc.status == 'cleared' %}
+                                    <span class="badge badge-active">Cleared</span>
+                                    {% elif pdc.status == 'bounced' %}
+                                    <span class="badge bg-danger">Bounced</span>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark">{{ pdc.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <a href="{% url 'property:pdc_detail' pdc.pk %}" class="btn btn-action btn-outline-info" title="View">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="6" class="text-center text-muted py-4">No PDC cheques.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-info-circle me-2 text-primary"></i>Status</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="text-muted small">Lease Status</label>
+                    <p class="mb-0">
+                        {% if lease.status == 'active' %}
+                        <span class="badge badge-active">Active</span>
+                        {% elif lease.status == 'draft' %}
+                        <span class="badge bg-secondary">Draft</span>
+                        {% elif lease.status == 'expired' %}
+                        <span class="badge bg-warning text-dark">Expired</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ lease.get_status_display }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+                {% if lease.days_until_expiry %}
+                <div class="mb-3">
+                    <label class="text-muted small">Days Until Expiry</label>
+                    <p class="fs-5 {% if lease.days_until_expiry <= 30 %}text-warning{% else %}text-success{% endif %} mb-0">{{ lease.days_until_expiry }} days</p>
+                </div>
+                {% endif %}
+                {% if lease.ejari_number %}
+                <div class="mb-3">
+                    <label class="text-muted small">Ejari Number</label>
+                    <p class="mb-0">{{ lease.ejari_number }}</p>
+                </div>
+                {% endif %}
+                <div class="mb-3">
+                    <label class="text-muted small">Security Deposit</label>
+                    <p class="mb-0">AED {{ lease.security_deposit|floatformat:2|intcomma }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

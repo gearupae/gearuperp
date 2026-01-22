@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ tenant.name }} - Tenant Detail{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'property:tenant_list' %}">Tenants</a></li>
+                <li class="breadcrumb-item active">{{ tenant.tenant_number }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">{{ tenant.name }}</h4>
+    </div>
+    <div>
+        <a href="{% url 'property:tenant_ledger_report' tenant.pk %}" class="btn btn-outline-primary me-2">
+            <i class="fas fa-file-invoice me-1"></i> View Ledger
+        </a>
+        <a href="{% url 'property:tenant_update' tenant.pk %}" class="btn btn-primary">
+            <i class="fas fa-edit me-1"></i> Edit
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-address-book me-2 text-primary"></i>Contact Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="text-muted small">Email</label>
+                        <p class="mb-0">{{ tenant.email|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">Phone</label>
+                        <p class="mb-0">{{ tenant.phone|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">Mobile</label>
+                        <p class="mb-0">{{ tenant.mobile|default:"-" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="text-muted small">Company</label>
+                        <p class="mb-0">{{ tenant.company|default:"-" }}</p>
+                    </div>
+                    <div class="col-12">
+                        <label class="text-muted small">Address</label>
+                        <p class="mb-0">{{ tenant.address|default:"-" }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leases -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-file-contract me-2 text-primary"></i>Leases</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Lease No</th>
+                                <th>Unit</th>
+                                <th>Period</th>
+                                <th class="text-end">Annual Rent</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for lease in leases %}
+                            <tr>
+                                <td><a href="{% url 'property:lease_detail' lease.pk %}" class="text-decoration-none">{{ lease.lease_number }}</a></td>
+                                <td>{{ lease.unit|default:"-" }}</td>
+                                <td>{{ lease.start_date|date:"d M Y" }} - {{ lease.end_date|date:"d M Y" }}</td>
+                                <td class="text-end">{{ lease.annual_rent|floatformat:2|intcomma }}</td>
+                                <td>
+                                    {% if lease.status == 'active' %}
+                                    <span class="badge badge-active">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ lease.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center text-muted py-4">No leases found.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- PDC Cheques -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-money-check me-2 text-primary"></i>PDC Cheques</h5>
+                <span class="badge bg-primary">{{ pdc_cheques.count }} cheques</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Cheque No</th>
+                                <th>Date</th>
+                                <th class="text-end">Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pdc in pdc_cheques|slice:":10" %}
+                            <tr>
+                                <td><a href="{% url 'property:pdc_detail' pdc.pk %}" class="text-decoration-none">{{ pdc.cheque_number }}</a></td>
+                                <td>{{ pdc.cheque_date|date:"d M Y" }}</td>
+                                <td class="text-end">{{ pdc.amount|floatformat:2|intcomma }}</td>
+                                <td>
+                                    {% if pdc.status == 'cleared' %}
+                                    <span class="badge badge-active">Cleared</span>
+                                    {% elif pdc.status == 'bounced' %}
+                                    <span class="badge bg-danger">Bounced</span>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark">{{ pdc.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center text-muted py-4">No PDC cheques.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-info-circle me-2 text-primary"></i>Summary</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="text-muted small">Tenant Number</label>
+                    <p class="fw-bold mb-0">{{ tenant.tenant_number }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small">Status</label>
+                    <p class="mb-0">
+                        {% if tenant.status == 'active' %}
+                        <span class="badge badge-active">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ tenant.get_status_display }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small">Outstanding Balance</label>
+                    <p class="fs-4 fw-bold {% if outstanding_balance > 0 %}text-danger{% else %}text-success{% endif %} mb-0">
+                        AED {{ outstanding_balance|floatformat:2|intcomma }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-id-card me-2 text-primary"></i>ID Details</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label class="text-muted small">Emirates ID</label>
+                    <p class="mb-0">{{ tenant.emirates_id|default:"-" }}</p>
+                </div>
+                <div class="mb-2">
+                    <label class="text-muted small">Trade License</label>
+                    <p class="mb-0">{{ tenant.trade_license|default:"-" }}</p>
+                </div>
+                <div>
+                    <label class="text-muted small">TRN</label>
+                    <p class="mb-0">{{ tenant.trn|default:"-" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

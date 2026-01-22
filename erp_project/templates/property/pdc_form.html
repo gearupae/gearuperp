@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{% if form.instance.pk %}Edit{% else %}New{% endif %} PDC Cheque{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-credit-card me-2"></i>
+                        {% if form.instance.pk %}Edit PDC Cheque{% else %}New PDC Cheque{% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" id="pdcForm">
+                        {% csrf_token %}
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">Tenant <span class="text-danger">*</span></label>
+                                {{ form.tenant }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Lease</label>
+                                {{ form.lease }}
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3">Cheque Details</h6>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Cheque Number <span class="text-danger">*</span></label>
+                                {{ form.cheque_number }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Bank Name <span class="text-danger">*</span></label>
+                                {{ form.bank_name }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Cheque Date <span class="text-danger">*</span></label>
+                                {{ form.cheque_date }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Amount <span class="text-danger">*</span></label>
+                                {{ form.amount }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Drawer Name</label>
+                                {{ form.drawer_name }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Drawer Account</label>
+                                {{ form.drawer_account }}
+                            </div>
+                        </div>
+
+                        <h6 class="border-bottom pb-2 mb-3">Payment Details</h6>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Purpose</label>
+                                {{ form.purpose }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Period Start</label>
+                                {{ form.payment_period_start }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Period End</label>
+                                {{ form.payment_period_end }}
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Notes</label>
+                            {{ form.notes }}
+                        </div>
+
+                        <!-- Uniqueness validation feedback -->
+                        <div id="uniquenessAlert" class="alert alert-warning d-none">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <span id="uniquenessMessage"></span>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'property:pdc_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-2"></i>Save PDC
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Real-time uniqueness validation
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('pdcForm');
+    const chequeNumber = form.querySelector('[name="cheque_number"]');
+    const bankName = form.querySelector('[name="bank_name"]');
+    const chequeDate = form.querySelector('[name="cheque_date"]');
+    const amount = form.querySelector('[name="amount"]');
+    const tenant = form.querySelector('[name="tenant"]');
+    const alert = document.getElementById('uniquenessAlert');
+    const message = document.getElementById('uniquenessMessage');
+    
+    let timeout;
+    
+    function validateUniqueness() {
+        clearTimeout(timeout);
+        timeout = setTimeout(async function() {
+            if (!chequeNumber.value || !bankName.value || !chequeDate.value || !amount.value || !tenant.value) {
+                alert.classList.add('d-none');
+                return;
+            }
+            
+            try {
+                const response = await fetch(
+                    `{% url 'property:api_validate_pdc_uniqueness' %}?` +
+                    `cheque_number=${encodeURIComponent(chequeNumber.value)}` +
+                    `&bank_name=${encodeURIComponent(bankName.value)}` +
+                    `&cheque_date=${encodeURIComponent(chequeDate.value)}` +
+                    `&amount=${encodeURIComponent(amount.value)}` +
+                    `&tenant_id=${encodeURIComponent(tenant.value)}`
+                );
+                const data = await response.json();
+                
+                if (!data.valid) {
+                    alert.classList.remove('d-none', 'alert-info');
+                    alert.classList.add('alert-danger');
+                    message.textContent = data.message;
+                } else if (data.warning) {
+                    alert.classList.remove('d-none', 'alert-danger');
+                    alert.classList.add('alert-info');
+                    message.textContent = data.warning;
+                } else {
+                    alert.classList.add('d-none');
+                }
+            } catch (e) {
+                console.error('Validation error:', e);
+            }
+        }, 500);
+    }
+    
+    [chequeNumber, bankName, chequeDate, amount, tenant].forEach(el => {
+        el.addEventListener('change', validateUniqueness);
+        el.addEventListener('input', validateUniqueness);
+    });
+});
+</script>
+{% endblock %}
+

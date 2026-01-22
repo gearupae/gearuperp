@@ -180,6 +180,7 @@ class JournalEntry(BaseModel):
         ('inventory', 'Inventory Movement'),
         ('fixed_asset', 'Fixed Asset'),
         ('project', 'Project Expense'),
+        ('pdc', 'PDC Cheque'),
         ('vat', 'VAT Adjustment'),
         ('corporate_tax', 'Corporate Tax'),
         ('opening_balance', 'Opening Balance'),
@@ -2750,6 +2751,7 @@ class AccountMapping(models.Model):
         ('payroll', 'Payroll'),
         ('banking', 'Banking'),
         ('inventory', 'Inventory'),
+        ('property', 'Property Management'),
         ('general', 'General'),
     ]
     
@@ -2831,6 +2833,13 @@ class AccountMapping(models.Model):
         ('opening_balance_equity', 'Opening Balance Equity'),
         ('suspense', 'Suspense Account'),
         ('rounding', 'Rounding Difference'),
+        
+        # PDC (Post-Dated Cheques) - Property Management
+        ('pdc_control', 'PDC - Control Account (Asset)'),
+        ('cheques_in_hand', 'PDC - Cheques in Hand (Asset)'),
+        ('pdc_bounce_charges', 'PDC - Bounce Charges Expense'),
+        ('pdc_bounce_income', 'PDC - Bounce Charges Income'),
+        ('trade_debtors_property', 'Property - Trade Debtors'),
     ]
     
     module = models.CharField(max_length=50, choices=MODULE_CHOICES)

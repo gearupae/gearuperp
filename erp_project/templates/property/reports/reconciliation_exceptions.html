@@ -1,0 +1,208 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Bank Reconciliation Exceptions{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">Bank Reconciliation Exceptions</h4>
+        <p class="text-muted mb-0">PDC-related exceptions requiring attention</p>
+    </div>
+    <div>
+        <a href="{% url 'property:pdc_bank_reconciliation' %}" class="btn btn-primary">
+            <i class="fas fa-arrow-left me-1"></i> Back to Reconciliation
+        </a>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-exclamation-triangle text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Ambiguous Matches</p>
+                        <h5 class="mb-0 fw-bold text-warning">{{ ambiguous_count }}</h5>
+                        <small class="text-muted">Require manual allocation</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-secondary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-question-circle text-secondary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Unmatched Bank Lines</p>
+                        <h5 class="mb-0 fw-bold">{{ unmatched_count }}</h5>
+                        <small class="text-muted">No PDC match found</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-danger bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-clock text-danger"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Stale PDCs (&gt;7 days)</p>
+                        <h5 class="mb-0 fw-bold text-danger">{{ stale_count }}</h5>
+                        <small class="text-muted">Deposited but not reconciled</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ambiguous Matches -->
+{% if ambiguous_matches %}
+<div class="card mb-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Ambiguous Matches (Manual Allocation Required)</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Detected</th>
+                        <th>Bank Line</th>
+                        <th>Amount</th>
+                        <th>Matching PDCs</th>
+                        <th>Status</th>
+                        <th class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in ambiguous_matches %}
+                    <tr>
+                        <td>{{ log.detected_at|date:"d M Y H:i" }}</td>
+                        <td>
+                            {{ log.bank_statement_line.transaction_date|date:"d M Y" }}<br>
+                            <small class="text-muted">{{ log.bank_statement_line.description|truncatechars:30 }}</small>
+                        </td>
+                        <td class="fw-bold">{{ log.bank_statement_line.credit|floatformat:2|intcomma }}</td>
+                        <td>
+                            <span class="badge bg-danger">{{ log.matching_pdc_ids|length }} PDCs</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-warning text-dark">Pending</span>
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'property:pdc_manual_allocation' log.bank_statement_line.pk %}" class="btn btn-warning btn-sm">
+                                Allocate
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Stale PDCs -->
+{% if stale_pdcs %}
+<div class="card mb-4">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Stale PDCs (Deposited &gt; 7 Days Ago)</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>PDC No</th>
+                        <th>Cheque No</th>
+                        <th>Tenant</th>
+                        <th>Deposited Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pdc in stale_pdcs %}
+                    <tr class="table-danger">
+                        <td>
+                            <a href="{% url 'property:pdc_detail' pdc.pk %}" class="text-decoration-none">
+                                {{ pdc.pdc_number }}
+                            </a>
+                        </td>
+                        <td>{{ pdc.cheque_number }}</td>
+                        <td>{{ pdc.tenant.name }}</td>
+                        <td>{{ pdc.deposited_date|date:"d M Y" }}</td>
+                        <td class="text-end">{{ pdc.amount|floatformat:2|intcomma }}</td>
+                        <td class="text-center">
+                            <a href="{% url 'property:pdc_detail' pdc.pk %}" class="btn btn-outline-primary btn-sm">
+                                Review
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Unmatched Bank Lines -->
+{% if unmatched_lines %}
+<div class="card">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-question-circle me-2 text-secondary"></i>Unmatched Bank Lines (No PDC Match)</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Bank</th>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th class="text-end">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in unmatched_lines %}
+                    <tr>
+                        <td>{{ line.transaction_date|date:"d M Y" }}</td>
+                        <td>{{ line.statement.bank_account.name }}</td>
+                        <td>{{ line.reference|default:"-" }}</td>
+                        <td>{{ line.description|truncatechars:50 }}</td>
+                        <td class="text-end">{{ line.credit|floatformat:2|intcomma }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if not ambiguous_matches and not stale_pdcs and not unmatched_lines %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="fas fa-check-circle fa-3x text-success mb-3 d-block"></i>
+        <h5 class="text-success">No Exceptions Found</h5>
+        <p class="text-muted">All PDC reconciliations are up to date.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

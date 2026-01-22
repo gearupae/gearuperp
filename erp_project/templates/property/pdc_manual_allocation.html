@@ -1,0 +1,258 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Manual PDC Allocation{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'property:pdc_bank_reconciliation' %}">Bank Reconciliation</a></li>
+                <li class="breadcrumb-item active">Manual Allocation</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">Manual PDC Allocation</h4>
+        <p class="text-muted mb-0">Allocate one bank transaction to multiple PDC cheques</p>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Bank Transaction -->
+    <div class="col-lg-4">
+        <div class="card mb-4 sticky-top" style="top: 80px;">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-university me-2"></i>Bank Transaction</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="text-muted small">Transaction Date</label>
+                    <p class="fw-bold mb-2">{{ bank_line.transaction_date|date:"d M Y" }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small">Reference</label>
+                    <p class="mb-2">{{ bank_line.reference|default:"-" }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small">Description</label>
+                    <p class="mb-2">{{ bank_line.description|default:"-" }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small">Amount to Allocate</label>
+                    <p class="fs-3 fw-bold text-primary mb-0">AED {{ total_to_allocate|floatformat:2|intcomma }}</p>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <label class="text-muted small">Allocated So Far</label>
+                    <p class="fs-4 fw-bold mb-0" id="totalAllocated">AED 0.00</p>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small">Remaining</label>
+                    <p class="fs-4 fw-bold text-warning mb-0" id="remaining">AED {{ total_to_allocate|floatformat:2|intcomma }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Allocation Form -->
+    <div class="col-lg-8">
+        <form method="post" id="allocationForm">
+            {% csrf_token %}
+            <input type="hidden" name="allocation_data" id="allocationData">
+            
+            <!-- Potential PDC Matches -->
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Ambiguous Matches Found</h5>
+                    <span class="badge bg-dark">{{ potential_pdcs|length }} PDCs</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="alert alert-info m-3 mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Multiple PDC cheques match this bank transaction. Please allocate the exact amount to each PDC below.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="selectAll">
+                                        </div>
+                                    </th>
+                                    <th>PDC No</th>
+                                    <th>Cheque No</th>
+                                    <th>Cheque Date</th>
+                                    <th>Tenant</th>
+                                    <th class="text-end">PDC Amount</th>
+                                    <th class="text-end">Allocate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pdc in potential_pdcs %}
+                                <tr class="pdc-row" data-pdc-id="{{ pdc.pk }}" data-pdc-amount="{{ pdc.amount }}">
+                                    <td>
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input pdc-checkbox" 
+                                                   data-pdc-id="{{ pdc.pk }}" data-pdc-amount="{{ pdc.amount }}">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'property:pdc_detail' pdc.pk %}" target="_blank" class="text-decoration-none">
+                                            {{ pdc.pdc_number }}
+                                        </a>
+                                    </td>
+                                    <td>{{ pdc.cheque_number }}</td>
+                                    <td>{{ pdc.cheque_date|date:"d M Y" }}</td>
+                                    <td>
+                                        <a href="{% url 'property:tenant_detail' pdc.tenant.pk %}" target="_blank" class="text-decoration-none">
+                                            {{ pdc.tenant.name }}
+                                        </a>
+                                    </td>
+                                    <td class="text-end">{{ pdc.amount|floatformat:2|intcomma }}</td>
+                                    <td class="text-end">
+                                        <input type="number" class="form-control form-control-sm allocation-input text-end"
+                                               data-pdc-id="{{ pdc.pk }}" 
+                                               step="0.01" min="0" max="{{ pdc.amount }}"
+                                               style="width: 120px;" disabled>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center py-4 text-muted">
+                                        No matching PDCs found.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reason & Notes -->
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-comment-alt me-2 text-primary"></i>Allocation Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Reason for Manual Allocation <span class="text-danger">*</span></label>
+                        <textarea name="reason" class="form-control" rows="3" required
+                                  placeholder="Explain why manual allocation is required (e.g., multiple tenants' cheques deposited together)"></textarea>
+                        <small class="text-muted">This will be recorded in the audit trail.</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="d-flex justify-content-between">
+                <a href="{% url 'property:pdc_bank_reconciliation' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i> Back
+                </a>
+                <button type="submit" class="btn btn-success btn-lg" id="confirmBtn" disabled>
+                    <i class="fas fa-check me-1"></i> Confirm Allocation
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const totalToAllocate = parseFloat('{{ total_to_allocate }}');
+    const totalAllocatedEl = document.getElementById('totalAllocated');
+    const remainingEl = document.getElementById('remaining');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const allocationDataInput = document.getElementById('allocationData');
+    const selectAllCheckbox = document.getElementById('selectAll');
+    
+    function updateTotals() {
+        let totalAllocated = 0;
+        const allocations = [];
+        
+        document.querySelectorAll('.pdc-checkbox:checked').forEach(checkbox => {
+            const pdcId = checkbox.dataset.pdcId;
+            const input = document.querySelector(`.allocation-input[data-pdc-id="${pdcId}"]`);
+            const amount = parseFloat(input.value) || 0;
+            totalAllocated += amount;
+            
+            if (amount > 0) {
+                allocations.push({
+                    pdc_id: pdcId,
+                    amount: amount,
+                    notes: ''
+                });
+            }
+        });
+        
+        const remaining = totalToAllocate - totalAllocated;
+        
+        totalAllocatedEl.textContent = 'AED ' + totalAllocated.toFixed(2);
+        remainingEl.textContent = 'AED ' + remaining.toFixed(2);
+        
+        if (remaining === 0 && totalAllocated > 0) {
+            remainingEl.classList.remove('text-warning');
+            remainingEl.classList.add('text-success');
+            confirmBtn.disabled = false;
+        } else {
+            remainingEl.classList.add('text-warning');
+            remainingEl.classList.remove('text-success');
+            confirmBtn.disabled = true;
+        }
+        
+        allocationDataInput.value = JSON.stringify(allocations);
+    }
+    
+    // Handle checkbox changes
+    document.querySelectorAll('.pdc-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const pdcId = this.dataset.pdcId;
+            const pdcAmount = parseFloat(this.dataset.pdcAmount);
+            const input = document.querySelector(`.allocation-input[data-pdc-id="${pdcId}"]`);
+            
+            if (this.checked) {
+                input.disabled = false;
+                input.value = pdcAmount.toFixed(2);
+            } else {
+                input.disabled = true;
+                input.value = '';
+            }
+            updateTotals();
+        });
+    });
+    
+    // Handle allocation input changes
+    document.querySelectorAll('.allocation-input').forEach(input => {
+        input.addEventListener('input', updateTotals);
+    });
+    
+    // Select all
+    selectAllCheckbox.addEventListener('change', function() {
+        document.querySelectorAll('.pdc-checkbox').forEach(checkbox => {
+            checkbox.checked = this.checked;
+            checkbox.dispatchEvent(new Event('change'));
+        });
+    });
+    
+    // Form validation
+    document.getElementById('allocationForm').addEventListener('submit', function(e) {
+        const allocations = JSON.parse(allocationDataInput.value || '[]');
+        if (allocations.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one PDC to allocate.');
+            return false;
+        }
+        
+        const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
+        if (Math.abs(totalAllocated - totalToAllocate) > 0.01) {
+            e.preventDefault();
+            alert('Total allocation must equal the bank transaction amount.');
+            return false;
+        }
+    });
+});
+</script>
+{% endblock %}

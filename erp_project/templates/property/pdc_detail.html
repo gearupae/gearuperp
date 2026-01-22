@@ -1,0 +1,445 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ pdc.pdc_number }} - PDC Detail{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'property:pdc_list' %}">PDC Cheques</a></li>
+                <li class="breadcrumb-item active">{{ pdc.pdc_number }}</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">PDC {{ pdc.pdc_number }}</h4>
+    </div>
+    <div>
+        {% if pdc.status == 'received' %}
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#depositModal">
+            <i class="fas fa-university me-1"></i> Deposit to Bank
+        </button>
+        {% elif pdc.status == 'deposited' and pdc.deposit_status == 'in_clearing' %}
+        <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#clearModal">
+            <i class="fas fa-check-circle me-1"></i> Mark Cleared
+        </button>
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#bounceModal">
+            <i class="fas fa-times-circle me-1"></i> Record Bounce
+        </button>
+        {% elif pdc.status == 'cleared' %}
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#bounceModal">
+            <i class="fas fa-times-circle me-1"></i> Record Bounce
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+        <!-- Main Info -->
+        <div class="col-lg-8">
+            <!-- Status Banner -->
+            <div class="alert 
+                {% if pdc.status == 'received' %}alert-info
+                {% elif pdc.status == 'deposited' %}alert-warning
+                {% elif pdc.status == 'cleared' %}alert-success
+                {% elif pdc.status == 'bounced' %}alert-danger
+                {% else %}alert-secondary{% endif %} 
+                d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <strong>Status:</strong> {{ pdc.get_status_display }}
+                    {% if pdc.deposit_status != 'pending' %}
+                    | <strong>Deposit:</strong> {{ pdc.get_deposit_status_display }}
+                    {% endif %}
+                </div>
+                {% if pdc.reconciled %}
+                <span class="badge bg-success">Reconciled</span>
+                {% endif %}
+            </div>
+
+            <!-- Cheque Details -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-money-check me-2 text-primary"></i>Cheque Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="text-muted small">Cheque Number</label>
+                            <p class="fw-bold mb-0">{{ pdc.cheque_number }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Bank Name</label>
+                            <p class="mb-0">{{ pdc.bank_name }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Cheque Date</label>
+                            <p class="mb-0">{{ pdc.cheque_date|date:"d M Y" }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Amount</label>
+                            <p class="fs-4 fw-bold text-primary mb-0">AED {{ pdc.amount|floatformat:2|intcomma }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Drawer Name</label>
+                            <p class="mb-0">{{ pdc.drawer_name|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Drawer Account</label>
+                            <p class="mb-0">{{ pdc.drawer_account|default:"-" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tenant & Lease -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-user me-2 text-primary"></i>Tenant & Lease</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="text-muted small">Tenant</label>
+                            <p class="mb-0">
+                                <a href="{% url 'property:tenant_detail' pdc.tenant.pk %}">{{ pdc.tenant.name }}</a>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="text-muted small">Lease</label>
+                            <p class="mb-0">
+                                {% if pdc.lease %}
+                                <a href="{% url 'property:lease_detail' pdc.lease.pk %}">{{ pdc.lease.lease_number }}</a>
+                                {% else %}-{% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Purpose</label>
+                            <p class="mb-0">{{ pdc.get_purpose_display }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Period Start</label>
+                            <p class="mb-0">{{ pdc.payment_period_start|date:"d M Y"|default:"-" }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="text-muted small">Period End</label>
+                            <p class="mb-0">{{ pdc.payment_period_end|date:"d M Y"|default:"-" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processing History -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Processing History</h5>
+                </div>
+                <div class="card-body">
+                    <div class="timeline">
+                        <!-- Received -->
+                        <div class="d-flex mb-3">
+                            <div class="flex-shrink-0">
+                                <span class="badge rounded-pill bg-info">1</span>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Received</strong>
+                                <p class="text-muted mb-0 small">
+                                    {{ pdc.received_date|date:"d M Y" }}
+                                    {% if pdc.received_by %}by {{ pdc.received_by.username }}{% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Deposited -->
+                        {% if pdc.deposited_date %}
+                        <div class="d-flex mb-3">
+                            <div class="flex-shrink-0">
+                                <span class="badge rounded-pill bg-warning text-dark">2</span>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Deposited</strong>
+                                <p class="text-muted mb-0 small">
+                                    {{ pdc.deposited_date|date:"d M Y" }} to {{ pdc.deposited_to_bank.name }}
+                                    {% if pdc.deposited_by %}by {{ pdc.deposited_by.username }}{% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Cleared -->
+                        {% if pdc.cleared_date %}
+                        <div class="d-flex mb-3">
+                            <div class="flex-shrink-0">
+                                <span class="badge rounded-pill bg-success">3</span>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Cleared</strong>
+                                <p class="text-muted mb-0 small">
+                                    {{ pdc.cleared_date|date:"d M Y" }}
+                                    {% if pdc.clearing_reference %}Ref: {{ pdc.clearing_reference }}{% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Bounced -->
+                        {% if pdc.bounce_date %}
+                        <div class="d-flex mb-3">
+                            <div class="flex-shrink-0">
+                                <span class="badge rounded-pill bg-danger">!</span>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Bounced</strong>
+                                <p class="text-muted mb-0 small">
+                                    {{ pdc.bounce_date|date:"d M Y" }} - {{ pdc.bounce_reason }}
+                                    {% if pdc.bounce_charges > 0 %}
+                                    <br>Charges: AED {{ pdc.bounce_charges|floatformat:2 }}
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Accounting Entries -->
+            {% if pdc.pdc_control_journal or pdc.journal_entry or pdc.bounce_journal %}
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-book me-2 text-primary"></i>Accounting Entries</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Entry Number</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if pdc.pdc_control_journal %}
+                                <tr>
+                                    <td>PDC Deposit (Control)</td>
+                                    <td>{{ pdc.pdc_control_journal.entry_number }}</td>
+                                    <td>{{ pdc.pdc_control_journal.date|date:"d M Y" }}</td>
+                                    <td><span class="badge bg-success">{{ pdc.pdc_control_journal.status }}</span></td>
+                                    <td><a href="{% url 'finance:journal_detail' pdc.pdc_control_journal.pk %}" class="btn btn-sm btn-outline-primary">View</a></td>
+                                </tr>
+                                {% endif %}
+                                {% if pdc.journal_entry %}
+                                <tr>
+                                    <td>Clearing (Bank)</td>
+                                    <td>{{ pdc.journal_entry.entry_number }}</td>
+                                    <td>{{ pdc.journal_entry.date|date:"d M Y" }}</td>
+                                    <td><span class="badge bg-success">{{ pdc.journal_entry.status }}</span></td>
+                                    <td><a href="{% url 'finance:journal_detail' pdc.journal_entry.pk %}" class="btn btn-sm btn-outline-primary">View</a></td>
+                                </tr>
+                                {% endif %}
+                                {% if pdc.bounce_journal %}
+                                <tr>
+                                    <td>Bounce Reversal</td>
+                                    <td>{{ pdc.bounce_journal.entry_number }}</td>
+                                    <td>{{ pdc.bounce_journal.date|date:"d M Y" }}</td>
+                                    <td><span class="badge bg-danger">{{ pdc.bounce_journal.status }}</span></td>
+                                    <td><a href="{% url 'finance:journal_detail' pdc.bounce_journal.pk %}" class="btn btn-sm btn-outline-primary">View</a></td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Quick Info -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Quick Info</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2 d-flex justify-content-between">
+                            <span class="text-muted">Created:</span>
+                            <span>{{ pdc.created_at|date:"d M Y H:i" }}</span>
+                        </li>
+                        {% if pdc.created_by %}
+                        <li class="mb-2 d-flex justify-content-between">
+                            <span class="text-muted">Created By:</span>
+                            <span>{{ pdc.created_by.username }}</span>
+                        </li>
+                        {% endif %}
+                        {% if pdc.reconciled %}
+                        <li class="mb-2 d-flex justify-content-between">
+                            <span class="text-muted">Reconciled:</span>
+                            <span>{{ pdc.reconciled_date|date:"d M Y" }}</span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            {% if pdc.notes %}
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Notes</h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">{{ pdc.notes }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Related PDCs (same cheque different tenant) -->
+            {% with similar_pdcs=pdc.tenant.pdc_cheques.all|slice:":5" %}
+            {% if similar_pdcs %}
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0">Other PDCs - {{ pdc.tenant.name }}</h6>
+                </div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush">
+                        {% for other in similar_pdcs %}
+                        {% if other.pk != pdc.pk %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <a href="{% url 'property:pdc_detail' other.pk %}">{{ other.cheque_number }}</a>
+                                <small class="text-muted d-block">{{ other.cheque_date|date:"d M Y" }}</small>
+                            </div>
+                            <span class="badge bg-{{ other.status }}">{{ other.amount|floatformat:0 }}</span>
+                        </li>
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+            {% endwith %}
+        </div>
+    </div>
+
+<!-- Deposit Modal -->
+<div class="modal fade" id="depositModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'property:pdc_deposit' pdc.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Deposit PDC to Bank</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>Amount:</strong> AED {{ pdc.amount|floatformat:2|intcomma }}<br>
+                        <strong>Cheque:</strong> {{ pdc.cheque_number }} ({{ pdc.bank_name }})
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deposit to Bank Account</label>
+                        <select name="bank_account" class="form-select" required>
+                            <option value="">Select Bank Account...</option>
+                            {% for bank in bank_accounts %}
+                            <option value="{{ bank.pk }}">{{ bank.name }} - {{ bank.account_number }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deposit Date</label>
+                        <input type="date" name="deposit_date" class="form-control" value="{{ today }}" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Deposit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Clear Modal -->
+<div class="modal fade" id="clearModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'property:pdc_clear' pdc.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Mark PDC as Cleared</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Clearing Date</label>
+                        <input type="date" name="clearing_date" class="form-control" value="{{ today }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bank Reference (Optional)</label>
+                        <input type="text" name="clearing_reference" class="form-control" placeholder="Bank clearing reference">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Confirm Cleared</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Bounce Modal -->
+<div class="modal fade" id="bounceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'property:pdc_bounce' pdc.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title text-danger">Record Cheque Bounce</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        This will restore the AR balance for {{ pdc.tenant.name }}.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bounce Date</label>
+                        <input type="date" name="bounce_date" class="form-control" value="{{ today }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reason for Bounce</label>
+                        <select name="bounce_reason" class="form-select" required>
+                            <option value="">Select Reason...</option>
+                            <option value="Insufficient Funds">Insufficient Funds</option>
+                            <option value="Signature Mismatch">Signature Mismatch</option>
+                            <option value="Account Closed">Account Closed</option>
+                            <option value="Stop Payment">Stop Payment</option>
+                            <option value="Stale Cheque">Stale Cheque</option>
+                            <option value="Technical Issue">Technical Issue</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bounce Charges (Optional)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">AED</span>
+                            <input type="number" name="bounce_charges" class="form-control" step="0.01" value="0.00">
+                        </div>
+                        <small class="text-muted">Charges will be added to tenant's AR</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Record Bounce</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Tenant Ledger - {{ tenant.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'property:tenant_list' %}">Tenants</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'property:tenant_detail' tenant.pk %}">{{ tenant.tenant_number }}</a></li>
+                <li class="breadcrumb-item active">Ledger</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 fw-bold">Tenant Ledger</h4>
+        <p class="text-muted mb-0">{{ tenant.name }}</p>
+    </div>
+    <button class="btn btn-outline-secondary" onclick="window.print()">
+        <i class="fas fa-print me-1"></i>Print
+    </button>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="{% if current_balance > 0 %}bg-danger{% else %}bg-success{% endif %} bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-balance-scale {% if current_balance > 0 %}text-danger{% else %}text-success{% endif %}"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Current Balance</p>
+                        <h5 class="mb-0 fw-bold {% if current_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ current_balance|floatformat:2|intcomma }}
+                        </h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-money-check text-primary"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total PDCs</p>
+                        <h5 class="mb-0 fw-bold">{{ pdc_summary.total }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Cleared</p>
+                        <h5 class="mb-0 fw-bold text-success">{{ pdc_summary.cleared }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-hourglass-half text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Pending</p>
+                        <h5 class="mb-0 fw-bold text-warning">{{ pdc_summary.received|add:pdc_summary.deposited }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-danger bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-times text-danger"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Bounced</p>
+                        <h5 class="mb-0 fw-bold text-danger">{{ pdc_summary.bounced }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Ledger Transactions -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-book me-2 text-primary"></i>Account Transactions</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Reference</th>
+                                <th>Description</th>
+                                <th class="text-end">Debit</th>
+                                <th class="text-end">Credit</th>
+                                <th class="text-end">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in ledger_entries %}
+                            <tr>
+                                <td>{{ entry.date|date:"d M Y" }}</td>
+                                <td>
+                                    <a href="{% url 'finance:journal_detail' entry.journal_pk %}" class="text-decoration-none">
+                                        {{ entry.reference|truncatechars:20 }}
+                                    </a>
+                                </td>
+                                <td>{{ entry.description|truncatechars:30 }}</td>
+                                <td class="text-end">{% if entry.debit > 0 %}{{ entry.debit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                                <td class="text-end">{% if entry.credit > 0 %}{{ entry.credit|floatformat:2|intcomma }}{% else %}-{% endif %}</td>
+                                <td class="text-end fw-bold {% if entry.balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                                    {{ entry.balance|floatformat:2|intcomma }}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">No transactions.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- PDC List -->
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-money-check me-2 text-primary"></i>PDC Cheques</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for pdc in pdcs|slice:":15" %}
+                    <a href="{% url 'property:pdc_detail' pdc.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="fw-medium">{{ pdc.cheque_number }}</span>
+                            <br>
+                            <small class="text-muted">{{ pdc.cheque_date|date:"d M Y" }}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="fw-bold">{{ pdc.amount|floatformat:0|intcomma }}</span>
+                            <br>
+                            {% if pdc.status == 'cleared' %}
+                            <span class="badge badge-active">Cleared</span>
+                            {% elif pdc.status == 'bounced' %}
+                            <span class="badge bg-danger">Bounced</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">{{ pdc.get_status_display }}</span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% empty %}
+                    <div class="list-group-item text-center text-muted py-4">No PDCs</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
