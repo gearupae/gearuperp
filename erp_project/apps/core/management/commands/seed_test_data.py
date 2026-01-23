@@ -1347,20 +1347,22 @@ class Command(BaseCommand):
             return
         
         payroll_count = 0
-        for month in [1, 2, 3]:  # Jan, Feb, Mar 2024
+        for month_num in [1, 2, 3]:  # Jan, Feb, Mar 2024
+            # Create date for first day of month
+            month_date = date(2024, month_num, 1)
+            
             for emp in employees[:20]:  # 20 employees per month = 60 total
+                allowances = emp.basic_salary * Decimal('0.25') + Decimal('500')
+                net_salary = emp.basic_salary + allowances
+                
                 payroll, created = Payroll.objects.get_or_create(
                     employee=emp,
-                    month=month,
-                    year=2024,
+                    month=month_date,
                     defaults={
                         'basic_salary': emp.basic_salary,
-                        'housing_allowance': emp.basic_salary * Decimal('0.25'),
-                        'transport_allowance': Decimal('500'),
-                        'other_allowances': Decimal('0'),
-                        'gross_salary': emp.basic_salary * Decimal('1.25') + Decimal('500'),
+                        'allowances': allowances,
                         'deductions': Decimal('0'),
-                        'net_salary': emp.basic_salary * Decimal('1.25') + Decimal('500'),
+                        'net_salary': net_salary,
                         'status': 'draft',
                     }
                 )
