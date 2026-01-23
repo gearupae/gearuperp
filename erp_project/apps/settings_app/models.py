@@ -36,6 +36,8 @@ class Permission(models.Model):
         ('projects', 'Projects'),
         ('hr', 'HR'),
         ('documents', 'Documents'),
+        ('assets', 'Fixed Assets'),
+        ('property', 'Property Management'),
         ('settings', 'Settings'),
     ]
     
@@ -98,6 +100,8 @@ class ModulePermission(models.Model):
         ('projects', 'Projects'),
         ('hr', 'HR'),
         ('documents', 'Documents'),
+        ('assets', 'Fixed Assets'),
+        ('property', 'Property Management'),
         ('settings', 'Settings'),
     ]
     
