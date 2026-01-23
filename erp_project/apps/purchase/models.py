@@ -167,6 +167,7 @@ class PurchaseOrder(BaseModel):
 class PurchaseOrderItem(models.Model):
     """
     Line items for purchase orders.
+    Supports both VAT-exclusive and VAT-inclusive pricing.
     """
     purchase_order = models.ForeignKey(
         PurchaseOrder,
@@ -177,6 +178,7 @@ class PurchaseOrderItem(models.Model):
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
     unit_price = models.DecimalField(max_digits=15, decimal_places=2)
     vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('5.00'))
+    is_vat_inclusive = models.BooleanField(default=False, help_text='If true, unit_price includes VAT')
     
     # Calculated
     total = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
@@ -186,8 +188,18 @@ class PurchaseOrderItem(models.Model):
         ordering = ['id']
     
     def save(self, *args, **kwargs):
-        self.total = self.quantity * self.unit_price
-        self.vat_amount = self.total * (self.vat_rate / 100)
+        gross = self.quantity * self.unit_price
+        
+        if self.is_vat_inclusive and self.vat_rate > 0:
+            # VAT-inclusive: Back-calculate net amount and VAT
+            divisor = 1 + (self.vat_rate / 100)
+            self.total = (gross / divisor).quantize(Decimal('0.01'))
+            self.vat_amount = (gross - self.total).quantize(Decimal('0.01'))
+        else:
+            # VAT-exclusive: Standard calculation
+            self.total = gross
+            self.vat_amount = (self.total * (self.vat_rate / 100)).quantize(Decimal('0.01'))
+        
         super().save(*args, **kwargs)
 
 
@@ -359,6 +371,7 @@ class VendorBill(BaseModel):
 class VendorBillItem(models.Model):
     """
     Line items for vendor bills.
+    Supports both VAT-exclusive and VAT-inclusive pricing.
     """
     bill = models.ForeignKey(
         VendorBill,
@@ -369,6 +382,7 @@ class VendorBillItem(models.Model):
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
     unit_price = models.DecimalField(max_digits=15, decimal_places=2)
     vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('5.00'))
+    is_vat_inclusive = models.BooleanField(default=False, help_text='If true, unit_price includes VAT')
     
     # Calculated
     total = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
@@ -378,8 +392,18 @@ class VendorBillItem(models.Model):
         ordering = ['id']
     
     def save(self, *args, **kwargs):
-        self.total = self.quantity * self.unit_price
-        self.vat_amount = self.total * (self.vat_rate / 100)
+        gross = self.quantity * self.unit_price
+        
+        if self.is_vat_inclusive and self.vat_rate > 0:
+            # VAT-inclusive: Back-calculate net amount and VAT
+            divisor = 1 + (self.vat_rate / 100)
+            self.total = (gross / divisor).quantize(Decimal('0.01'))
+            self.vat_amount = (gross - self.total).quantize(Decimal('0.01'))
+        else:
+            # VAT-exclusive: Standard calculation
+            self.total = gross
+            self.vat_amount = (self.total * (self.vat_rate / 100)).quantize(Decimal('0.01'))
+        
         super().save(*args, **kwargs)
 
 

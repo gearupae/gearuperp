@@ -909,3 +909,481 @@ class PDCRegisterEntry(models.Model):
         managed = False
         db_table = 'property_pdc_register_view'
 
+
+class RentInvoice(BaseModel):
+    """
+    Rent Invoice for Property Management.
+    Auto-posts to accounting on approval:
+    
+    Journal Entry:
+    Dr Accounts Receivable - Tenant
+    Cr Rental Income
+    Cr VAT Payable (if taxable property - commercial)
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('posted', 'Posted'),
+        ('paid', 'Paid'),
+        ('partial', 'Partially Paid'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    invoice_number = models.CharField(max_length=50, unique=True, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='rent_invoices')
+    lease = models.ForeignKey(Lease, on_delete=models.SET_NULL, null=True, blank=True, related_name='rent_invoices')
+    unit = models.ForeignKey(Unit, on_delete=models.SET_NULL, null=True, blank=True, related_name='rent_invoices')
+    
+    # Invoice details
+    invoice_date = models.DateField()
+    due_date = models.DateField()
+    period_start = models.DateField(help_text='Rent period start')
+    period_end = models.DateField(help_text='Rent period end')
+    
+    # Amounts
+    rent_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'),
+                                   help_text='VAT rate (0% for residential, 5% for commercial)')
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # Accounting
+    journal_entry = models.ForeignKey(
+        'finance.JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rent_invoices'
+    )
+    
+    # Linked PDC
+    pdc = models.ForeignKey(
+        PDCCheque,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rent_invoices'
+    )
+    
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-invoice_date', '-created_at']
+    
+    def __str__(self):
+        return f"{self.invoice_number} - {self.tenant.name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.invoice_number:
+            self.invoice_number = generate_number('RENT-INV', RentInvoice, 'invoice_number')
+        # Calculate totals
+        self.vat_amount = self.rent_amount * (self.vat_rate / 100)
+        self.total_amount = self.rent_amount + self.vat_amount
+        super().save(*args, **kwargs)
+    
+    @property
+    def balance(self):
+        return self.total_amount - self.paid_amount
+    
+    def post_to_accounting(self, user=None):
+        """
+        Post rent invoice to accounting.
+        
+        Journal Entry:
+        Dr Accounts Receivable - Tenant (total amount)
+        Cr Rental Income (rent amount)
+        Cr VAT Payable (vat amount, if applicable)
+        """
+        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        
+        if self.status != 'draft':
+            raise ValidationError('Only draft invoices can be posted.')
+        
+        if self.total_amount <= 0:
+            raise ValidationError('Invoice amount must be greater than zero.')
+        
+        # Get AR account (tenant-specific or default)
+        ar_account = self.tenant.ar_account
+        if not ar_account:
+            try:
+                ar_account = AccountMapping.objects.get(transaction_type='trade_debtors_property').account
+            except AccountMapping.DoesNotExist:
+                ar_account = Account.objects.filter(
+                    account_type='asset', name__icontains='receivable'
+                ).first()
+        
+        if not ar_account:
+            raise ValidationError('Trade Debtors (Property) account not configured.')
+        
+        # Get Rental Income account
+        rental_income = Account.objects.filter(
+            account_type='income', 
+            name__icontains='rental'
+        ).first()
+        if not rental_income:
+            rental_income = Account.objects.filter(account_type='income').first()
+        
+        if not rental_income:
+            raise ValidationError('Rental Income account not configured.')
+        
+        # Get VAT Payable account (if applicable)
+        vat_account = None
+        if self.vat_amount > 0:
+            try:
+                vat_account = AccountMapping.objects.get(transaction_type='vat_output').account
+            except AccountMapping.DoesNotExist:
+                vat_account = Account.objects.filter(
+                    account_type='liability', name__icontains='vat'
+                ).first()
+        
+        # Create journal entry
+        journal = JournalEntry.objects.create(
+            date=self.invoice_date,
+            reference=self.invoice_number,
+            description=f"Rent Invoice: {self.invoice_number} - {self.tenant.name}",
+            source_module='property',
+            entry_type='standard',
+            status='draft',
+            created_by=user
+        )
+        
+        # Dr Accounts Receivable
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=ar_account,
+            debit=self.total_amount,
+            credit=Decimal('0.00'),
+            description=f"Rent - {self.tenant.name} ({self.period_start} to {self.period_end})"
+        )
+        
+        # Cr Rental Income
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=rental_income,
+            debit=Decimal('0.00'),
+            credit=self.rent_amount,
+            description=f"Rental Income - {self.unit.property.name if self.unit else 'N/A'}"
+        )
+        
+        # Cr VAT Payable (if applicable)
+        if self.vat_amount > 0 and vat_account:
+            JournalLine.objects.create(
+                journal_entry=journal,
+                account=vat_account,
+                debit=Decimal('0.00'),
+                credit=self.vat_amount,
+                description=f"VAT Output - Rent {self.invoice_number}"
+            )
+        
+        # Post journal
+        journal.status = 'posted'
+        if user:
+            journal.posted_by = user
+        journal.posted_at = timezone.now()
+        journal.save()
+        
+        # Update account balances
+        ar_account.balance += self.total_amount
+        ar_account.save()
+        rental_income.balance -= self.rent_amount  # Credit increases income
+        rental_income.save()
+        if vat_account and self.vat_amount > 0:
+            vat_account.balance -= self.vat_amount  # Credit increases liability
+            vat_account.save()
+        
+        # Update invoice
+        self.journal_entry = journal
+        self.status = 'posted'
+        self.save()
+        
+        return journal
+
+
+class SecurityDeposit(BaseModel):
+    """
+    Security Deposit for Lease.
+    NOT income - recorded as Liability.
+    
+    On Receipt:
+    Dr Bank
+    Cr Security Deposit Liability
+    
+    On Refund:
+    Dr Security Deposit Liability
+    Cr Bank
+    
+    On Forfeit (deductions):
+    Dr Security Deposit Liability
+    Cr Other Income (forfeited portion)
+    Cr Bank (refunded portion)
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('received', 'Received'),
+        ('partially_refunded', 'Partially Refunded'),
+        ('refunded', 'Fully Refunded'),
+        ('forfeited', 'Forfeited'),
+    ]
+    
+    deposit_number = models.CharField(max_length=50, unique=True, editable=False)
+    lease = models.ForeignKey(Lease, on_delete=models.PROTECT, related_name='security_deposits')
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='security_deposits')
+    
+    # Amounts
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    received_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    refunded_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    forfeited_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    
+    # Dates
+    received_date = models.DateField(null=True, blank=True)
+    refund_date = models.DateField(null=True, blank=True)
+    
+    # Bank account
+    bank_account = models.ForeignKey(
+        'finance.BankAccount',
+        on_delete=models.SET_NULL,
+        null=True, blank=True
+    )
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Accounting
+    receipt_journal = models.ForeignKey(
+        'finance.JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='deposit_receipts'
+    )
+    refund_journal = models.ForeignKey(
+        'finance.JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='deposit_refunds'
+    )
+    
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.deposit_number} - {self.tenant.name}"
+    
+    def save(self, *args, **kwargs):
+        if not self.deposit_number:
+            self.deposit_number = generate_number('SD', SecurityDeposit, 'deposit_number')
+        super().save(*args, **kwargs)
+    
+    @property
+    def balance(self):
+        """Outstanding deposit balance."""
+        return self.received_amount - self.refunded_amount - self.forfeited_amount
+    
+    def receive(self, bank_account, user, receive_date=None, amount=None):
+        """
+        Record receipt of security deposit.
+        
+        Journal Entry:
+        Dr Bank
+        Cr Security Deposit Liability
+        """
+        from apps.finance.models import JournalEntry, JournalLine, Account
+        
+        if self.status != 'pending':
+            raise ValidationError('Only pending deposits can be received.')
+        
+        receive_date = receive_date or date.today()
+        amount = amount or self.amount
+        
+        # Get Security Deposit Liability account
+        deposit_liability = Account.objects.filter(
+            account_type='liability',
+            name__icontains='security deposit'
+        ).first()
+        if not deposit_liability:
+            deposit_liability = Account.objects.filter(
+                account_type='liability',
+                name__icontains='deposit'
+            ).first()
+        if not deposit_liability:
+            raise ValidationError('Security Deposit Liability account not configured.')
+        
+        # Create journal entry
+        journal = JournalEntry.objects.create(
+            date=receive_date,
+            reference=self.deposit_number,
+            description=f"Security Deposit Received - {self.tenant.name}",
+            source_module='property',
+            entry_type='standard',
+            status='draft',
+            created_by=user
+        )
+        
+        # Dr Bank
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=bank_account.gl_account,
+            debit=amount,
+            credit=Decimal('0.00'),
+            description=f"Security Deposit - {self.tenant.name}"
+        )
+        
+        # Cr Security Deposit Liability
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=deposit_liability,
+            debit=Decimal('0.00'),
+            credit=amount,
+            description=f"Security Deposit Liability - {self.lease.lease_number}"
+        )
+        
+        # Post journal
+        journal.status = 'posted'
+        journal.posted_by = user
+        journal.posted_at = timezone.now()
+        journal.save()
+        
+        # Update account balances
+        bank_account.gl_account.balance += amount
+        bank_account.gl_account.save()
+        deposit_liability.balance -= amount  # Credit increases liability
+        deposit_liability.save()
+        
+        # Update deposit record
+        self.received_amount = amount
+        self.received_date = receive_date
+        self.bank_account = bank_account
+        self.receipt_journal = journal
+        self.status = 'received'
+        self.save()
+        
+        # Update lease
+        self.lease.deposit_paid = True
+        self.lease.save()
+        
+        return journal
+    
+    def refund(self, user, refund_date=None, refund_amount=None, forfeit_amount=Decimal('0.00'), reason=''):
+        """
+        Refund security deposit (full or partial).
+        
+        Journal Entry:
+        Dr Security Deposit Liability (full amount)
+        Cr Bank (refund amount)
+        Cr Other Income (forfeited amount, if any)
+        """
+        from apps.finance.models import JournalEntry, JournalLine, Account
+        
+        if self.status not in ['received', 'partially_refunded']:
+            raise ValidationError('Only received deposits can be refunded.')
+        
+        refund_date = refund_date or date.today()
+        refund_amount = refund_amount or self.balance
+        
+        if refund_amount + forfeit_amount > self.balance:
+            raise ValidationError('Refund + forfeit cannot exceed remaining balance.')
+        
+        # Get accounts
+        deposit_liability = Account.objects.filter(
+            account_type='liability',
+            name__icontains='security deposit'
+        ).first()
+        if not deposit_liability:
+            deposit_liability = Account.objects.filter(
+                account_type='liability',
+                name__icontains='deposit'
+            ).first()
+        
+        forfeit_income = None
+        if forfeit_amount > 0:
+            forfeit_income = Account.objects.filter(
+                account_type='income',
+                name__icontains='forfeit'
+            ).first()
+            if not forfeit_income:
+                forfeit_income = Account.objects.filter(
+                    account_type='income',
+                    name__icontains='other'
+                ).first()
+        
+        if not self.bank_account:
+            raise ValidationError('No bank account associated with this deposit.')
+        
+        # Create journal entry
+        total_return = refund_amount + forfeit_amount
+        journal = JournalEntry.objects.create(
+            date=refund_date,
+            reference=f"{self.deposit_number}-REF",
+            description=f"Security Deposit Refund - {self.tenant.name}",
+            source_module='property',
+            entry_type='standard',
+            status='draft',
+            created_by=user
+        )
+        
+        # Dr Security Deposit Liability
+        JournalLine.objects.create(
+            journal_entry=journal,
+            account=deposit_liability,
+            debit=total_return,
+            credit=Decimal('0.00'),
+            description=f"Security Deposit Released - {self.lease.lease_number}"
+        )
+        
+        # Cr Bank (refund)
+        if refund_amount > 0:
+            JournalLine.objects.create(
+                journal_entry=journal,
+                account=self.bank_account.gl_account,
+                debit=Decimal('0.00'),
+                credit=refund_amount,
+                description=f"Security Deposit Refund to {self.tenant.name}"
+            )
+        
+        # Cr Other Income (forfeit)
+        if forfeit_amount > 0 and forfeit_income:
+            JournalLine.objects.create(
+                journal_entry=journal,
+                account=forfeit_income,
+                debit=Decimal('0.00'),
+                credit=forfeit_amount,
+                description=f"Security Deposit Forfeited - {reason}"
+            )
+        
+        # Post journal
+        journal.status = 'posted'
+        journal.posted_by = user
+        journal.posted_at = timezone.now()
+        journal.save()
+        
+        # Update account balances
+        deposit_liability.balance += total_return  # Debit decreases liability
+        deposit_liability.save()
+        if refund_amount > 0:
+            self.bank_account.gl_account.balance -= refund_amount
+            self.bank_account.gl_account.save()
+        if forfeit_amount > 0 and forfeit_income:
+            forfeit_income.balance -= forfeit_amount  # Credit increases income
+            forfeit_income.save()
+        
+        # Update deposit record
+        self.refunded_amount += refund_amount
+        self.forfeited_amount += forfeit_amount
+        self.refund_date = refund_date
+        self.refund_journal = journal
+        
+        if self.balance == 0:
+            if self.forfeited_amount > 0:
+                self.status = 'forfeited'
+            else:
+                self.status = 'refunded'
+        else:
+            self.status = 'partially_refunded'
+        
+        self.save()
+        
+        return journal
+

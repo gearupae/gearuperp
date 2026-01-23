@@ -2840,6 +2840,14 @@ class AccountMapping(models.Model):
         ('pdc_bounce_charges', 'PDC - Bounce Charges Expense'),
         ('pdc_bounce_income', 'PDC - Bounce Charges Income'),
         ('trade_debtors_property', 'Property - Trade Debtors'),
+        
+        # Property Management - Rental
+        ('rental_income', 'Property - Rental Income'),
+        ('rental_income_commercial', 'Property - Rental Income (Commercial)'),
+        ('security_deposit_liability', 'Property - Security Deposit Liability'),
+        ('security_deposit_forfeit', 'Property - Security Deposit Forfeit Income'),
+        ('maintenance_income', 'Property - Maintenance Income'),
+        ('service_charge_income', 'Property - Service Charge Income'),
     ]
     
     module = models.CharField(max_length=50, choices=MODULE_CHOICES)
