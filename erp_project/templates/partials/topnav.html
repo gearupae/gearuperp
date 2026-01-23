@@ -430,11 +430,11 @@
             
             <!-- Right Side -->
             <ul class="navbar-nav">
-                <!-- Settings Dropdown -->
+                <!-- Settings Dropdown (Icon only to save space) -->
                 {% if is_superuser or 'settings' in user_permissions %}
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {% if 'settings' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown">
-                        <i class="fas fa-cog me-1"></i>Settings
+                    <a class="nav-link dropdown-toggle {% if 'settings' in request.path %}active{% endif %}" href="#" data-bs-toggle="dropdown" title="Settings">
+                        <i class="fas fa-cog"></i>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
                         <li>
