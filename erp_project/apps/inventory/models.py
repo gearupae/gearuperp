@@ -412,3 +412,219 @@ class StockMovement(BaseModel):
         
         return journal
 
+
+class ConsumableRequest(BaseModel):
+    """
+    Medical Consumables Request for Rehab/Healthcare settings.
+    
+    Workflow:
+    - Nurse creates request (Pending)
+    - Admin approves (Approved)
+    - Admin dispenses and stock reduces (Dispensed)
+    - Or Admin rejects (Rejected)
+    
+    Note: NOT linked to patients (per rehab audit standards)
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('dispensed', 'Dispensed'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    request_number = models.CharField(max_length=50, unique=True, editable=False)
+    
+    # Requested by (Nurse)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='consumable_requests'
+    )
+    
+    # Item details
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.PROTECT,
+        related_name='consumable_requests',
+        limit_choices_to={'item_type': 'product', 'status': 'active'}
+    )
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Warehouse to dispense from (set by admin)
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='consumable_requests'
+    )
+    
+    # Cost tracking (hidden from nurses)
+    unit_cost = models.DecimalField(
+        max_digits=15, decimal_places=2, 
+        default=Decimal('0.00'),
+        help_text="Cost per unit (from inventory)"
+    )
+    total_cost = models.DecimalField(
+        max_digits=15, decimal_places=2, 
+        default=Decimal('0.00'),
+        help_text="Auto-calculated: unit_cost × quantity"
+    )
+    
+    # Dates
+    request_date = models.DateField(auto_now_add=True)
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Optional remarks (from nurse)
+    remarks = models.TextField(blank=True, help_text="Optional notes from requester")
+    
+    # Admin notes (for rejection reason or special instructions)
+    admin_notes = models.TextField(blank=True, help_text="Notes from approver/admin")
+    
+    # Approval tracking
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_consumable_requests'
+    )
+    approved_date = models.DateTimeField(null=True, blank=True)
+    
+    # Dispensing tracking
+    dispensed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dispensed_consumable_requests'
+    )
+    dispensed_date = models.DateTimeField(null=True, blank=True)
+    
+    # Link to stock movement (created on dispense)
+    stock_movement = models.ForeignKey(
+        StockMovement,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='consumable_requests'
+    )
+    
+    class Meta:
+        ordering = ['-request_date', '-created_at']
+    
+    def __str__(self):
+        return f"{self.request_number}: {self.item.name} ({self.quantity})"
+    
+    def save(self, *args, **kwargs):
+        if not self.request_number:
+            self.request_number = generate_number('CR', ConsumableRequest, 'request_number')
+        
+        # Auto-set unit cost from item if not set
+        if not self.unit_cost and self.item:
+            self.unit_cost = self.item.purchase_price or Decimal('0.00')
+        
+        # Calculate total cost
+        self.total_cost = (self.unit_cost * self.quantity).quantize(Decimal('0.01'))
+        
+        super().save(*args, **kwargs)
+    
+    def approve(self, user, warehouse=None):
+        """Approve the request (by admin)."""
+        from django.utils import timezone
+        
+        if self.status != 'pending':
+            raise ValidationError("Only pending requests can be approved.")
+        
+        self.status = 'approved'
+        self.approved_by = user
+        self.approved_date = timezone.now()
+        
+        if warehouse:
+            self.warehouse = warehouse
+        
+        self.save()
+    
+    def reject(self, user, reason=''):
+        """Reject the request (by admin)."""
+        from django.utils import timezone
+        
+        if self.status not in ['pending', 'approved']:
+            raise ValidationError("Only pending or approved requests can be rejected.")
+        
+        self.status = 'rejected'
+        self.approved_by = user
+        self.approved_date = timezone.now()
+        self.admin_notes = reason
+        self.save()
+    
+    def dispense(self, user, warehouse=None):
+        """
+        Dispense the consumable and reduce stock.
+        Creates a StockMovement record for audit trail.
+        """
+        from django.utils import timezone
+        from datetime import date
+        
+        if self.status not in ['approved', 'pending']:
+            raise ValidationError("Only approved or pending requests can be dispensed.")
+        
+        # Use provided warehouse or default
+        dispense_warehouse = warehouse or self.warehouse
+        if not dispense_warehouse:
+            # Try to find a warehouse with stock
+            stock_record = Stock.objects.filter(
+                item=self.item,
+                quantity__gte=self.quantity,
+                warehouse__status='active'
+            ).first()
+            if stock_record:
+                dispense_warehouse = stock_record.warehouse
+            else:
+                raise ValidationError("No warehouse specified and no warehouse found with sufficient stock.")
+        
+        # Check stock availability
+        try:
+            stock = Stock.objects.get(item=self.item, warehouse=dispense_warehouse)
+            if stock.quantity < self.quantity:
+                raise ValidationError(
+                    f"Insufficient stock in {dispense_warehouse.name}. "
+                    f"Available: {stock.quantity}, Requested: {self.quantity}"
+                )
+        except Stock.DoesNotExist:
+            raise ValidationError(f"No stock record found for {self.item.name} in {dispense_warehouse.name}")
+        
+        # Create stock movement (Stock Out)
+        movement = StockMovement.objects.create(
+            item=self.item,
+            warehouse=dispense_warehouse,
+            movement_type='out',
+            source='manual',
+            quantity=self.quantity,
+            unit_cost=self.unit_cost,
+            reference=f"Consumable Request: {self.request_number}",
+            notes=f"Dispensed to: {self.requested_by.get_full_name() or self.requested_by.username}",
+            movement_date=date.today(),
+        )
+        
+        # Update stock
+        movement.update_stock()
+        
+        # Update request
+        self.status = 'dispensed'
+        self.warehouse = dispense_warehouse
+        self.dispensed_by = user
+        self.dispensed_date = timezone.now()
+        self.stock_movement = movement
+        
+        # If not already approved, mark as approved too
+        if not self.approved_by:
+            self.approved_by = user
+            self.approved_date = timezone.now()
+        
+        self.save()
+        
+        return movement
+

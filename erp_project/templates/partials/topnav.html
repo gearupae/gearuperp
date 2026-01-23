@@ -140,6 +140,18 @@
                                 <i class="fas fa-exchange-alt me-2"></i>Movements
                             </a>
                         </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li class="dropdown-header">Medical Consumables</li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'inventory:consumable_request_list' %}">
+                                <i class="fas fa-clipboard-list me-2"></i>Request Consumables
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'inventory:consumable_dashboard' %}">
+                                <i class="fas fa-chart-line me-2"></i>Consumables Dashboard
+                            </a>
+                        </li>
                     </ul>
                 </li>
                 {% endif %}

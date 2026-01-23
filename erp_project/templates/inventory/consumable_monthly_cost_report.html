@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Financial cost analysis for {{ month_name }}</p>
+    </div>
+    <a href="{% url 'inventory:consumable_dashboard' %}" class="btn btn-outline-primary">
+        <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+    </a>
+</div>
+
+<!-- Month Selector -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Year</label>
+                <select name="year" class="form-select">
+                    {% for y in years %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Month</label>
+                <select name="month" class="form-select">
+                    {% for m, name in months %}
+                    <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-sync me-1"></i>Update</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Summary Card -->
+<div class="card mb-4 bg-primary text-white">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h5 class="text-white-50">Total Consumable Cost</h5>
+                <h1 class="display-4 fw-bold">AED {{ totals.total_cost|default:0|floatformat:2 }}</h1>
+                <p class="mb-0 text-white-50">
+                    {{ totals.total_requests|default:0 }} requests | {{ totals.total_quantity|default:0|floatformat:0 }} items dispensed
+                </p>
+            </div>
+            <div class="col-md-4 text-end d-none d-md-block">
+                <i class="fas fa-chart-line fa-5x text-white-50"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cost Breakdown by Item -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="mb-0 fw-semibold">Cost Breakdown by Item</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Item Code</th>
+                        <th>Item Name</th>
+                        <th>Category</th>
+                        <th class="text-end">Quantity</th>
+                        <th class="text-end">Avg Unit Cost</th>
+                        <th class="text-end">Total Cost</th>
+                        <th class="text-end">% of Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in cost_breakdown %}
+                    <tr>
+                        <td><span class="text-muted">{{ item.item__item_code }}</span></td>
+                        <td>{{ item.item__name }}</td>
+                        <td>{{ item.item__category__name|default:"-" }}</td>
+                        <td class="text-end">{{ item.total_quantity|floatformat:0 }}</td>
+                        <td class="text-end">AED {{ item.avg_unit_cost|floatformat:2 }}</td>
+                        <td class="text-end fw-medium">AED {{ item.total_cost|floatformat:2 }}</td>
+                        <td class="text-end">
+                            {% if totals.total_cost %}
+                            {% widthratio item.total_cost totals.total_cost 100 as pct %}
+                            {{ pct|floatformat:1 }}%
+                            {% else %}
+                            0%
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
+                            No cost data for this period
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if cost_breakdown %}
+                <tfoot class="table-light">
+                    <tr class="fw-bold">
+                        <td colspan="3">TOTAL</td>
+                        <td class="text-end">{{ totals.total_quantity|floatformat:0 }}</td>
+                        <td></td>
+                        <td class="text-end">AED {{ totals.total_cost|floatformat:2 }}</td>
+                        <td class="text-end">100%</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if daily_costs %}
+<!-- Daily Trend Chart -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0 fw-semibold">Daily Cost Trend</h6>
+    </div>
+    <div class="card-body">
+        <canvas id="dailyCostChart" height="100"></canvas>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const ctx = document.getElementById('dailyCostChart').getContext('2d');
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: [{% for dc in daily_costs %}'{{ dc.request_date|date:"d" }}'{% if not forloop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Daily Cost (AED)',
+            data: [{% for dc in daily_costs %}{{ dc.daily_cost|floatformat:2 }}{% if not forloop.last %},{% endif %}{% endfor %}],
+            backgroundColor: 'rgba(59, 130, 246, 0.5)',
+            borderColor: 'rgba(59, 130, 246, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return 'AED ' + value;
+                    }
+                }
+            }
+        },
+        plugins: {
+            legend: { display: false }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}
+

@@ -6,13 +6,17 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
-from django.db.models import Q, Sum, F, Value, DecimalField
+from django.db.models import Q, Sum, F, Value, DecimalField, Count, Avg
+from django.db import models as db_models
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from decimal import Decimal
 
-from .models import Category, Warehouse, Item, Stock, StockMovement
-from .forms import CategoryForm, WarehouseForm, ItemForm, StockAdjustmentForm
+from .models import Category, Warehouse, Item, Stock, StockMovement, ConsumableRequest
+from .forms import (
+    CategoryForm, WarehouseForm, ItemForm, StockAdjustmentForm,
+    ConsumableRequestForm, ConsumableRequestApproveForm, ConsumableRequestRejectForm
+)
 from apps.core.mixins import PermissionRequiredMixin, CreatePermissionMixin, UpdatePermissionMixin
 from apps.core.utils import PermissionChecker
 
@@ -522,4 +526,517 @@ def movement_detail(request, pk):
         context['journal_lines'] = movement.journal_entry.lines.all().select_related('account')
     
     return render(request, 'inventory/movement_detail.html', context)
+
+
+# ============ CONSUMABLE REQUEST VIEWS ============
+
+class ConsumableRequestListView(PermissionRequiredMixin, ListView):
+    """
+    List view for consumable requests.
+    - Nurses see their own requests
+    - Admin/Inventory see all requests
+    """
+    model = ConsumableRequest
+    template_name = 'inventory/consumable_request_list.html'
+    context_object_name = 'requests'
+    module_name = 'inventory'
+    permission_type = 'view'
+    paginate_by = 25
+    
+    def get_queryset(self):
+        user = self.request.user
+        queryset = ConsumableRequest.objects.filter(is_active=True).select_related(
+            'item', 'requested_by', 'warehouse', 'approved_by', 'dispensed_by'
+        )
+        
+        # Non-admins only see their own requests
+        if not user.is_superuser and not PermissionChecker.has_permission(user, 'inventory', 'edit'):
+            queryset = queryset.filter(requested_by=user)
+        
+        # Filters
+        status = self.request.GET.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+        
+        search = self.request.GET.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(request_number__icontains=search) |
+                Q(item__name__icontains=search) |
+                Q(requested_by__first_name__icontains=search) |
+                Q(requested_by__last_name__icontains=search)
+            )
+        
+        return queryset.order_by('-created_at')
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        is_admin = user.is_superuser or PermissionChecker.has_permission(user, 'inventory', 'edit')
+        
+        context['title'] = 'Consumable Requests'
+        context['status_choices'] = ConsumableRequest.STATUS_CHOICES
+        context['is_admin'] = is_admin
+        
+        # Stats (for admins)
+        if is_admin:
+            all_requests = ConsumableRequest.objects.filter(is_active=True)
+            context['pending_count'] = all_requests.filter(status='pending').count()
+            context['approved_count'] = all_requests.filter(status='approved').count()
+            context['dispensed_count'] = all_requests.filter(status='dispensed').count()
+        
+        # Create form (for inline creation)
+        context['form'] = ConsumableRequestForm()
+        
+        return context
+    
+    def post(self, request, *args, **kwargs):
+        """Handle inline request creation."""
+        form = ConsumableRequestForm(request.POST)
+        if form.is_valid():
+            consumable_request = form.save(commit=False)
+            consumable_request.requested_by = request.user
+            consumable_request.save()
+            messages.success(request, f'Request {consumable_request.request_number} submitted successfully.')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{field}: {error}')
+        return redirect('inventory:consumable_request_list')
+
+
+@login_required
+def consumable_request_create(request):
+    """
+    Simple nurse-facing form for creating requests.
+    Mobile-friendly, max 4 fields.
+    """
+    if request.method == 'POST':
+        form = ConsumableRequestForm(request.POST)
+        if form.is_valid():
+            consumable_request = form.save(commit=False)
+            consumable_request.requested_by = request.user
+            consumable_request.save()
+            messages.success(request, f'Request {consumable_request.request_number} submitted!')
+            return redirect('inventory:consumable_request_list')
+    else:
+        form = ConsumableRequestForm()
+    
+    return render(request, 'inventory/consumable_request_form.html', {
+        'title': 'Request Consumable',
+        'form': form,
+    })
+
+
+@login_required
+def consumable_request_detail(request, pk):
+    """View request details."""
+    consumable_request = get_object_or_404(
+        ConsumableRequest.objects.select_related(
+            'item', 'requested_by', 'warehouse', 'approved_by', 'dispensed_by', 'stock_movement'
+        ),
+        pk=pk
+    )
+    
+    user = request.user
+    is_admin = user.is_superuser or PermissionChecker.has_permission(user, 'inventory', 'edit')
+    
+    # Non-admins can only view their own requests
+    if not is_admin and consumable_request.requested_by != user:
+        messages.error(request, 'Permission denied.')
+        return redirect('inventory:consumable_request_list')
+    
+    context = {
+        'title': f'Request: {consumable_request.request_number}',
+        'request_obj': consumable_request,
+        'is_admin': is_admin,
+    }
+    
+    # For admin: show approve/dispense forms
+    if is_admin and consumable_request.status in ['pending', 'approved']:
+        context['approve_form'] = ConsumableRequestApproveForm(
+            item=consumable_request.item,
+            quantity=consumable_request.quantity
+        )
+        context['reject_form'] = ConsumableRequestRejectForm()
+    
+    return render(request, 'inventory/consumable_request_detail.html', context)
+
+
+@login_required
+def consumable_request_approve(request, pk):
+    """Admin approves a request."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('inventory:consumable_request_list')
+    
+    consumable_request = get_object_or_404(ConsumableRequest, pk=pk)
+    
+    if consumable_request.status != 'pending':
+        messages.warning(request, f'Request {consumable_request.request_number} is not pending.')
+        return redirect('inventory:consumable_request_detail', pk=pk)
+    
+    if request.method == 'POST':
+        form = ConsumableRequestApproveForm(
+            request.POST,
+            item=consumable_request.item,
+            quantity=consumable_request.quantity
+        )
+        if form.is_valid():
+            try:
+                warehouse = form.cleaned_data['warehouse']
+                admin_notes = form.cleaned_data.get('admin_notes', '')
+                consumable_request.admin_notes = admin_notes
+                consumable_request.approve(request.user, warehouse)
+                messages.success(request, f'Request {consumable_request.request_number} approved.')
+            except Exception as e:
+                messages.error(request, f'Error approving request: {str(e)}')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{field}: {error}')
+    
+    return redirect('inventory:consumable_request_detail', pk=pk)
+
+
+@login_required
+def consumable_request_dispense(request, pk):
+    """Admin dispenses the consumable (reduces stock)."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('inventory:consumable_request_list')
+    
+    consumable_request = get_object_or_404(ConsumableRequest, pk=pk)
+    
+    if consumable_request.status not in ['pending', 'approved']:
+        messages.warning(request, f'Request {consumable_request.request_number} cannot be dispensed.')
+        return redirect('inventory:consumable_request_detail', pk=pk)
+    
+    if request.method == 'POST':
+        form = ConsumableRequestApproveForm(
+            request.POST,
+            item=consumable_request.item,
+            quantity=consumable_request.quantity
+        )
+        if form.is_valid():
+            try:
+                warehouse = form.cleaned_data['warehouse']
+                consumable_request.dispense(request.user, warehouse)
+                messages.success(
+                    request, 
+                    f'Request {consumable_request.request_number} dispensed. '
+                    f'Stock reduced by {consumable_request.quantity} {consumable_request.item.unit}.'
+                )
+            except Exception as e:
+                messages.error(request, f'Error dispensing: {str(e)}')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{field}: {error}')
+    
+    return redirect('inventory:consumable_request_detail', pk=pk)
+
+
+@login_required
+def consumable_request_reject(request, pk):
+    """Admin rejects a request."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('inventory:consumable_request_list')
+    
+    consumable_request = get_object_or_404(ConsumableRequest, pk=pk)
+    
+    if consumable_request.status not in ['pending', 'approved']:
+        messages.warning(request, f'Request {consumable_request.request_number} cannot be rejected.')
+        return redirect('inventory:consumable_request_detail', pk=pk)
+    
+    if request.method == 'POST':
+        form = ConsumableRequestRejectForm(request.POST)
+        if form.is_valid():
+            reason = form.cleaned_data['reason']
+            consumable_request.reject(request.user, reason)
+            messages.success(request, f'Request {consumable_request.request_number} rejected.')
+        else:
+            messages.error(request, 'Please provide a rejection reason.')
+    
+    return redirect('inventory:consumable_request_detail', pk=pk)
+
+
+# ============ CONSUMABLE REPORTS ============
+
+@login_required
+def consumable_dashboard(request):
+    """
+    Dashboard for consumables showing:
+    - Total requests this month
+    - Total quantity consumed
+    - Total cost
+    - Low stock alerts
+    """
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'view')):
+        messages.error(request, 'Permission denied.')
+        return redirect('dashboard')
+    
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    today = timezone.localdate()
+    month_start = today.replace(day=1)
+    
+    # This month's requests
+    month_requests = ConsumableRequest.objects.filter(
+        is_active=True,
+        request_date__gte=month_start
+    )
+    
+    # Stats
+    total_requests = month_requests.count()
+    dispensed_requests = month_requests.filter(status='dispensed')
+    total_quantity = dispensed_requests.aggregate(Sum('quantity'))['quantity__sum'] or Decimal('0')
+    total_cost = dispensed_requests.aggregate(Sum('total_cost'))['total_cost__sum'] or Decimal('0')
+    
+    # Low stock consumables
+    low_stock_items = []
+    consumable_items = Item.objects.filter(
+        is_active=True,
+        item_type='product',
+        status='active'
+    )
+    for item in consumable_items:
+        total_stock = item.total_stock
+        if total_stock < item.minimum_stock:
+            low_stock_items.append({
+                'item': item,
+                'current_stock': total_stock,
+                'minimum_stock': item.minimum_stock,
+                'shortfall': item.minimum_stock - total_stock
+            })
+    
+    # Recent requests
+    recent_requests = ConsumableRequest.objects.filter(
+        is_active=True
+    ).select_related('item', 'requested_by').order_by('-created_at')[:10]
+    
+    # Top requested items this month
+    top_items = dispensed_requests.values('item__name').annotate(
+        total_qty=Sum('quantity'),
+        total_cost=Sum('total_cost')
+    ).order_by('-total_qty')[:5]
+    
+    context = {
+        'title': 'Consumables Dashboard',
+        'total_requests': total_requests,
+        'pending_requests': month_requests.filter(status='pending').count(),
+        'total_quantity': total_quantity,
+        'total_cost': total_cost,
+        'low_stock_items': low_stock_items,
+        'low_stock_count': len(low_stock_items),
+        'recent_requests': recent_requests,
+        'top_items': top_items,
+        'month_name': today.strftime('%B %Y'),
+    }
+    
+    return render(request, 'inventory/consumable_dashboard.html', context)
+
+
+@login_required
+def consumable_monthly_request_report(request):
+    """Monthly Request Report - per nurse & total."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'view')):
+        messages.error(request, 'Permission denied.')
+        return redirect('dashboard')
+    
+    from django.utils import timezone
+    from datetime import date
+    
+    # Get month from query params
+    year = int(request.GET.get('year', timezone.localdate().year))
+    month = int(request.GET.get('month', timezone.localdate().month))
+    
+    month_start = date(year, month, 1)
+    if month == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month + 1, 1)
+    
+    # Requests for the month
+    requests = ConsumableRequest.objects.filter(
+        is_active=True,
+        request_date__gte=month_start,
+        request_date__lt=month_end
+    ).select_related('item', 'requested_by')
+    
+    # Group by nurse
+    nurse_summary = requests.values(
+        'requested_by__id',
+        'requested_by__first_name',
+        'requested_by__last_name',
+        'requested_by__username'
+    ).annotate(
+        total_requests=Count('id'),
+        total_quantity=Sum('quantity'),
+        total_cost=Sum('total_cost'),
+        pending=Count('id', filter=Q(status='pending')),
+        approved=Count('id', filter=Q(status='approved')),
+        dispensed=Count('id', filter=Q(status='dispensed')),
+        rejected=Count('id', filter=Q(status='rejected')),
+    ).order_by('-total_requests')
+    
+    # Totals
+    totals = requests.aggregate(
+        total_requests=Count('id'),
+        total_quantity=Sum('quantity'),
+        total_cost=Sum('total_cost'),
+    )
+    
+    context = {
+        'title': f'Monthly Request Report - {month_start.strftime("%B %Y")}',
+        'nurse_summary': nurse_summary,
+        'totals': totals,
+        'year': year,
+        'month': month,
+        'month_name': month_start.strftime('%B %Y'),
+        'years': range(2024, timezone.localdate().year + 2),
+        'months': [(i, date(2000, i, 1).strftime('%B')) for i in range(1, 13)],
+    }
+    
+    return render(request, 'inventory/consumable_monthly_request_report.html', context)
+
+
+@login_required
+def consumable_monthly_consumption_report(request):
+    """Monthly Consumption Report - item-wise quantity used."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'view')):
+        messages.error(request, 'Permission denied.')
+        return redirect('dashboard')
+    
+    from django.utils import timezone
+    from datetime import date
+    
+    # Get month from query params
+    year = int(request.GET.get('year', timezone.localdate().year))
+    month = int(request.GET.get('month', timezone.localdate().month))
+    
+    month_start = date(year, month, 1)
+    if month == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month + 1, 1)
+    
+    # Only dispensed requests count as consumption
+    consumption = ConsumableRequest.objects.filter(
+        is_active=True,
+        status='dispensed',
+        request_date__gte=month_start,
+        request_date__lt=month_end
+    ).values(
+        'item__id',
+        'item__item_code',
+        'item__name',
+        'item__unit'
+    ).annotate(
+        total_quantity=Sum('quantity'),
+        total_cost=Sum('total_cost'),
+        request_count=Count('id')
+    ).order_by('-total_quantity')
+    
+    # Totals
+    totals = ConsumableRequest.objects.filter(
+        is_active=True,
+        status='dispensed',
+        request_date__gte=month_start,
+        request_date__lt=month_end
+    ).aggregate(
+        total_quantity=Sum('quantity'),
+        total_cost=Sum('total_cost'),
+        total_requests=Count('id'),
+    )
+    
+    context = {
+        'title': f'Monthly Consumption Report - {month_start.strftime("%B %Y")}',
+        'consumption': consumption,
+        'totals': totals,
+        'year': year,
+        'month': month,
+        'month_name': month_start.strftime('%B %Y'),
+        'years': range(2024, timezone.localdate().year + 2),
+        'months': [(i, date(2000, i, 1).strftime('%B')) for i in range(1, 13)],
+    }
+    
+    return render(request, 'inventory/consumable_monthly_consumption_report.html', context)
+
+
+@login_required
+def consumable_monthly_cost_report(request):
+    """Monthly Financial Cost Report - total consumable cost."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'view')):
+        messages.error(request, 'Permission denied.')
+        return redirect('dashboard')
+    
+    from django.utils import timezone
+    from datetime import date
+    
+    # Get month from query params
+    year = int(request.GET.get('year', timezone.localdate().year))
+    month = int(request.GET.get('month', timezone.localdate().month))
+    
+    month_start = date(year, month, 1)
+    if month == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month + 1, 1)
+    
+    # Cost breakdown by item
+    cost_breakdown = ConsumableRequest.objects.filter(
+        is_active=True,
+        status='dispensed',
+        request_date__gte=month_start,
+        request_date__lt=month_end
+    ).values(
+        'item__id',
+        'item__item_code',
+        'item__name',
+        'item__category__name'
+    ).annotate(
+        total_quantity=Sum('quantity'),
+        total_cost=Sum('total_cost'),
+        avg_unit_cost=Avg('unit_cost')
+    ).order_by('-total_cost')
+    
+    # Daily cost trend
+    daily_costs = ConsumableRequest.objects.filter(
+        is_active=True,
+        status='dispensed',
+        request_date__gte=month_start,
+        request_date__lt=month_end
+    ).values('request_date').annotate(
+        daily_cost=Sum('total_cost'),
+        daily_qty=Sum('quantity')
+    ).order_by('request_date')
+    
+    # Totals
+    totals = ConsumableRequest.objects.filter(
+        is_active=True,
+        status='dispensed',
+        request_date__gte=month_start,
+        request_date__lt=month_end
+    ).aggregate(
+        total_cost=Sum('total_cost'),
+        total_quantity=Sum('quantity'),
+        total_requests=models.Count('id'),
+    )
+    
+    context = {
+        'title': f'Monthly Cost Report - {month_start.strftime("%B %Y")}',
+        'cost_breakdown': cost_breakdown,
+        'daily_costs': list(daily_costs),
+        'totals': totals,
+        'year': year,
+        'month': month,
+        'month_name': month_start.strftime('%B %Y'),
+        'years': range(2024, timezone.localdate().year + 2),
+        'months': [(i, date(2000, i, 1).strftime('%B')) for i in range(1, 13)],
+    }
+    
+    return render(request, 'inventory/consumable_monthly_cost_report.html', context)
 

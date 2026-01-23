@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'inventory:consumable_request_list' %}">Consumable Requests</a></li>
+            <li class="breadcrumb-item active">{{ request_obj.request_number }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">{{ request_obj.request_number }}</h4>
+            <span class="text-muted">{{ request_obj.item.name }}</span>
+        </div>
+        <div>
+            {% if request_obj.status == 'pending' %}
+            <span class="badge bg-warning text-dark fs-6">Pending</span>
+            {% elif request_obj.status == 'approved' %}
+            <span class="badge bg-info fs-6">Approved</span>
+            {% elif request_obj.status == 'dispensed' %}
+            <span class="badge bg-success fs-6">Dispensed</span>
+            {% elif request_obj.status == 'rejected' %}
+            <span class="badge bg-danger fs-6">Rejected</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <!-- Request Details -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Request Details</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Item</h6>
+                        <p class="mb-0 fw-medium">{{ request_obj.item.name }}</p>
+                        <small class="text-muted">{{ request_obj.item.item_code }}</small>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Quantity</h6>
+                        <p class="mb-0 fw-medium">{{ request_obj.quantity|floatformat:0 }} {{ request_obj.item.unit }}</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Request Date</h6>
+                        <p class="mb-0">{{ request_obj.request_date|date:"d/m/Y" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Requested By</h6>
+                        <p class="mb-0">{{ request_obj.requested_by.get_full_name|default:request_obj.requested_by.username }}</p>
+                    </div>
+                    {% if request_obj.remarks %}
+                    <div class="col-12">
+                        <h6 class="text-muted mb-2">Notes</h6>
+                        <p class="mb-0">{{ request_obj.remarks }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if is_admin %}
+        <!-- Cost Information (Admin Only) -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Cost Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Unit Cost</h6>
+                        <p class="mb-0 fw-medium">AED {{ request_obj.unit_cost|floatformat:2 }}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Total Cost</h6>
+                        <p class="mb-0 fw-bold text-primary">AED {{ request_obj.total_cost|floatformat:2 }}</p>
+                    </div>
+                    {% if request_obj.warehouse %}
+                    <div class="col-md-4">
+                        <h6 class="text-muted mb-2">Warehouse</h6>
+                        <p class="mb-0">{{ request_obj.warehouse.name }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Status History -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Status History</h6>
+            </div>
+            <div class="card-body">
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-marker bg-primary"></div>
+                        <div class="timeline-content">
+                            <p class="mb-1 fw-medium">Requested</p>
+                            <small class="text-muted">{{ request_obj.created_at|date:"d/m/Y H:i" }} by {{ request_obj.requested_by.get_full_name|default:request_obj.requested_by.username }}</small>
+                        </div>
+                    </div>
+                    
+                    {% if request_obj.approved_by %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker {% if request_obj.status == 'rejected' %}bg-danger{% else %}bg-info{% endif %}"></div>
+                        <div class="timeline-content">
+                            <p class="mb-1 fw-medium">{% if request_obj.status == 'rejected' %}Rejected{% else %}Approved{% endif %}</p>
+                            <small class="text-muted">{{ request_obj.approved_date|date:"d/m/Y H:i" }} by {{ request_obj.approved_by.get_full_name|default:request_obj.approved_by.username }}</small>
+                            {% if request_obj.admin_notes %}
+                            <p class="mb-0 mt-1 small">{{ request_obj.admin_notes }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if request_obj.dispensed_by %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker bg-success"></div>
+                        <div class="timeline-content">
+                            <p class="mb-1 fw-medium">Dispensed</p>
+                            <small class="text-muted">{{ request_obj.dispensed_date|date:"d/m/Y H:i" }} by {{ request_obj.dispensed_by.get_full_name|default:request_obj.dispensed_by.username }}</small>
+                            {% if request_obj.stock_movement %}
+                            <p class="mb-0 mt-1 small">Movement: <a href="{% url 'inventory:movement_detail' request_obj.stock_movement.pk %}">{{ request_obj.stock_movement.movement_number }}</a></p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        {% if is_admin and request_obj.status in 'pending,approved' %}
+        <!-- Admin Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Actions</h6>
+            </div>
+            <div class="card-body">
+                {% if request_obj.status == 'pending' %}
+                <!-- Approve & Dispense Form -->
+                <form method="post" action="{% url 'inventory:consumable_request_dispense' request_obj.pk %}" class="mb-3">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Dispense From <span class="text-danger">*</span></label>
+                        {{ approve_form.warehouse }}
+                        <small class="text-muted">Only warehouses with sufficient stock are shown</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Admin Notes</label>
+                        {{ approve_form.admin_notes }}
+                    </div>
+                    <button type="submit" class="btn btn-success w-100 mb-2">
+                        <i class="fas fa-check-double me-1"></i>Approve & Dispense
+                    </button>
+                </form>
+
+                <!-- Just Approve -->
+                <form method="post" action="{% url 'inventory:consumable_request_approve' request_obj.pk %}" class="mb-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="warehouse" value="{{ approve_form.warehouse.field.queryset.first.pk }}">
+                    <button type="submit" class="btn btn-info w-100 mb-2">
+                        <i class="fas fa-check me-1"></i>Approve Only
+                    </button>
+                </form>
+
+                <hr>
+
+                <!-- Reject Form -->
+                <form method="post" action="{% url 'inventory:consumable_request_reject' request_obj.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Rejection Reason <span class="text-danger">*</span></label>
+                        {{ reject_form.reason }}
+                    </div>
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="fas fa-times me-1"></i>Reject
+                    </button>
+                </form>
+                {% elif request_obj.status == 'approved' %}
+                <!-- Dispense Form -->
+                <form method="post" action="{% url 'inventory:consumable_request_dispense' request_obj.pk %}" class="mb-3">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Dispense From <span class="text-danger">*</span></label>
+                        {{ approve_form.warehouse }}
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fas fa-check-double me-1"></i>Dispense Now
+                    </button>
+                </form>
+
+                <hr>
+
+                <!-- Still can reject -->
+                <form method="post" action="{% url 'inventory:consumable_request_reject' request_obj.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Rejection Reason</label>
+                        {{ reject_form.reason }}
+                    </div>
+                    <button type="submit" class="btn btn-outline-danger w-100">
+                        <i class="fas fa-times me-1"></i>Cancel & Reject
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Item Info Card -->
+        <div class="card {% if is_admin and request_obj.status in 'pending,approved' %}mt-4{% endif %}">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Item Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center" style="width:60px;height:60px;">
+                        <i class="fas fa-box text-muted fa-2x"></i>
+                    </div>
+                </div>
+                <h6 class="text-center mb-3">{{ request_obj.item.name }}</h6>
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <td class="text-muted">Code</td>
+                        <td class="text-end">{{ request_obj.item.item_code }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Category</td>
+                        <td class="text-end">{{ request_obj.item.category.name|default:"-" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Unit</td>
+                        <td class="text-end">{{ request_obj.item.unit }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Current Stock</td>
+                        <td class="text-end">
+                            {% if request_obj.item.is_low_stock %}
+                            <span class="text-danger fw-medium">{{ request_obj.item.total_stock }}</span>
+                            {% else %}
+                            {{ request_obj.item.total_stock }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.timeline { position: relative; padding-left: 30px; }
+.timeline-item { position: relative; padding-bottom: 20px; }
+.timeline-item:before {
+    content: '';
+    position: absolute;
+    left: -24px;
+    top: 8px;
+    height: calc(100% - 8px);
+    width: 2px;
+    background: #e9ecef;
+}
+.timeline-item:last-child:before { display: none; }
+.timeline-marker {
+    position: absolute;
+    left: -30px;
+    top: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+}
+</style>
+{% endblock %}
+

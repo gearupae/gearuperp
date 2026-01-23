@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">{% if is_admin %}Manage consumable requests{% else %}Request medical consumables{% endif %}</p>
+    </div>
+    <div>
+        {% if is_admin %}
+        <a href="{% url 'inventory:consumable_dashboard' %}" class="btn btn-outline-info me-2">
+            <i class="fas fa-chart-line me-1"></i>Dashboard
+        </a>
+        {% endif %}
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#requestModal">
+            <i class="fas fa-plus me-2"></i>New Request
+        </button>
+    </div>
+</div>
+
+{% if is_admin %}
+<!-- Admin Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-clock text-warning"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Pending Requests</p>
+                        <h5 class="mb-0 fw-bold">{{ pending_count|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check text-info"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Approved</p>
+                        <h5 class="mb-0 fw-bold">{{ approved_count|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-check-double text-success"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Dispensed</p>
+                        <h5 class="mb-0 fw-bold">{{ dispensed_count|default:0 }}</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <input type="text" name="search" class="form-control" placeholder="Search by request #, item, or nurse..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">All Status</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-5">
+                <button type="submit" class="btn btn-primary me-2"><i class="fas fa-filter me-1"></i>Filter</button>
+                <a href="{% url 'inventory:consumable_request_list' %}" class="btn btn-light">Clear</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Requests Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Request #</th>
+                        <th>Date</th>
+                        <th>Item</th>
+                        <th class="text-end">Qty</th>
+                        {% if is_admin %}<th>Requested By</th>{% endif %}
+                        <th>Status</th>
+                        {% if is_admin %}<th class="text-end">Cost</th>{% endif %}
+                        <th class="text-center" width="100">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in requests %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'inventory:consumable_request_detail' req.pk %}" class="fw-medium text-decoration-none">{{ req.request_number }}</a>
+                        </td>
+                        <td>{{ req.request_date|date:"d/m/Y" }}</td>
+                        <td>{{ req.item.name }}</td>
+                        <td class="text-end">{{ req.quantity|floatformat:0 }} {{ req.item.unit }}</td>
+                        {% if is_admin %}
+                        <td>{{ req.requested_by.get_full_name|default:req.requested_by.username }}</td>
+                        {% endif %}
+                        <td>
+                            {% if req.status == 'pending' %}
+                            <span class="badge bg-warning text-dark">Pending</span>
+                            {% elif req.status == 'approved' %}
+                            <span class="badge bg-info">Approved</span>
+                            {% elif req.status == 'dispensed' %}
+                            <span class="badge bg-success">Dispensed</span>
+                            {% elif req.status == 'rejected' %}
+                            <span class="badge bg-danger">Rejected</span>
+                            {% endif %}
+                        </td>
+                        {% if is_admin %}
+                        <td class="text-end">AED {{ req.total_cost|floatformat:2 }}</td>
+                        {% endif %}
+                        <td class="text-center">
+                            <a href="{% url 'inventory:consumable_request_detail' req.pk %}" class="btn btn-action btn-outline-info" title="View">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="{% if is_admin %}8{% else %}6{% endif %}" class="text-center py-5 text-muted">
+                            <i class="fas fa-box-open fa-3x mb-3 d-block"></i>
+                            No requests found
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- New Request Modal (Simple Nurse UI) -->
+<div class="modal fade" id="requestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle me-2 text-primary"></i>Request Consumable</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Consumable Item <span class="text-danger">*</span></label>
+                        {{ form.item }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Quantity Needed <span class="text-danger">*</span></label>
+                        {{ form.quantity }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes (Optional)</label>
+                        {{ form.remarks }}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane me-1"></i>Submit Request
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if page_obj.has_other_pages %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}">Previous</a></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}">Next</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+

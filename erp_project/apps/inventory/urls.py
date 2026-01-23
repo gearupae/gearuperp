@@ -32,6 +32,20 @@ urlpatterns = [
     path('movements/', views.MovementListView.as_view(), name='movement_list'),
     path('movements/<int:pk>/', views.movement_detail, name='movement_detail'),
     path('movements/<int:pk>/post/', views.movement_post_to_accounting, name='movement_post'),
+    
+    # Consumable Requests
+    path('consumables/', views.ConsumableRequestListView.as_view(), name='consumable_request_list'),
+    path('consumables/create/', views.consumable_request_create, name='consumable_request_create'),
+    path('consumables/<int:pk>/', views.consumable_request_detail, name='consumable_request_detail'),
+    path('consumables/<int:pk>/approve/', views.consumable_request_approve, name='consumable_request_approve'),
+    path('consumables/<int:pk>/dispense/', views.consumable_request_dispense, name='consumable_request_dispense'),
+    path('consumables/<int:pk>/reject/', views.consumable_request_reject, name='consumable_request_reject'),
+    
+    # Consumable Dashboard & Reports
+    path('consumables/dashboard/', views.consumable_dashboard, name='consumable_dashboard'),
+    path('consumables/reports/monthly-requests/', views.consumable_monthly_request_report, name='consumable_monthly_request_report'),
+    path('consumables/reports/monthly-consumption/', views.consumable_monthly_consumption_report, name='consumable_monthly_consumption_report'),
+    path('consumables/reports/monthly-cost/', views.consumable_monthly_cost_report, name='consumable_monthly_cost_report'),
 ]
 
 

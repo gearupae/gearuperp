@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container" style="max-width: 500px;">
+    <div class="text-center mb-4">
+        <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width:80px;height:80px;">
+            <i class="fas fa-box-open text-primary fa-2x"></i>
+        </div>
+        <h4 class="fw-bold">{{ title }}</h4>
+        <p class="text-muted">Fill the form below to request consumables</p>
+    </div>
+
+    <div class="card">
+        <div class="card-body p-4">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="mb-4">
+                    <label class="form-label fw-medium">
+                        <i class="fas fa-box me-2 text-primary"></i>Consumable Item
+                        <span class="text-danger">*</span>
+                    </label>
+                    {{ form.item }}
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label fw-medium">
+                        <i class="fas fa-hashtag me-2 text-primary"></i>Quantity Needed
+                        <span class="text-danger">*</span>
+                    </label>
+                    {{ form.quantity }}
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label fw-medium">
+                        <i class="fas fa-sticky-note me-2 text-primary"></i>Notes
+                        <span class="text-muted small">(Optional)</span>
+                    </label>
+                    {{ form.remarks }}
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-paper-plane me-2"></i>Submit Request
+                    </button>
+                    <a href="{% url 'inventory:consumable_request_list' %}" class="btn btn-light">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">{{ month_name }}</p>
+    </div>
+    <div>
+        <a href="{% url 'inventory:consumable_request_list' %}" class="btn btn-outline-primary me-2">
+            <i class="fas fa-list me-1"></i>All Requests
+        </a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="fas fa-file-alt me-1"></i>Reports
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'inventory:consumable_monthly_request_report' %}"><i class="fas fa-users me-2"></i>Monthly Requests</a></li>
+                <li><a class="dropdown-item" href="{% url 'inventory:consumable_monthly_consumption_report' %}"><i class="fas fa-chart-bar me-2"></i>Monthly Consumption</a></li>
+                <li><a class="dropdown-item" href="{% url 'inventory:consumable_monthly_cost_report' %}"><i class="fas fa-dollar-sign me-2"></i>Monthly Cost</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Main Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-primary bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-clipboard-list text-primary fa-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Requests</p>
+                        <h4 class="mb-0 fw-bold">{{ total_requests }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-warning bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-clock text-warning fa-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Pending</p>
+                        <h4 class="mb-0 fw-bold">{{ pending_requests }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-success bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-boxes text-success fa-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Qty Consumed</p>
+                        <h4 class="mb-0 fw-bold">{{ total_quantity|floatformat:0 }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="bg-info bg-opacity-10 rounded p-3 me-3">
+                        <i class="fas fa-coins text-info fa-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted mb-0 small">Total Cost</p>
+                        <h4 class="mb-0 fw-bold">AED {{ total_cost|floatformat:0 }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <!-- Recent Requests -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold">Recent Requests</h6>
+                <a href="{% url 'inventory:consumable_request_list' %}" class="btn btn-sm btn-light">View All</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Request #</th>
+                                <th>Item</th>
+                                <th>Requested By</th>
+                                <th class="text-end">Qty</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in recent_requests %}
+                            <tr>
+                                <td><a href="{% url 'inventory:consumable_request_detail' req.pk %}">{{ req.request_number }}</a></td>
+                                <td>{{ req.item.name|truncatechars:25 }}</td>
+                                <td>{{ req.requested_by.get_full_name|default:req.requested_by.username }}</td>
+                                <td class="text-end">{{ req.quantity|floatformat:0 }}</td>
+                                <td>
+                                    {% if req.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                    {% elif req.status == 'approved' %}
+                                    <span class="badge bg-info">Approved</span>
+                                    {% elif req.status == 'dispensed' %}
+                                    <span class="badge bg-success">Dispensed</span>
+                                    {% elif req.status == 'rejected' %}
+                                    <span class="badge bg-danger">Rejected</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-4 text-muted">No recent requests</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Requested Items -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">Top Requested Items ({{ month_name }})</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Item</th>
+                                <th class="text-end">Qty Used</th>
+                                <th class="text-end">Total Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in top_items %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td>{{ item.item__name }}</td>
+                                <td class="text-end">{{ item.total_qty|floatformat:0 }}</td>
+                                <td class="text-end">AED {{ item.total_cost|floatformat:2 }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center py-4 text-muted">No consumption data</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Low Stock Alerts -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="fas fa-exclamation-triangle text-danger me-2"></i>Low Stock Alerts
+                </h6>
+                <span class="badge bg-danger">{{ low_stock_count }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if low_stock_items %}
+                <div class="list-group list-group-flush">
+                    {% for item in low_stock_items|slice:":10" %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="mb-1">{{ item.item.name|truncatechars:30 }}</h6>
+                                <small class="text-muted">{{ item.item.item_code }}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-danger">{{ item.current_stock|floatformat:0 }}</span>
+                                <small class="d-block text-muted">Min: {{ item.minimum_stock|floatformat:0 }}</small>
+                            </div>
+                        </div>
+                        <div class="progress mt-2" style="height:4px;">
+                            {% widthratio item.current_stock item.minimum_stock 100 as percentage %}
+                            <div class="progress-bar bg-danger" style="width:{% if percentage > 100 %}100{% else %}{{ percentage }}{% endif %}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+                    <p class="mb-0">All items well stocked!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
