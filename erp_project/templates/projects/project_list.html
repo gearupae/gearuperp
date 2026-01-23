@@ -90,7 +90,7 @@
                         <td><a href="{% url 'projects:project_detail' project.pk %}" class="fw-medium text-decoration-none">{{ project.project_code }}</a></td>
                         <td>{{ project.name }}</td>
                         <td>{{ project.customer.name|default:"-" }}</td>
-                        <td>{{ project.manager.get_full_name|default:project.manager.username|default:"-" }}</td>
+                        <td>{% if project.manager %}{{ project.manager.get_full_name|default:project.manager.username }}{% else %}-{% endif %}</td>
                         <td>
                             {% if project.status == 'completed' %}<span class="badge badge-active">Completed</span>
                             {% elif project.status == 'in_progress' %}<span class="badge" style="background:#dbeafe;color:#1e40af;">In Progress</span>

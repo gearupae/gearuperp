@@ -14,7 +14,7 @@
             <div class="card-body">
                 <div class="row g-4">
                     <div class="col-md-4"><h6 class="text-muted mb-2">Customer</h6><p class="mb-0">{{ project.customer.name|default:"-" }}</p></div>
-                    <div class="col-md-4"><h6 class="text-muted mb-2">Manager</h6><p class="mb-0">{{ project.manager.get_full_name|default:"-" }}</p></div>
+                    <div class="col-md-4"><h6 class="text-muted mb-2">Manager</h6><p class="mb-0">{% if project.manager %}{{ project.manager.get_full_name|default:project.manager.username }}{% else %}-{% endif %}</p></div>
                     <div class="col-md-4"><h6 class="text-muted mb-2">Budget</h6><p class="mb-0">AED {{ project.budget|floatformat:2 }}</p></div>
                     <div class="col-md-4"><h6 class="text-muted mb-2">Start Date</h6><p class="mb-0">{{ project.start_date|date:"d/m/Y"|default:"-" }}</p></div>
                     <div class="col-md-4"><h6 class="text-muted mb-2">End Date</h6><p class="mb-0">{{ project.end_date|date:"d/m/Y"|default:"-" }}</p></div>
