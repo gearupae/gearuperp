@@ -1284,27 +1284,11 @@ def journal_register(request):
     if entry_type:
         entries = entries.filter(entry_type=entry_type)
     
-    # Filter by source module (derived from reference pattern)
+    # Filter by source module (using actual source_module field)
     source_module = request.GET.get('source_module')
     if source_module:
-        if source_module == 'invoice':
-            entries = entries.filter(Q(reference__startswith='INV') | Q(reference__icontains='invoice'))
-        elif source_module == 'bill':
-            entries = entries.filter(Q(reference__startswith='BILL') | Q(reference__icontains='bill'))
-        elif source_module == 'payment':
-            entries = entries.filter(Q(reference__startswith='PR') | Q(reference__startswith='PM') | Q(reference__icontains='payment'))
-        elif source_module == 'transfer':
-            entries = entries.filter(Q(reference__startswith='TRANSFER') | Q(reference__icontains='transfer'))
-        elif source_module == 'expense':
-            entries = entries.filter(Q(reference__startswith='EXPENSE') | Q(reference__icontains='expense'))
-        elif source_module == 'vat':
-            entries = entries.filter(Q(reference__startswith='VAT') | Q(reference__icontains='vat'))
-        elif source_module == 'opening':
-            entries = entries.filter(entry_type='opening')
-        elif source_module == 'reversal':
-            entries = entries.filter(entry_type='reversal')
-        elif source_module == 'manual':
-            entries = entries.filter(entry_type='standard', reference='')
+        # Direct filter on source_module field
+        entries = entries.filter(source_module=source_module)
     
     # Filter by account (journals affecting a specific account)
     account_id = request.GET.get('account')
@@ -1383,43 +1367,60 @@ def journal_register(request):
     status_choices = JournalEntry.STATUS_CHOICES
     entry_type_choices = JournalEntry.ENTRY_TYPE_CHOICES
     
+    # Source module choices - match JournalEntry.SOURCE_MODULE_CHOICES
     source_module_choices = [
-        ('invoice', 'Sales Invoice'),
-        ('bill', 'Purchase Bill'),
+        ('manual', 'Manual Entry'),
+        ('sales', 'Sales Invoice'),
+        ('purchase', 'Vendor Bill'),
         ('payment', 'Payment'),
-        ('transfer', 'Bank Transfer'),
-        ('expense', 'Expense Claim'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('expense_claim', 'Expense Claim'),
+        ('payroll', 'Payroll'),
+        ('inventory', 'Inventory'),
+        ('fixed_asset', 'Fixed Asset'),
+        ('project', 'Project'),
+        ('pdc', 'PDC Cheque'),
+        ('property', 'Property/Rent'),
         ('vat', 'VAT Adjustment'),
-        ('opening', 'Opening Balance'),
-        ('reversal', 'Reversal'),
-        ('manual', 'Manual Journal'),
+        ('corporate_tax', 'Corporate Tax'),
+        ('petty_cash', 'Petty Cash'),
+        ('opening_balance', 'Opening Balance'),
+        ('year_end', 'Year-End Closing'),
     ]
     
-    # Determine source module for each entry (for display)
+    # Determine source module for each entry (for display) - using actual source_module field
     def get_source_info(entry):
-        """Derive source module from entry data."""
-        ref = entry.reference.upper() if entry.reference else ''
+        """Get source module info from entry's source_module field."""
+        source_classes = {
+            'manual': ('Manual Entry', 'bg-secondary'),
+            'sales': ('Sales Invoice', 'bg-success'),
+            'purchase': ('Vendor Bill', 'bg-primary'),
+            'payment': ('Payment', 'bg-info'),
+            'bank_transfer': ('Bank Transfer', 'bg-secondary'),
+            'expense_claim': ('Expense Claim', 'bg-warning'),
+            'payroll': ('Payroll', 'bg-purple'),
+            'inventory': ('Inventory', 'bg-teal'),
+            'fixed_asset': ('Fixed Asset', 'bg-dark'),
+            'project': ('Project', 'bg-orange'),
+            'pdc': ('PDC Cheque', 'bg-pink'),
+            'property': ('Property/Rent', 'bg-cyan'),
+            'vat': ('VAT Adjustment', 'bg-danger'),
+            'corporate_tax': ('Corporate Tax', 'bg-dark'),
+            'petty_cash': ('Petty Cash', 'bg-warning'),
+            'opening_balance': ('Opening Balance', 'bg-info'),
+            'year_end': ('Year-End Closing', 'bg-dark'),
+        }
         
+        source_module = entry.source_module or 'manual'
+        label, css_class = source_classes.get(source_module, ('Unknown', 'bg-light'))
+        
+        # Override for special entry types
+        if entry.entry_type == 'reversal' or entry.reversal_of:
+            return (source_module, f'{label} (Reversal)', 'bg-warning')
         if entry.entry_type == 'opening':
-            return ('opening', 'Opening Balance', 'bg-info')
-        elif entry.entry_type == 'reversal' or entry.reversal_of:
-            return ('reversal', 'Reversal', 'bg-warning')
-        elif ref.startswith('INV') or 'INVOICE' in ref:
-            return ('invoice', 'Sales Invoice', 'bg-success')
-        elif ref.startswith('BILL') or 'BILL' in ref:
-            return ('bill', 'Purchase Bill', 'bg-primary')
-        elif ref.startswith('PR') or ref.startswith('PM') or 'PAYMENT' in ref:
-            return ('payment', 'Payment', 'bg-purple')
-        elif ref.startswith('TRANSFER') or 'TRANSFER' in ref:
-            return ('transfer', 'Bank Transfer', 'bg-secondary')
-        elif ref.startswith('EXPENSE') or 'EXPENSE' in ref:
-            return ('expense', 'Expense Claim', 'bg-orange')
-        elif ref.startswith('VAT') or 'VAT' in ref:
-            return ('vat', 'VAT Adjustment', 'bg-danger')
-        elif ref.startswith('ADJ') or entry.entry_type == 'adjustment':
-            return ('adjustment', 'Adjustment', 'bg-dark')
-        else:
-            return ('manual', 'Manual Journal', 'bg-light text-dark')
+            return ('opening_balance', 'Opening Balance', 'bg-info')
+        
+        return (source_module, label, css_class)
     
     # Add source info to entries
     entries_with_source = []

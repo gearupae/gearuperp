@@ -150,10 +150,10 @@ class Tenant(BaseModel):
     @property
     def outstanding_balance(self):
         """Calculate total outstanding balance for this tenant."""
-        from apps.finance.models import JournalLine
+        from apps.finance.models import JournalEntryLine
         if not self.ar_account:
             return Decimal('0.00')
-        balance = JournalLine.objects.filter(
+        balance = JournalEntryLine.objects.filter(
             account=self.ar_account,
             journal_entry__status='posted'
         ).aggregate(
@@ -433,7 +433,7 @@ class PDCCheque(BaseModel):
         Dr PDC Control Account
         Cr Trade Debtors - Property (Tenant)
         """
-        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        from apps.finance.models import JournalEntry, JournalEntryLine, Account, AccountMapping
         
         if self.status != 'received':
             raise ValidationError('Only received PDCs can be deposited.')
@@ -465,7 +465,7 @@ class PDCCheque(BaseModel):
         )
         
         # Dr PDC Control Account
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=pdc_control,
             debit=self.amount,
@@ -474,7 +474,7 @@ class PDCCheque(BaseModel):
         )
         
         # Cr Trade Debtors (Tenant AR)
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=ar_account,
             debit=Decimal('0.00'),
@@ -514,7 +514,7 @@ class PDCCheque(BaseModel):
         Dr Bank
         Cr PDC Control Account
         """
-        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        from apps.finance.models import JournalEntry, JournalEntryLine, Account, AccountMapping
         
         if self.status != 'deposited' or self.deposit_status != 'in_clearing':
             raise ValidationError('Only deposited PDCs in clearing can be cleared.')
@@ -544,7 +544,7 @@ class PDCCheque(BaseModel):
         )
         
         # Dr Bank
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=bank_account.gl_account,
             debit=self.amount,
@@ -553,7 +553,7 @@ class PDCCheque(BaseModel):
         )
         
         # Cr PDC Control Account
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=pdc_control,
             debit=Decimal('0.00'),
@@ -595,7 +595,7 @@ class PDCCheque(BaseModel):
         Dr Cheque Bounce Charges (Expense)
         Cr Other Income / Bank
         """
-        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        from apps.finance.models import JournalEntry, JournalEntryLine, Account, AccountMapping
         
         if self.status not in ['deposited', 'cleared']:
             raise ValidationError('Only deposited or cleared PDCs can bounce.')
@@ -629,7 +629,7 @@ class PDCCheque(BaseModel):
         )
         
         # Dr Trade Debtors (restore AR)
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=ar_account,
             debit=self.amount,
@@ -638,7 +638,7 @@ class PDCCheque(BaseModel):
         )
         
         # Cr Bank/PDC Control
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=credit_account,
             debit=Decimal('0.00'),
@@ -654,7 +654,7 @@ class PDCCheque(BaseModel):
                 bounce_expense = Account.objects.filter(account_type='expense').first()
             
             # Dr Bounce Charges Expense
-            JournalLine.objects.create(
+            JournalEntryLine.objects.create(
                 journal_entry=journal,
                 account=bounce_expense,
                 debit=bounce_charges,
@@ -663,7 +663,7 @@ class PDCCheque(BaseModel):
             )
             
             # Cr Trade Debtors (charge to tenant)
-            JournalLine.objects.create(
+            JournalEntryLine.objects.create(
                 journal_entry=journal,
                 account=ar_account,
                 debit=Decimal('0.00'),
@@ -995,7 +995,7 @@ class RentInvoice(BaseModel):
         Cr Rental Income (rent amount)
         Cr VAT Payable (vat amount, if applicable)
         """
-        from apps.finance.models import JournalEntry, JournalLine, Account, AccountMapping
+        from apps.finance.models import JournalEntry, JournalEntryLine, Account, AccountMapping
         
         if self.status != 'draft':
             raise ValidationError('Only draft invoices can be posted.')
@@ -1049,7 +1049,7 @@ class RentInvoice(BaseModel):
         )
         
         # Dr Accounts Receivable
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=ar_account,
             debit=self.total_amount,
@@ -1058,7 +1058,7 @@ class RentInvoice(BaseModel):
         )
         
         # Cr Rental Income
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=rental_income,
             debit=Decimal('0.00'),
@@ -1068,7 +1068,7 @@ class RentInvoice(BaseModel):
         
         # Cr VAT Payable (if applicable)
         if self.vat_amount > 0 and vat_account:
-            JournalLine.objects.create(
+            JournalEntryLine.objects.create(
                 journal_entry=journal,
                 account=vat_account,
                 debit=Decimal('0.00'),
@@ -1190,7 +1190,7 @@ class SecurityDeposit(BaseModel):
         Dr Bank
         Cr Security Deposit Liability
         """
-        from apps.finance.models import JournalEntry, JournalLine, Account
+        from apps.finance.models import JournalEntry, JournalEntryLine, Account
         
         if self.status != 'pending':
             raise ValidationError('Only pending deposits can be received.')
@@ -1223,7 +1223,7 @@ class SecurityDeposit(BaseModel):
         )
         
         # Dr Bank
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=bank_account.gl_account,
             debit=amount,
@@ -1232,7 +1232,7 @@ class SecurityDeposit(BaseModel):
         )
         
         # Cr Security Deposit Liability
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=deposit_liability,
             debit=Decimal('0.00'),
@@ -1275,7 +1275,7 @@ class SecurityDeposit(BaseModel):
         Cr Bank (refund amount)
         Cr Other Income (forfeited amount, if any)
         """
-        from apps.finance.models import JournalEntry, JournalLine, Account
+        from apps.finance.models import JournalEntry, JournalEntryLine, Account
         
         if self.status not in ['received', 'partially_refunded']:
             raise ValidationError('Only received deposits can be refunded.')
@@ -1325,7 +1325,7 @@ class SecurityDeposit(BaseModel):
         )
         
         # Dr Security Deposit Liability
-        JournalLine.objects.create(
+        JournalEntryLine.objects.create(
             journal_entry=journal,
             account=deposit_liability,
             debit=total_return,
@@ -1335,7 +1335,7 @@ class SecurityDeposit(BaseModel):
         
         # Cr Bank (refund)
         if refund_amount > 0:
-            JournalLine.objects.create(
+            JournalEntryLine.objects.create(
                 journal_entry=journal,
                 account=self.bank_account.gl_account,
                 debit=Decimal('0.00'),
@@ -1345,7 +1345,7 @@ class SecurityDeposit(BaseModel):
         
         # Cr Other Income (forfeit)
         if forfeit_amount > 0 and forfeit_income:
-            JournalLine.objects.create(
+            JournalEntryLine.objects.create(
                 journal_entry=journal,
                 account=forfeit_income,
                 debit=Decimal('0.00'),
