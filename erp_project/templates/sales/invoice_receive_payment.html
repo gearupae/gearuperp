@@ -54,7 +54,7 @@
                             <label class="form-label">Bank Account</label>
                             <select name="bank_account" class="form-select">
                                 {% for bank in bank_accounts %}
-                                <option value="{{ bank.pk }}">{{ bank.account_name }} - {{ bank.bank_name }}</option>
+                                <option value="{{ bank.pk }}">{{ bank.name }} - {{ bank.bank_name }}</option>
                                 {% empty %}
                                 <option value="">No bank accounts configured</option>
                                 {% endfor %}
