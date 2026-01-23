@@ -6,9 +6,47 @@
         <h4 class="mb-0 fw-bold">{{ title }}</h4>
         <small class="text-muted">Currency exchange rates for multi-currency transactions</small>
     </div>
-    <a href="{% url 'finance:exchangerate_create' %}" class="btn btn-dark">
+    <button type="button" class="btn btn-dark" data-bs-toggle="collapse" data-bs-target="#addRateForm">
         <i class="fas fa-plus me-2"></i>Add Rate
-    </a>
+    </button>
+</div>
+
+<!-- Inline Add Form -->
+<div class="collapse mb-4" id="addRateForm">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-dark text-white py-2">
+            <h6 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Add New Exchange Rate</h6>
+        </div>
+        <div class="card-body">
+            <form method="post" class="row g-3 align-items-end">
+                {% csrf_token %}
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Currency Code</label>
+                    <input type="text" name="currency_code" class="form-control" placeholder="USD, EUR, GBP" maxlength="3" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Rate Date</label>
+                    <input type="date" name="rate_date" class="form-control" value="{{ today }}" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Rate (to AED)</label>
+                    <input type="number" name="rate" class="form-control" step="0.000001" placeholder="3.6725" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Source</label>
+                    <input type="text" name="source" class="form-control" placeholder="e.g., UAE Central Bank">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-success me-2">
+                        <i class="fas fa-save me-1"></i>Save
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#addRateForm">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- Filters -->
@@ -85,10 +123,12 @@
 {% block extra_js %}
 <script>
 $(document).ready(function() {
-    $('#ratesTable').DataTable({
-        "order": [[1, "desc"]],
-        "pageLength": 25
-    });
+    if ($('#ratesTable tbody tr').length > 0 && !$('#ratesTable tbody tr td[colspan]').length) {
+        $('#ratesTable').DataTable({
+            "order": [[1, "desc"]],
+            "pageLength": 25
+        });
+    }
 });
 </script>
 {% endblock %}

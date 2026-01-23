@@ -3809,7 +3809,7 @@ def writeoff_reverse(request, pk):
 # ============ EXCHANGE RATE VIEWS ============
 
 class ExchangeRateListView(PermissionRequiredMixin, ListView):
-    """List of all exchange rates."""
+    """List of all exchange rates with inline creation form."""
     model = ExchangeRate
     template_name = 'finance/exchangerate_list.html'
     context_object_name = 'rates'
@@ -3832,11 +3832,33 @@ class ExchangeRateListView(PermissionRequiredMixin, ListView):
         context['currencies'] = ExchangeRate.objects.filter(is_active=True).values_list(
             'currency_code', flat=True
         ).distinct().order_by('currency_code')
+        # Add form for inline creation
+        context['form'] = ExchangeRateForm()
+        context['today'] = date.today().isoformat()
         return context
+    
+    def post(self, request, *args, **kwargs):
+        """Handle inline form submission."""
+        if not PermissionChecker.has_permission(request.user, 'finance', 'create'):
+            messages.error(request, 'Permission denied.')
+            return redirect('finance:exchangerate_list')
+        
+        form = ExchangeRateForm(request.POST)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.created_by = request.user
+            obj.save()
+            messages.success(request, f'Exchange Rate for {obj.currency_code} added successfully.')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{field}: {error}')
+        
+        return redirect('finance:exchangerate_list')
 
 
 class ExchangeRateCreateView(CreatePermissionMixin, CreateView):
-    """Create new exchange rate."""
+    """Create new exchange rate - kept for backwards compatibility."""
     model = ExchangeRate
     form_class = ExchangeRateForm
     template_name = 'finance/exchangerate_form.html'

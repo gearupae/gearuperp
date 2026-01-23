@@ -117,7 +117,7 @@
                         <tbody>
                             {% for movement in movements %}
                             <tr>
-                                <td>{{ movement.movement_date|date:"d/m/Y H:i" }}</td>
+                                <td>{{ movement.movement_date|date:"d/m/Y" }}</td>
                                 <td>
                                     {% if movement.movement_type == 'in' %}
                                     <span class="badge badge-active">Stock In</span>

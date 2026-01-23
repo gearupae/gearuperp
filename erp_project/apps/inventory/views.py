@@ -1023,7 +1023,7 @@ def consumable_monthly_cost_report(request):
     ).aggregate(
         total_cost=Sum('total_cost'),
         total_quantity=Sum('quantity'),
-        total_requests=models.Count('id'),
+        total_requests=Count('id'),
     )
     
     context = {
