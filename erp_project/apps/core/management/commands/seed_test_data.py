@@ -946,7 +946,10 @@ class Command(BaseCommand):
             tenant = tenants[i % len(tenants)]
             lease = leases[i % len(leases)] if leases else None
             amount = random.choice([10500, 15750, 21000, 26250, 31500, 42000, 52500])
-            cheque_date = date(2024, (i % 12) + 1, random.choice([15, 28, 30]))
+            month = (i % 12) + 1
+            # Use safe day values that work for all months (including Feb)
+            day = random.choice([10, 15, 20, 25])
+            cheque_date = date(2024, month, day)
             bank = random.choice(banks)
             
             # Determine status
