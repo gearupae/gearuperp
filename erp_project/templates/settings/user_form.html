@@ -80,13 +80,13 @@
                     {% endif %}
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Roles</label>
-                    <select name="roles" class="form-select" multiple>
+                    <label class="form-label">Roles <span class="text-danger">*</span></label>
+                    <select name="roles" class="form-select" multiple required style="min-height: 100px;">
                         {% for role in roles %}
                         <option value="{{ role.id }}" {% if role.id in user_roles %}selected{% endif %}>{{ role.name }}</option>
                         {% endfor %}
                     </select>
-                    <small class="text-muted">Hold Ctrl/Cmd to select multiple roles</small>
+                    <small class="text-warning"><i class="fas fa-exclamation-triangle me-1"></i>User must have at least one role to access modules</small>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Status</label>

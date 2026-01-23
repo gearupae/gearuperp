@@ -51,12 +51,13 @@
                 <input type="text" name="last_name" class="form-control" required>
             </div>
             <div class="col-md-4">
-                <label class="form-label">Roles</label>
-                <select name="roles" class="form-select select2" multiple>
+                <label class="form-label">Roles <span class="text-danger">*</span></label>
+                <select name="roles" class="form-select" multiple required style="min-height: 80px;">
                     {% for role in roles %}
                     <option value="{{ role.id }}">{{ role.name }}</option>
                     {% endfor %}
                 </select>
+                <small class="text-warning"><i class="fas fa-exclamation-triangle me-1"></i>User must have at least one role to access modules</small>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Password <span class="text-danger">*</span></label>
