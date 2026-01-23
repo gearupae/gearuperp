@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-{% load crispy_forms_tags %}
 
 {% block content %}
 <div class="page-header">
@@ -12,6 +11,22 @@
     <h4 class="mb-0 fw-bold">{{ title }}</h4>
 </div>
 
+{% if form.errors %}
+<div class="alert alert-danger mb-4">
+    <strong>Please correct the errors below:</strong>
+    <ul class="mb-0 mt-2">
+        {% for field in form %}
+            {% for error in field.errors %}
+            <li><strong>{{ field.label }}:</strong> {{ error }}</li>
+            {% endfor %}
+        {% endfor %}
+        {% for error in form.non_field_errors %}
+        <li>{{ error }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 <div class="card border-0 shadow-sm">
     <div class="card-body p-4">
         <form method="post">
@@ -19,43 +34,64 @@
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Username <span class="text-danger">*</span></label>
-                    <input type="text" name="username" class="form-control" value="{{ form.instance.username }}" required>
+                    {{ form.username }}
+                    {% if form.username.errors %}
+                    <div class="text-danger small">{{ form.username.errors.0 }}</div>
+                    {% endif %}
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Email <span class="text-danger">*</span></label>
-                    <input type="email" name="email" class="form-control" value="{{ form.instance.email }}" required>
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                    <div class="text-danger small">{{ form.email.errors.0 }}</div>
+                    {% endif %}
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">First Name <span class="text-danger">*</span></label>
-                    <input type="text" name="first_name" class="form-control" value="{{ form.instance.first_name }}" required>
+                    {{ form.first_name }}
+                    {% if form.first_name.errors %}
+                    <div class="text-danger small">{{ form.first_name.errors.0 }}</div>
+                    {% endif %}
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Last Name <span class="text-danger">*</span></label>
-                    <input type="text" name="last_name" class="form-control" value="{{ form.instance.last_name }}" required>
+                    {{ form.last_name }}
+                    {% if form.last_name.errors %}
+                    <div class="text-danger small">{{ form.last_name.errors.0 }}</div>
+                    {% endif %}
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Password {% if not form.instance.pk %}<span class="text-danger">*</span>{% endif %}</label>
-                    <input type="password" name="password1" class="form-control" {% if not form.instance.pk %}required{% endif %}>
+                    {{ form.password1 }}
+                    {% if form.password1.errors %}
+                    <div class="text-danger small">{{ form.password1.errors.0 }}</div>
+                    {% endif %}
                     {% if form.instance.pk %}
                     <small class="text-muted">Leave blank to keep current password</small>
+                    {% else %}
+                    <small class="text-muted">{{ form.password1.help_text }}</small>
                     {% endif %}
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Confirm Password {% if not form.instance.pk %}<span class="text-danger">*</span>{% endif %}</label>
-                    <input type="password" name="password2" class="form-control" {% if not form.instance.pk %}required{% endif %}>
+                    {{ form.password2 }}
+                    {% if form.password2.errors %}
+                    <div class="text-danger small">{{ form.password2.errors.0 }}</div>
+                    {% endif %}
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Roles</label>
-                    <select name="roles" class="form-select select2" multiple>
+                    <select name="roles" class="form-select" multiple>
                         {% for role in roles %}
                         <option value="{{ role.id }}" {% if role.id in user_roles %}selected{% endif %}>{{ role.name }}</option>
                         {% endfor %}
                     </select>
+                    <small class="text-muted">Hold Ctrl/Cmd to select multiple roles</small>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Status</label>
                     <div class="form-check form-switch mt-2">
-                        <input class="form-check-input" type="checkbox" name="is_active" {% if form.instance.is_active %}checked{% endif %}>
+                        {{ form.is_active }}
                         <label class="form-check-label">Active</label>
                     </div>
                 </div>
