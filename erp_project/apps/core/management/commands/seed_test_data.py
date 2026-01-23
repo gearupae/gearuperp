@@ -596,11 +596,10 @@ class Command(BaseCommand):
                 defaults={
                     'description': f'{name} - {category}',
                     'unit': unit,
-                    'cost_price': Decimal(str(cost)),
+                    'purchase_price': Decimal(str(cost)),
                     'selling_price': Decimal(str(price)),
                     'vat_rate': Decimal('5.00'),
-                    'minimum_stock': random.randint(5, 20),
-                    'reorder_level': random.randint(10, 30),
+                    'minimum_stock': Decimal(str(random.randint(5, 20))),
                 }
             )
             if was_created:
@@ -1114,17 +1113,17 @@ class Command(BaseCommand):
                 # Stock In (purchases)
                 movement_type = 'in'
                 qty = random.randint(10, 50)
-                cost = item.cost_price
+                cost = item.purchase_price
             elif i < 50:
                 # Stock Out (sales)
                 movement_type = 'out'
                 qty = random.randint(1, 10)
-                cost = item.cost_price
+                cost = item.purchase_price
             else:
                 # Adjustments
                 movement_type = random.choice(['adjustment_plus', 'adjustment_minus'])
                 qty = random.randint(1, 5)
-                cost = item.cost_price
+                cost = item.purchase_price
             
             movement, created = StockMovement.objects.get_or_create(
                 item=item,
