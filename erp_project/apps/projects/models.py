@@ -108,10 +108,12 @@ class Project(BaseModel):
             is_active=True, posted=True
         ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
         
-        # Sum revenue (from invoices linked to project)
-        revenue_total = self.invoices.filter(
-            is_active=True, status__in=['posted', 'paid', 'partial']
-        ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        # Sum revenue (from invoices linked to project via ProjectInvoice)
+        # Access the invoice through the ProjectInvoice link
+        revenue_total = Decimal('0.00')
+        for project_invoice in self.invoices.filter(is_active=True).select_related('invoice'):
+            if project_invoice.invoice and project_invoice.invoice.status in ['posted', 'paid', 'partial']:
+                revenue_total += project_invoice.invoice.total_amount or Decimal('0.00')
         
         self.total_expenses = expense_total
         self.total_revenue = revenue_total
