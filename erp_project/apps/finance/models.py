@@ -90,6 +90,16 @@ class Account(BaseModel):
             original = Account.objects.get(pk=self.pk)
             if original.opening_balance != self.opening_balance:
                 raise ValidationError("Opening balance cannot be changed after posting.")
+        
+        # CRITICAL ACCOUNTING RULE:
+        # Income and Expense accounts must start at ZERO
+        # Only Assets, Liabilities, and Equity can have opening balances
+        if self.opening_balance != Decimal('0.00'):
+            if self.account_type in [AccountType.INCOME, AccountType.EXPENSE]:
+                raise ValidationError(
+                    f"Opening balance not allowed for {self.get_account_type_display()} accounts. "
+                    f"Income and Expense accounts must start at zero."
+                )
 
 
 class FiscalYear(BaseModel):
