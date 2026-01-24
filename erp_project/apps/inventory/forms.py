@@ -147,7 +147,8 @@ class ConsumableRequestApproveForm(forms.Form):
         queryset=Warehouse.objects.none(),
         widget=forms.Select(attrs={'class': 'form-select'}),
         required=True,
-        label='Dispense From Warehouse'
+        label='Dispense From Warehouse',
+        empty_label='-- Select Warehouse --'
     )
     admin_notes = forms.CharField(
         required=False,
@@ -157,17 +158,39 @@ class ConsumableRequestApproveForm(forms.Form):
     
     def __init__(self, *args, item=None, quantity=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.no_stock_available = False
+        self.stock_info = []
+        
         # Show warehouses with sufficient stock
         if item and quantity:
-            warehouses_with_stock = Stock.objects.filter(
+            # Get all stock for this item
+            all_stocks = Stock.objects.filter(
                 item=item,
-                quantity__gte=quantity,
                 warehouse__status='active',
                 warehouse__is_active=True
-            ).values_list('warehouse_id', flat=True)
-            self.fields['warehouse'].queryset = Warehouse.objects.filter(
-                id__in=warehouses_with_stock
-            )
+            ).select_related('warehouse')
+            
+            # Build stock info for display
+            for stock in all_stocks:
+                self.stock_info.append({
+                    'warehouse': stock.warehouse,
+                    'quantity': stock.quantity,
+                    'sufficient': stock.quantity >= quantity
+                })
+            
+            warehouses_with_stock = [s.warehouse.id for s in all_stocks if s.quantity >= quantity]
+            
+            if warehouses_with_stock:
+                self.fields['warehouse'].queryset = Warehouse.objects.filter(
+                    id__in=warehouses_with_stock
+                )
+            else:
+                # No sufficient stock - show all active warehouses with warning
+                self.no_stock_available = True
+                self.fields['warehouse'].queryset = Warehouse.objects.filter(
+                    is_active=True, status='active'
+                )
+                self.fields['warehouse'].help_text = 'WARNING: No warehouse has sufficient stock!'
         else:
             self.fields['warehouse'].queryset = Warehouse.objects.filter(
                 is_active=True, status='active'
