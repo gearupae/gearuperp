@@ -31,6 +31,29 @@ class UserForm(UserCreationForm):
             if field_name == 'is_active':
                 field.widget.attrs['class'] = 'form-check-input'
     
+    def clean_username(self):
+        """Override to exclude current instance from uniqueness check."""
+        username = self.cleaned_data.get('username')
+        if username:
+            qs = User.objects.filter(username=username)
+            if self.instance and self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError("A user with that username already exists.")
+        return username
+    
+    def clean_password2(self):
+        """Override to allow empty passwords when editing."""
+        password1 = self.cleaned_data.get('password1')
+        password2 = self.cleaned_data.get('password2')
+        
+        # If editing and both passwords are empty, skip validation
+        if self.instance and self.instance.pk and not password1 and not password2:
+            return password2
+        
+        # Otherwise, use parent validation
+        return super().clean_password2()
+    
     def save(self, commit=True):
         user = super().save(commit=False)
         if self.instance.pk and not self.cleaned_data.get('password1'):
