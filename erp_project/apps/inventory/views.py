@@ -622,9 +622,18 @@ def consumable_request_create(request):
     else:
         form = ConsumableRequestForm()
     
+    # Get items with their stock levels for display
+    items_with_stock = Item.objects.filter(
+        is_active=True, 
+        item_type='product'
+    ).annotate(
+        total_stock=Sum('stocks__quantity')
+    ).values('id', 'total_stock')
+    
     return render(request, 'inventory/consumable_request_form.html', {
         'title': 'Request Consumable',
         'form': form,
+        'items_with_stock': items_with_stock,
     })
 
 

@@ -144,18 +144,21 @@
             </div>
             <div class="card-body">
                 {% if request_obj.status == 'pending' %}
+                {% if approve_form.no_stock_available %}
+                <!-- No Stock Warning -->
+                <div class="alert alert-danger mb-3">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Cannot Process!</strong><br>
+                    <small>No warehouse has sufficient stock ({{ request_obj.quantity }} {{ request_obj.item.unit }}) for this item. Please add stock first.</small>
+                </div>
+                {% else %}
                 <!-- Approve & Dispense Form -->
                 <form method="post" action="{% url 'inventory:consumable_request_dispense' request_obj.pk %}" class="mb-3">
                     {% csrf_token %}
                     <div class="mb-3">
                         <label class="form-label">Dispense From <span class="text-danger">*</span></label>
                         {{ approve_form.warehouse }}
-                        {% if approve_form.no_stock_available %}
-                        <div class="alert alert-warning py-2 mt-2 mb-0">
-                            <i class="fas fa-exclamation-triangle me-1"></i>
-                            <small><strong>No warehouse has sufficient stock!</strong> Add stock before dispensing.</small>
-                        </div>
-                        {% elif approve_form.stock_info %}
+                        {% if approve_form.stock_info %}
                         <small class="text-muted">Available stock:</small>
                         <ul class="small mb-0 ps-3">
                             {% for info in approve_form.stock_info %}
@@ -165,8 +168,6 @@
                             </li>
                             {% endfor %}
                         </ul>
-                        {% else %}
-                        <small class="text-muted">Only warehouses with sufficient stock are shown</small>
                         {% endif %}
                     </div>
                     <div class="mb-3">
@@ -186,6 +187,7 @@
                         <i class="fas fa-check me-1"></i>Approve Only
                     </button>
                 </form>
+                {% endif %}
 
                 <hr>
 
@@ -201,18 +203,33 @@
                     </button>
                 </form>
                 {% elif request_obj.status == 'approved' %}
-                <!-- Dispense Form -->
+                {% if request_obj.warehouse %}
+                <!-- Already has warehouse from approval - dispense directly -->
+                <div class="alert alert-info mb-3 py-2">
+                    <small><i class="fas fa-warehouse me-1"></i> Warehouse: <strong>{{ request_obj.warehouse.name }}</strong></small>
+                </div>
+                <form method="post" action="{% url 'inventory:consumable_request_dispense' request_obj.pk %}" class="mb-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="warehouse" value="{{ request_obj.warehouse.pk }}">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fas fa-check-double me-1"></i>Dispense Now
+                    </button>
+                </form>
+                {% elif approve_form.no_stock_available %}
+                <!-- No Stock Warning -->
+                <div class="alert alert-danger mb-3">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Cannot Dispense!</strong><br>
+                    <small>No warehouse has sufficient stock. Please add stock first.</small>
+                </div>
+                {% else %}
+                <!-- Dispense Form - need to select warehouse -->
                 <form method="post" action="{% url 'inventory:consumable_request_dispense' request_obj.pk %}" class="mb-3">
                     {% csrf_token %}
                     <div class="mb-3">
                         <label class="form-label">Dispense From <span class="text-danger">*</span></label>
                         {{ approve_form.warehouse }}
-                        {% if approve_form.no_stock_available %}
-                        <div class="alert alert-warning py-2 mt-2 mb-0">
-                            <i class="fas fa-exclamation-triangle me-1"></i>
-                            <small><strong>No warehouse has sufficient stock!</strong></small>
-                        </div>
-                        {% elif approve_form.stock_info %}
+                        {% if approve_form.stock_info %}
                         <small class="text-muted">Available:</small>
                         <ul class="small mb-0 ps-3">
                             {% for info in approve_form.stock_info %}
@@ -227,6 +244,7 @@
                         <i class="fas fa-check-double me-1"></i>Dispense Now
                     </button>
                 </form>
+                {% endif %}
 
                 <hr>
 

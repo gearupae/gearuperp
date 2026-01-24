@@ -21,6 +21,16 @@
                         <span class="text-danger">*</span>
                     </label>
                     {{ form.item }}
+                    <div id="stockInfo" class="mt-2" style="display:none;">
+                        <div id="stockAvailable" class="alert alert-success py-2 mb-0" style="display:none;">
+                            <i class="fas fa-check-circle me-1"></i>
+                            <span id="stockText"></span>
+                        </div>
+                        <div id="stockUnavailable" class="alert alert-warning py-2 mb-0" style="display:none;">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            <span id="noStockText">No stock available. Request will be pending approval.</span>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="mb-4">
@@ -51,5 +61,46 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const itemSelect = document.getElementById('id_item');
+    const stockInfo = document.getElementById('stockInfo');
+    const stockAvailable = document.getElementById('stockAvailable');
+    const stockUnavailable = document.getElementById('stockUnavailable');
+    const stockText = document.getElementById('stockText');
+    
+    // Stock data from server
+    const stockData = {
+        {% for item in items_with_stock %}
+        {{ item.id }}: {{ item.total_stock|default:0 }},
+        {% endfor %}
+    };
+    
+    itemSelect.addEventListener('change', function() {
+        const itemId = this.value;
+        stockInfo.style.display = 'block';
+        
+        if (itemId && stockData[itemId] !== undefined) {
+            const stock = stockData[itemId];
+            if (stock > 0) {
+                stockAvailable.style.display = 'block';
+                stockUnavailable.style.display = 'none';
+                stockText.textContent = `Available: ${stock} units in stock`;
+            } else {
+                stockAvailable.style.display = 'none';
+                stockUnavailable.style.display = 'block';
+            }
+        } else if (itemId) {
+            stockAvailable.style.display = 'none';
+            stockUnavailable.style.display = 'block';
+        } else {
+            stockInfo.style.display = 'none';
+        }
+    });
+});
+</script>
 {% endblock %}
 
