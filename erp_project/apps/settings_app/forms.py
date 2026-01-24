@@ -42,6 +42,21 @@ class UserForm(UserCreationForm):
                 raise forms.ValidationError("A user with that username already exists.")
         return username
     
+    def clean_password1(self):
+        """Override to allow empty password when editing."""
+        password1 = self.cleaned_data.get('password1')
+        
+        # If editing and password is empty, skip validation
+        if self.instance and self.instance.pk and not password1:
+            return password1
+        
+        # Otherwise, run password validators
+        if password1:
+            from django.contrib.auth.password_validation import validate_password
+            validate_password(password1, self.instance)
+        
+        return password1
+    
     def clean_password2(self):
         """Override to allow empty passwords when editing."""
         password1 = self.cleaned_data.get('password1')
@@ -56,6 +71,11 @@ class UserForm(UserCreationForm):
             raise forms.ValidationError("The two password fields didn't match.")
         
         return password2
+    
+    def _post_clean(self):
+        """Override to skip password validation when editing without password change."""
+        super(forms.ModelForm, self)._post_clean()
+        # Skip the UserCreationForm's _post_clean which validates password
     
     def save(self, commit=True):
         user = super().save(commit=False)
