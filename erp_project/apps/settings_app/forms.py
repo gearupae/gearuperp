@@ -72,6 +72,34 @@ class UserForm(UserCreationForm):
         
         return password2
     
+    def validate_passwords(self, password1_field_name="password1", password2_field_name="password2"):
+        """Override to skip required validation when editing without password change."""
+        password1 = self.cleaned_data.get(password1_field_name)
+        password2 = self.cleaned_data.get(password2_field_name)
+        
+        # If editing and both passwords are empty, skip validation entirely
+        if self.instance and self.instance.pk and not password1 and not password2:
+            return
+        
+        # Otherwise, use parent validation
+        if not password1 and password1_field_name not in self.errors:
+            error = forms.ValidationError(
+                self.fields[password1_field_name].error_messages["required"],
+                code="required",
+            )
+            self.add_error(password1_field_name, error)
+
+        if not password2 and password2_field_name not in self.errors:
+            error = forms.ValidationError(
+                self.fields[password2_field_name].error_messages["required"],
+                code="required",
+            )
+            self.add_error(password2_field_name, error)
+
+        if password1 and password2 and password1 != password2:
+            error = forms.ValidationError("The two password fields didn't match.", code="password_mismatch")
+            self.add_error(password2_field_name, error)
+    
     def _post_clean(self):
         """Override to skip password validation when editing without password change."""
         super(forms.ModelForm, self)._post_clean()
