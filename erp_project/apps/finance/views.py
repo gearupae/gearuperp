@@ -1089,6 +1089,25 @@ def corporate_tax_report(request):
             fiscal_year=selected_fiscal_year, is_active=True
         ).first()
     
+    # Excel Export
+    export_format = request.GET.get('format', '')
+    if export_format == 'excel' and selected_fiscal_year:
+        from .excel_exports import export_corporate_tax
+        tax_data = {
+            'fiscal_year': selected_fiscal_year.name,
+            'start_date': start_date,
+            'end_date': end_date,
+            'revenue': current_revenue,
+            'expenses': current_expenses,
+            'accounting_profit': accounting_profit,
+            'tax_threshold': tax_threshold,
+            'tax_rate': tax_rate,
+            'taxable_amount': taxable_amount,
+            'tax_payable': tax_payable_estimate,
+            'computation': existing_computation,
+        }
+        return export_corporate_tax(tax_data)
+    
     return render(request, 'finance/corporate_tax_report.html', {
         'title': 'Corporate Tax Report',
         'fiscal_years': fiscal_years,
@@ -2184,6 +2203,20 @@ def cash_flow(request):
     # Net change in cash
     net_change = closing_cash - opening_cash
     
+    # Prepare data for display and export
+    operating = [
+        {'description': 'Net Income', 'amount': abs(income)},
+        {'description': 'Less: Total Expenses', 'amount': -expenses},
+    ]
+    investing = []  # Simplified - no investing activities tracked
+    financing = []  # Simplified - no financing activities tracked
+    
+    # Excel Export
+    export_format = request.GET.get('format', '')
+    if export_format == 'excel':
+        from .excel_exports import export_cash_flow
+        return export_cash_flow(operating, investing, financing, start_date, end_date)
+    
     return render(request, 'finance/cash_flow.html', {
         'title': 'Cash Flow Statement',
         'opening_cash': opening_cash,
@@ -2205,7 +2238,15 @@ def ar_aging(request):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
     
-    today = date.today()
+    # Support date filter
+    as_of_date_str = request.GET.get('date', '')
+    if as_of_date_str:
+        try:
+            today = date.fromisoformat(as_of_date_str)
+        except ValueError:
+            today = date.today()
+    else:
+        today = date.today()
     
     # Get AR account (typically 1200 or similar)
     ar_account = Account.objects.filter(
@@ -2348,7 +2389,15 @@ def ap_aging(request):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
     
-    today = date.today()
+    # Support date filter
+    as_of_date_str = request.GET.get('date', '')
+    if as_of_date_str:
+        try:
+            today = date.fromisoformat(as_of_date_str)
+        except ValueError:
+            today = date.today()
+    else:
+        today = date.today()
     
     # Get AP account (typically 2000 or similar)
     ap_account = Account.objects.filter(
@@ -2579,6 +2628,19 @@ def budget_vs_actual(request):
             total_actual += actual
     
     total_variance = total_budget - total_actual
+    
+    # Excel Export
+    export_format = request.GET.get('format', '')
+    if export_format == 'excel' and selected_budget:
+        from .excel_exports import export_budget_vs_actual
+        export_data = [{
+            'account': f"{d['account'].code} - {d['account'].name}",
+            'budget': d['budgeted'],
+            'actual': d['actual'],
+            'variance': d['variance'],
+            'variance_pct': float(d['variance_pct']),
+        } for d in comparison_data]
+        return export_budget_vs_actual(export_data, selected_budget.name, selected_budget.fiscal_year.name)
     
     return render(request, 'finance/budget_vs_actual.html', {
         'title': 'Budget vs Actual',

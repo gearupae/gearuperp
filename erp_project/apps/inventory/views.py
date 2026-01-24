@@ -914,13 +914,14 @@ def consumable_monthly_request_report(request):
 
 @login_required
 def consumable_monthly_consumption_report(request):
-    """Monthly Consumption Report - item-wise quantity used."""
+    """Monthly Consumption Report - item-wise quantity used with analytics."""
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
     
     from django.utils import timezone
     from datetime import date
+    from dateutil.relativedelta import relativedelta
     
     # Get month from query params
     year = int(request.GET.get('year', timezone.localdate().year))
@@ -961,8 +962,84 @@ def consumable_monthly_consumption_report(request):
         total_requests=Count('id'),
     )
     
+    # ===== CHART DATA =====
+    
+    # 1. Top 10 Most Consumed Items (for forecast)
+    top_items = list(consumption[:10])
+    top_items_labels = [c['item__name'][:20] for c in top_items]
+    top_items_data = [float(c['total_quantity'] or 0) for c in top_items]
+    
+    # 2. Consumption by User (who orders more/less)
+    user_consumption = ConsumableRequest.objects.filter(
+        is_active=True,
+        status='dispensed',
+        request_date__gte=month_start,
+        request_date__lt=month_end
+    ).values(
+        'requested_by__username',
+        'requested_by__first_name',
+        'requested_by__last_name'
+    ).annotate(
+        total_requests=Count('id'),
+        total_quantity=Sum('quantity'),
+        total_cost=Sum('total_cost')
+    ).order_by('-total_requests')[:10]
+    
+    user_labels = [f"{u['requested_by__first_name'] or ''} {u['requested_by__last_name'] or ''}".strip() or u['requested_by__username'] for u in user_consumption]
+    user_data = [u['total_requests'] for u in user_consumption]
+    
+    # 3. Monthly Cost Trend (last 6 months)
+    monthly_costs = []
+    monthly_labels = []
+    for i in range(5, -1, -1):
+        m_date = month_start - relativedelta(months=i)
+        m_end = m_date + relativedelta(months=1)
+        cost = ConsumableRequest.objects.filter(
+            is_active=True,
+            status='dispensed',
+            request_date__gte=m_date,
+            request_date__lt=m_end
+        ).aggregate(total=Sum('total_cost'))['total'] or 0
+        monthly_costs.append(float(cost))
+        monthly_labels.append(m_date.strftime('%b %Y'))
+    
+    # 4. Items needing refill (high consumption vs current stock)
+    from apps.inventory.models import Stock
+    refill_items = []
+    for item_data in consumption[:20]:
+        item_id = item_data['item__id']
+        monthly_consumption = float(item_data['total_quantity'] or 0)
+        current_stock = Stock.objects.filter(item_id=item_id).aggregate(total=Sum('quantity'))['total'] or 0
+        # If current stock < 2 months of consumption, flag for refill
+        if current_stock < (monthly_consumption * 2):
+            refill_items.append({
+                'name': item_data['item__name'],
+                'monthly_consumption': monthly_consumption,
+                'current_stock': float(current_stock),
+                'months_left': round(float(current_stock) / monthly_consumption, 1) if monthly_consumption > 0 else 0
+            })
+    
+    # 5. Inactive/Rarely Used Items (items with no consumption in last 3 months)
+    three_months_ago = month_start - relativedelta(months=3)
+    consumed_item_ids = ConsumableRequest.objects.filter(
+        is_active=True,
+        status='dispensed',
+        request_date__gte=three_months_ago
+    ).values_list('item_id', flat=True).distinct()
+    
+    inactive_items = Item.objects.filter(
+        is_active=True,
+        item_type='product',
+        category__name__icontains='medical'
+    ).exclude(id__in=consumed_item_ids).values('name', 'item_code')[:10]
+    
+    # 6. Cost breakdown by item (pie chart)
+    cost_breakdown = list(consumption[:8])
+    cost_labels = [c['item__name'][:15] for c in cost_breakdown]
+    cost_data = [float(c['total_cost'] or 0) for c in cost_breakdown]
+    
     context = {
-        'title': f'Monthly Consumption Report - {month_start.strftime("%B %Y")}',
+        'title': f'Consumption Analytics - {month_start.strftime("%B %Y")}',
         'consumption': consumption,
         'totals': totals,
         'year': year,
@@ -970,6 +1047,18 @@ def consumable_monthly_consumption_report(request):
         'month_name': month_start.strftime('%B %Y'),
         'years': range(2024, timezone.localdate().year + 2),
         'months': [(i, date(2000, i, 1).strftime('%B')) for i in range(1, 13)],
+        # Chart data
+        'top_items_labels': top_items_labels,
+        'top_items_data': top_items_data,
+        'user_labels': user_labels,
+        'user_data': user_data,
+        'monthly_labels': monthly_labels,
+        'monthly_costs': monthly_costs,
+        'refill_items': refill_items,
+        'inactive_items': inactive_items,
+        'cost_labels': cost_labels,
+        'cost_data': cost_data,
+        'user_consumption': user_consumption,
     }
     
     return render(request, 'inventory/consumable_monthly_consumption_report.html', context)

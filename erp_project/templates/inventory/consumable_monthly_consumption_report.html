@@ -1,10 +1,77 @@
 {% extends 'base.html' %}
+{% load humanize %}
+
+{% block extra_css %}
+<style>
+    .chart-container {
+        position: relative;
+        height: 300px;
+        width: 100%;
+    }
+    .chart-container-sm {
+        position: relative;
+        height: 250px;
+        width: 100%;
+    }
+    .insight-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    .insight-card:hover {
+        transform: translateY(-2px);
+    }
+    .insight-card.warning {
+        border-left-color: #f59e0b;
+        background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+    }
+    .insight-card.danger {
+        border-left-color: #ef4444;
+        background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
+    }
+    .insight-card.success {
+        border-left-color: #10b981;
+        background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%);
+    }
+    .insight-card.info {
+        border-left-color: #3b82f6;
+        background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+    }
+    .stat-badge {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: 20px;
+    }
+    .refill-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: #e5e7eb;
+        overflow: hidden;
+    }
+    .refill-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    .gradient-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .gradient-success {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }
+    .gradient-warning {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    .gradient-info {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
-        <h4 class="mb-1 fw-bold">{{ title }}</h4>
-        <p class="text-muted mb-0">Item-wise consumption for {{ month_name }}</p>
+        <h4 class="mb-1 fw-bold"><i class="fas fa-chart-line text-primary me-2"></i>{{ title }}</h4>
+        <p class="text-muted mb-0">Comprehensive consumption analytics for {{ month_name }}</p>
     </div>
     <a href="{% url 'inventory:consumable_dashboard' %}" class="btn btn-outline-primary">
         <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
@@ -12,11 +79,11 @@
 </div>
 
 <!-- Month Selector -->
-<div class="card mb-4">
+<div class="card mb-4 border-0 shadow-sm">
     <div class="card-body py-3">
         <form method="get" class="row g-3 align-items-end">
             <div class="col-md-3">
-                <label class="form-label">Year</label>
+                <label class="form-label fw-medium">Year</label>
                 <select name="year" class="form-select">
                     {% for y in years %}
                     <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
@@ -24,7 +91,7 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <label class="form-label">Month</label>
+                <label class="form-label fw-medium">Month</label>
                 <select name="month" class="form-select">
                     {% for m, name in months %}
                     <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ name }}</option>
@@ -32,7 +99,7 @@
                 </select>
             </div>
             <div class="col-md-6">
-                <button type="submit" class="btn btn-primary"><i class="fas fa-sync me-1"></i>Update</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-sync me-1"></i>Update Report</button>
             </div>
         </form>
     </div>
@@ -40,41 +107,315 @@
 
 <!-- Summary Cards -->
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <h5 class="text-muted">Items Consumed</h5>
-                <h2 class="fw-bold text-primary">{{ consumption|length }}</h2>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="rounded-circle gradient-primary d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="fas fa-boxes text-white"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1 small text-uppercase">Items Consumed</h6>
+                        <h3 class="mb-0 fw-bold">{{ consumption|length }}</h3>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <h5 class="text-muted">Total Quantity</h5>
-                <h2 class="fw-bold text-success">{{ totals.total_quantity|default:0|floatformat:0 }}</h2>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="rounded-circle gradient-success d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="fas fa-cubes text-white"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1 small text-uppercase">Total Quantity</h6>
+                        <h3 class="mb-0 fw-bold">{{ totals.total_quantity|default:0|floatformat:0 }}</h3>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <h5 class="text-muted">Total Cost</h5>
-                <h2 class="fw-bold text-info">AED {{ totals.total_cost|default:0|floatformat:2 }}</h2>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="rounded-circle gradient-warning d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="fas fa-file-invoice text-white"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1 small text-uppercase">Total Requests</h6>
+                        <h3 class="mb-0 fw-bold">{{ totals.total_requests|default:0 }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="rounded-circle gradient-info d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                            <i class="fas fa-dollar-sign text-white"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="text-muted mb-1 small text-uppercase">Total Cost</h6>
+                        <h3 class="mb-0 fw-bold">AED {{ totals.total_cost|default:0|floatformat:0 }}</h3>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Consumption by Item -->
-<div class="card">
-    <div class="card-header">
-        <h6 class="mb-0 fw-semibold">Consumption by Item</h6>
+<!-- Charts Row 1 -->
+<div class="row g-4 mb-4">
+    <!-- Monthly Cost Trend -->
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-chart-area text-primary me-2"></i>Monthly Cost Trend (Last 6 Months)</h6>
+                <p class="text-muted small mb-0">Track spending patterns to optimize budget</p>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="costTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Cost Breakdown Pie -->
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-chart-pie text-success me-2"></i>Cost Breakdown</h6>
+                <p class="text-muted small mb-0">Where your money goes</p>
+            </div>
+            <div class="card-body">
+                <div class="chart-container-sm">
+                    <canvas id="costBreakdownChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="row g-4 mb-4">
+    <!-- Top Consumed Items -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 fw-bold"><i class="fas fa-fire text-danger me-2"></i>Most Consumed Items</h6>
+                        <p class="text-muted small mb-0">Forecast: Stock up on these items</p>
+                    </div>
+                    <span class="badge bg-danger-subtle text-danger">High Demand</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="topItemsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- User Consumption -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 fw-bold"><i class="fas fa-users text-info me-2"></i>Requests by User</h6>
+                        <p class="text-muted small mb-0">Who orders more vs less</p>
+                    </div>
+                    <span class="badge bg-info-subtle text-info">User Analysis</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="userChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Insights Row -->
+<div class="row g-4 mb-4">
+    <!-- Items Needing Refill -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 fw-bold"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Items Needing Refill</h6>
+                        <p class="text-muted small mb-0">Stock running low based on consumption rate</p>
+                    </div>
+                    <span class="badge bg-warning text-dark">{{ refill_items|length }} Items</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if refill_items %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Item</th>
+                                <th class="text-end">Monthly Usage</th>
+                                <th class="text-end">Current Stock</th>
+                                <th class="text-center">Stock Level</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in refill_items %}
+                            <tr>
+                                <td class="fw-medium">{{ item.name|truncatechars:25 }}</td>
+                                <td class="text-end">{{ item.monthly_consumption|floatformat:0 }}</td>
+                                <td class="text-end">{{ item.current_stock|floatformat:0 }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center justify-content-center">
+                                        <div class="refill-bar flex-grow-1" style="max-width: 80px;">
+                                            <div class="refill-bar-fill {% if item.months_left < 1 %}bg-danger{% elif item.months_left < 2 %}bg-warning{% else %}bg-success{% endif %}" style="width: {% widthratio item.months_left 3 100 %}%;"></div>
+                                        </div>
+                                        <span class="ms-2 small {% if item.months_left < 1 %}text-danger{% elif item.months_left < 2 %}text-warning{% else %}text-success{% endif %}">
+                                            {{ item.months_left }}mo
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <p class="mb-0">All items are well stocked!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Inactive Items -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white border-0 pt-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 fw-bold"><i class="fas fa-moon text-secondary me-2"></i>Inactive Items</h6>
+                        <p class="text-muted small mb-0">Not consumed in last 3 months - review for savings</p>
+                    </div>
+                    <span class="badge bg-secondary">{{ inactive_items|length }} Items</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if inactive_items %}
+                <div class="row g-2">
+                    {% for item in inactive_items %}
+                    <div class="col-md-6">
+                        <div class="insight-card card border-0 warning p-3">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-box text-warning me-2"></i>
+                                <div>
+                                    <h6 class="mb-0 small fw-medium">{{ item.name|truncatechars:22 }}</h6>
+                                    <span class="text-muted smaller">{{ item.item_code }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="alert alert-warning mt-3 mb-0 py-2">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Tip:</strong> Consider reducing stock orders for these items to save money.
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <p class="mb-0">All medical items are being used efficiently!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Consumption Table -->
+{% if user_consumption %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-0 pt-3">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-user-chart text-primary me-2"></i>Detailed User Consumption</h6>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover mb-0">
-                <thead>
+                <thead class="table-light">
+                    <tr>
+                        <th>User</th>
+                        <th class="text-end">Requests</th>
+                        <th class="text-end">Quantity</th>
+                        <th class="text-end">Total Cost</th>
+                        <th class="text-center">Activity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in user_consumption %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px; font-size: 0.85rem;">
+                                    {{ user.requested_by__first_name|default:user.requested_by__username|first|upper }}
+                                </div>
+                                <div>
+                                    <span class="fw-medium">{{ user.requested_by__first_name }} {{ user.requested_by__last_name }}</span>
+                                    <br><small class="text-muted">@{{ user.requested_by__username }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">{{ user.total_requests }}</td>
+                        <td class="text-end">{{ user.total_quantity|floatformat:0 }}</td>
+                        <td class="text-end">AED {{ user.total_cost|default:0|floatformat:2 }}</td>
+                        <td class="text-center">
+                            {% if user.total_requests > 10 %}
+                            <span class="badge bg-danger">High</span>
+                            {% elif user.total_requests > 5 %}
+                            <span class="badge bg-warning text-dark">Medium</span>
+                            {% else %}
+                            <span class="badge bg-success">Low</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Consumption by Item Table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-0 pt-3">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-table text-primary me-2"></i>Detailed Consumption by Item</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
                     <tr>
                         <th>Item Code</th>
                         <th>Item Name</th>
@@ -87,11 +428,11 @@
                 <tbody>
                     {% for item in consumption %}
                     <tr>
-                        <td><span class="text-muted">{{ item.item__item_code }}</span></td>
-                        <td>{{ item.item__name }}</td>
+                        <td><span class="badge bg-light text-dark">{{ item.item__item_code }}</span></td>
+                        <td class="fw-medium">{{ item.item__name }}</td>
                         <td>{{ item.item__unit }}</td>
                         <td class="text-end">{{ item.request_count }}</td>
-                        <td class="text-end fw-medium">{{ item.total_quantity|floatformat:0 }}</td>
+                        <td class="text-end fw-bold">{{ item.total_quantity|floatformat:0 }}</td>
                         <td class="text-end">AED {{ item.total_cost|floatformat:2 }}</td>
                     </tr>
                     {% empty %}
@@ -119,3 +460,213 @@
 </div>
 {% endblock %}
 
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Color palette
+    const colors = {
+        primary: '#667eea',
+        secondary: '#6c757d',
+        success: '#10b981',
+        danger: '#ef4444',
+        warning: '#f59e0b',
+        info: '#3b82f6',
+        gradient1: ['#667eea', '#764ba2'],
+        gradient2: ['#11998e', '#38ef7d'],
+        gradient3: ['#f093fb', '#f5576c'],
+        gradient4: ['#4facfe', '#00f2fe'],
+        chartColors: [
+            '#667eea', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', 
+            '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4'
+        ]
+    };
+
+    // 1. Monthly Cost Trend Chart
+    const costTrendCtx = document.getElementById('costTrendChart');
+    if (costTrendCtx) {
+        const costGradient = costTrendCtx.getContext('2d').createLinearGradient(0, 0, 0, 300);
+        costGradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
+        costGradient.addColorStop(1, 'rgba(102, 126, 234, 0.0)');
+        
+        new Chart(costTrendCtx, {
+            type: 'line',
+            data: {
+                labels: {{ monthly_labels|safe }},
+                datasets: [{
+                    label: 'Monthly Cost (AED)',
+                    data: {{ monthly_costs|safe }},
+                    borderColor: colors.primary,
+                    backgroundColor: costGradient,
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointBackgroundColor: colors.primary,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        titleFont: { size: 14 },
+                        bodyFont: { size: 13 },
+                        padding: 12,
+                        callbacks: {
+                            label: function(context) {
+                                return 'Cost: AED ' + context.parsed.y.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: {
+                            callback: function(value) {
+                                return 'AED ' + value.toLocaleString();
+                            }
+                        }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    // 2. Cost Breakdown Doughnut Chart
+    const costBreakdownCtx = document.getElementById('costBreakdownChart');
+    if (costBreakdownCtx) {
+        new Chart(costBreakdownCtx, {
+            type: 'doughnut',
+            data: {
+                labels: {{ cost_labels|safe }},
+                datasets: [{
+                    data: {{ cost_data|safe }},
+                    backgroundColor: colors.chartColors,
+                    borderWidth: 0,
+                    hoverOffset: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 10,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': AED ' + context.parsed.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 3. Top Items Horizontal Bar Chart
+    const topItemsCtx = document.getElementById('topItemsChart');
+    if (topItemsCtx) {
+        new Chart(topItemsCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ top_items_labels|safe }},
+                datasets: [{
+                    label: 'Quantity Consumed',
+                    data: {{ top_items_data|safe }},
+                    backgroundColor: function(context) {
+                        const chart = context.chart;
+                        const {ctx, chartArea} = chart;
+                        if (!chartArea) return colors.danger;
+                        const gradient = ctx.createLinearGradient(0, 0, chartArea.width, 0);
+                        gradient.addColorStop(0, '#f093fb');
+                        gradient.addColorStop(1, '#f5576c');
+                        return gradient;
+                    },
+                    borderRadius: 6,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    y: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    // 4. User Consumption Bar Chart
+    const userCtx = document.getElementById('userChart');
+    if (userCtx) {
+        new Chart(userCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ user_labels|safe }},
+                datasets: [{
+                    label: 'Requests Made',
+                    data: {{ user_data|safe }},
+                    backgroundColor: function(context) {
+                        const chart = context.chart;
+                        const {ctx, chartArea} = chart;
+                        if (!chartArea) return colors.info;
+                        const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+                        gradient.addColorStop(0, '#4facfe');
+                        gradient.addColorStop(1, '#00f2fe');
+                        return gradient;
+                    },
+                    borderRadius: 6,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: { stepSize: 1 }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

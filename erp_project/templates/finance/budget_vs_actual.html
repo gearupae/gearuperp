@@ -9,6 +9,11 @@
         {% endif %}
     </div>
     <div class="btn-group">
+        {% if selected_budget %}
+        <a href="?budget={{ selected_budget.pk }}&format=excel" class="btn btn-success">
+            <i class="fas fa-file-excel me-2"></i>Excel
+        </a>
+        {% endif %}
         <button class="btn btn-outline-dark" onclick="window.print()">
             <i class="fas fa-print me-2"></i>Print
         </button>

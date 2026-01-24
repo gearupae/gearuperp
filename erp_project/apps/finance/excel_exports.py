@@ -677,3 +677,100 @@ def export_cash_flow(operating, investing, financing, start_date, end_date):
     wb.save(response)
     return response
 
+
+# ============ CORPORATE TAX EXPORT ============
+
+def export_corporate_tax(data):
+    """Export Corporate Tax Report to Excel."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Corporate Tax'
+    
+    # Title
+    style_title_row(ws, 1, f'UAE Corporate Tax Computation', 3)
+    ws.cell(row=2, column=1, value=f'Fiscal Year: {data.get("fiscal_year", "")}')
+    ws.cell(row=3, column=1, value=f'Period: {data.get("start_date", "")} to {data.get("end_date", "")}')
+    
+    row = 5
+    
+    # Revenue & Expenses
+    ws.cell(row=row, column=1, value='INCOME STATEMENT SUMMARY')
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    row += 1
+    
+    ws.cell(row=row, column=1, value='Total Revenue')
+    ws.cell(row=row, column=2, value=format_currency(data.get('revenue', 0)))
+    row += 1
+    
+    ws.cell(row=row, column=1, value='Total Expenses')
+    ws.cell(row=row, column=2, value=format_currency(data.get('expenses', 0)))
+    row += 1
+    
+    ws.cell(row=row, column=1, value='Accounting Profit')
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    ws.cell(row=row, column=2, value=format_currency(data.get('accounting_profit', 0)))
+    ws.cell(row=row, column=2).font = Font(bold=True)
+    row += 2
+    
+    # Tax Computation
+    ws.cell(row=row, column=1, value='TAX COMPUTATION')
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    row += 1
+    
+    ws.cell(row=row, column=1, value='Tax-Free Threshold')
+    ws.cell(row=row, column=2, value=format_currency(data.get('tax_threshold', 375000)))
+    row += 1
+    
+    ws.cell(row=row, column=1, value='Tax Rate')
+    ws.cell(row=row, column=2, value=f'{data.get("tax_rate", 9)}%')
+    row += 1
+    
+    ws.cell(row=row, column=1, value='Taxable Amount (Profit - Threshold)')
+    ws.cell(row=row, column=2, value=format_currency(data.get('taxable_amount', 0)))
+    row += 1
+    
+    ws.cell(row=row, column=1, value='TAX PAYABLE')
+    ws.cell(row=row, column=1).font = Font(bold=True, size=12)
+    ws.cell(row=row, column=2, value=format_currency(data.get('tax_payable', 0)))
+    ws.cell(row=row, column=2).font = Font(bold=True, size=12)
+    row += 2
+    
+    # If there's a saved computation with adjustments
+    computation = data.get('computation')
+    if computation:
+        ws.cell(row=row, column=1, value='SAVED COMPUTATION DETAILS')
+        ws.cell(row=row, column=1).font = Font(bold=True)
+        row += 1
+        
+        ws.cell(row=row, column=1, value='Non-Deductible Expenses')
+        ws.cell(row=row, column=2, value=format_currency(computation.non_deductible_expenses))
+        row += 1
+        
+        ws.cell(row=row, column=1, value='Exempt Income')
+        ws.cell(row=row, column=2, value=format_currency(computation.exempt_income))
+        row += 1
+        
+        ws.cell(row=row, column=1, value='Other Adjustments')
+        ws.cell(row=row, column=2, value=format_currency(computation.other_adjustments))
+        row += 1
+        
+        ws.cell(row=row, column=1, value='Adjusted Taxable Income')
+        ws.cell(row=row, column=2, value=format_currency(computation.taxable_income))
+        row += 1
+        
+        ws.cell(row=row, column=1, value='Final Tax Liability')
+        ws.cell(row=row, column=1).font = Font(bold=True, size=12)
+        ws.cell(row=row, column=2, value=format_currency(computation.tax_liability))
+        ws.cell(row=row, column=2).font = Font(bold=True, size=12)
+        row += 1
+        
+        ws.cell(row=row, column=1, value='Status')
+        ws.cell(row=row, column=2, value=computation.get_status_display() if hasattr(computation, 'get_status_display') else computation.status)
+    
+    auto_width_columns(ws)
+    
+    fiscal_year = data.get('fiscal_year', 'unknown').replace(' ', '_')
+    response = create_excel_response(f'corporate_tax_{fiscal_year}.xlsx')
+    wb.save(response)
+    return response
+
