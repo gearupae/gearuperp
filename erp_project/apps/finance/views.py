@@ -2831,6 +2831,221 @@ class BankStatementCreateView(CreatePermissionMixin, CreateView):
         return super().form_valid(form)
 
 
+@login_required
+def bankstatement_template_download(request):
+    """Download Excel template for bank statement import."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Bank Statement Lines"
+    
+    # Headers
+    headers = [
+        'Transaction Date (YYYY-MM-DD) *',
+        'Description *',
+        'Reference',
+        'Debit Amount (Money Out)',
+        'Credit Amount (Money In)',
+        'Balance',
+        'Value Date (YYYY-MM-DD)'
+    ]
+    
+    # Style for headers
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', wrap_text=True)
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col)].width = 22
+    
+    # Add sample data
+    sample_data = [
+        ['2026-01-05', 'Client Payment - INV-1001', 'TRF1001', '', '10500.00', '110500.00', '2026-01-05'],
+        ['2026-01-07', 'Office Rent - January', 'CHQ789456', '6000.00', '', '104500.00', '2026-01-07'],
+        ['2026-01-10', 'DEWA Utilities', 'DEWA012', '1200.00', '', '103300.00', '2026-01-10'],
+        ['2026-01-12', 'Salary Transfer - January', 'SALJAN', '18000.00', '', '85300.00', '2026-01-12'],
+        ['2026-01-15', 'Vendor Payment - Cloud Services', 'TRF2002', '3150.00', '', '82150.00', '2026-01-15'],
+    ]
+    
+    for row_num, row_data in enumerate(sample_data, 2):
+        for col_num, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_num, column=col_num, value=value)
+            cell.border = thin_border
+            if col_num in [4, 5, 6]:  # Amount columns
+                cell.alignment = Alignment(horizontal='right')
+    
+    # Add instructions sheet
+    ws2 = wb.create_sheet(title="Instructions")
+    instructions = [
+        ["Bank Statement Import Instructions"],
+        [""],
+        ["Required Fields (marked with *):"],
+        ["- Transaction Date: Date in YYYY-MM-DD format (e.g., 2026-01-15)"],
+        ["- Description: Transaction description from bank statement"],
+        [""],
+        ["Optional Fields:"],
+        ["- Reference: Bank reference or cheque number"],
+        ["- Debit Amount: Money going out (leave blank if credit)"],
+        ["- Credit Amount: Money coming in (leave blank if debit)"],
+        ["- Balance: Running balance after transaction"],
+        ["- Value Date: Value date if different from transaction date"],
+        [""],
+        ["Notes:"],
+        ["- Either Debit or Credit must have a value, not both"],
+        ["- Delete sample rows before importing your actual data"],
+        ["- Maximum 1000 rows per import"],
+    ]
+    
+    for row_num, row_data in enumerate(instructions, 1):
+        cell = ws2.cell(row=row_num, column=1, value=row_data[0] if row_data else "")
+        if row_num == 1:
+            cell.font = Font(bold=True, size=14)
+        if "Required" in str(row_data) or "Optional" in str(row_data) or "Notes" in str(row_data):
+            cell.font = Font(bold=True)
+    
+    ws2.column_dimensions['A'].width = 70
+    
+    # Create response
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename=bank_statement_template.xlsx'
+    wb.save(response)
+    return response
+
+
+@login_required
+def bankstatement_import(request, pk):
+    """Import bank statement lines from Excel file."""
+    from openpyxl import load_workbook
+    from decimal import Decimal, InvalidOperation
+    
+    statement = get_object_or_404(BankStatement, pk=pk)
+    
+    if request.method != 'POST':
+        return redirect('finance:bankstatement_detail', pk=pk)
+    
+    excel_file = request.FILES.get('excel_file')
+    if not excel_file:
+        messages.error(request, 'Please select an Excel file to import.')
+        return redirect('finance:bankstatement_detail', pk=pk)
+    
+    # Validate file extension
+    if not excel_file.name.endswith(('.xlsx', '.xls')):
+        messages.error(request, 'Please upload a valid Excel file (.xlsx or .xls).')
+        return redirect('finance:bankstatement_detail', pk=pk)
+    
+    try:
+        wb = load_workbook(excel_file, data_only=True)
+        ws = wb.active
+        
+        imported_count = 0
+        errors = []
+        
+        # Get existing max line number
+        max_line = statement.lines.aggregate(max_line=models.Max('line_number'))['max_line'] or 0
+        
+        for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            # Skip empty rows
+            if not row or not any(row):
+                continue
+            
+            try:
+                transaction_date = row[0]
+                description = row[1]
+                reference = row[2] or ''
+                debit = row[3]
+                credit = row[4]
+                balance = row[5] if len(row) > 5 else None
+                value_date = row[6] if len(row) > 6 else None
+                
+                # Validate required fields
+                if not transaction_date:
+                    errors.append(f"Row {row_num}: Transaction Date is required")
+                    continue
+                if not description:
+                    errors.append(f"Row {row_num}: Description is required")
+                    continue
+                
+                # Parse date
+                if isinstance(transaction_date, str):
+                    from datetime import datetime
+                    transaction_date = datetime.strptime(transaction_date, '%Y-%m-%d').date()
+                elif hasattr(transaction_date, 'date'):
+                    transaction_date = transaction_date.date() if hasattr(transaction_date, 'date') else transaction_date
+                
+                # Parse value date
+                if value_date:
+                    if isinstance(value_date, str):
+                        from datetime import datetime
+                        value_date = datetime.strptime(value_date, '%Y-%m-%d').date()
+                    elif hasattr(value_date, 'date'):
+                        value_date = value_date.date() if hasattr(value_date, 'date') else value_date
+                
+                # Parse amounts
+                debit_amount = Decimal(str(debit or 0).replace(',', ''))
+                credit_amount = Decimal(str(credit or 0).replace(',', ''))
+                balance_amount = Decimal(str(balance or 0).replace(',', '')) if balance else Decimal('0.00')
+                
+                if debit_amount == 0 and credit_amount == 0:
+                    errors.append(f"Row {row_num}: Either Debit or Credit amount is required")
+                    continue
+                
+                # Create statement line
+                max_line += 1
+                BankStatementLine.objects.create(
+                    statement=statement,
+                    line_number=max_line,
+                    transaction_date=transaction_date,
+                    value_date=value_date,
+                    description=str(description)[:500],
+                    reference=str(reference)[:200],
+                    debit=debit_amount,
+                    credit=credit_amount,
+                    balance=balance_amount,
+                    reconciliation_status='unmatched'
+                )
+                imported_count += 1
+                
+            except (ValueError, InvalidOperation) as e:
+                errors.append(f"Row {row_num}: Invalid data format - {str(e)}")
+            except Exception as e:
+                errors.append(f"Row {row_num}: {str(e)}")
+        
+        # Update statement totals
+        statement.total_debits = statement.lines.aggregate(total=models.Sum('debit'))['total'] or Decimal('0.00')
+        statement.total_credits = statement.lines.aggregate(total=models.Sum('credit'))['total'] or Decimal('0.00')
+        statement.save()
+        
+        if imported_count > 0:
+            messages.success(request, f'Successfully imported {imported_count} transaction(s).')
+        
+        if errors:
+            error_msg = f'{len(errors)} error(s) during import. First 5: ' + '; '.join(errors[:5])
+            messages.warning(request, error_msg)
+        
+        if imported_count == 0 and not errors:
+            messages.warning(request, 'No data found in the Excel file. Make sure to use the template format.')
+            
+    except Exception as e:
+        messages.error(request, f'Error reading Excel file: {str(e)}')
+    
+    return redirect('finance:bankstatement_detail', pk=pk)
+
+
 class BankStatementDetailView(PermissionRequiredMixin, DetailView):
     """Bank Statement detail - Main reconciliation interface."""
     model = BankStatement

@@ -45,6 +45,7 @@ urlpatterns = [
     # ============ BANK STATEMENTS (RECONCILIATION) ============
     path('bank-statements/', views.BankStatementListView.as_view(), name='bankstatement_list'),
     path('bank-statements/create/', views.BankStatementCreateView.as_view(), name='bankstatement_create'),
+    path('bank-statements/template/', views.bankstatement_template_download, name='bankstatement_template'),
     path('bank-statements/<int:pk>/', views.BankStatementDetailView.as_view(), name='bankstatement_detail'),
     path('bank-statements/<int:pk>/import/', views.bankstatement_import, name='bankstatement_import'),
     path('bank-statements/<int:pk>/add-line/', views.bankstatement_add_line, name='bankstatement_add_line'),

@@ -94,18 +94,24 @@
             </div>
             
             <div class="card mt-3">
-                <div class="card-header bg-light">
-                    <h6 class="mb-0"><i class="fas fa-file-csv me-2"></i>CSV Import Format</h6>
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0"><i class="fas fa-file-excel me-2"></i>Excel Import</h6>
                 </div>
                 <div class="card-body">
-                    <p class="small mb-2">Required columns:</p>
+                    <p class="small mb-3">After creating the statement, you can import transactions via Excel.</p>
+                    <a href="{% url 'finance:bankstatement_template' %}" class="btn btn-sm btn-outline-success w-100">
+                        <i class="fas fa-download me-1"></i>Download Excel Template
+                    </a>
+                    <hr class="my-3">
+                    <p class="small mb-2 fw-medium">Template columns:</p>
                     <ul class="small mb-0">
-                        <li><strong>Date</strong> - Transaction date (YYYY-MM-DD)</li>
-                        <li><strong>Description</strong> - Transaction description</li>
-                        <li><strong>Reference</strong> - Bank reference (optional)</li>
-                        <li><strong>Debit</strong> - Money out</li>
-                        <li><strong>Credit</strong> - Money in</li>
-                        <li><strong>Balance</strong> - Running balance (optional)</li>
+                        <li><strong>Transaction Date</strong> - Required (YYYY-MM-DD)</li>
+                        <li><strong>Description</strong> - Required</li>
+                        <li><strong>Reference</strong> - Optional (cheque no, etc.)</li>
+                        <li><strong>Debit Amount</strong> - Money out</li>
+                        <li><strong>Credit Amount</strong> - Money in</li>
+                        <li><strong>Balance</strong> - Running balance</li>
+                        <li><strong>Value Date</strong> - Optional</li>
                     </ul>
                 </div>
             </div>
