@@ -6,3 +6,4 @@ class HrConfig(AppConfig):
     verbose_name = 'Human Resources'
 
 
+

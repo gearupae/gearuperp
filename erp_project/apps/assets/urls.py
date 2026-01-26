@@ -26,3 +26,4 @@ urlpatterns = [
     path('reports/depreciation/', views.depreciation_report, name='depreciation_report'),
 ]
 
+

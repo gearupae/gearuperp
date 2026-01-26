@@ -7,3 +7,4 @@ class FinanceConfig(AppConfig):
     verbose_name = 'Finance'
 
 
+

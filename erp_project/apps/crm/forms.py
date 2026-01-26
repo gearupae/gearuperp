@@ -36,3 +36,4 @@ class CustomerForm(forms.ModelForm):
                 field.widget.attrs['placeholder'] = 'Full Address'
 
 
+

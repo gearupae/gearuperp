@@ -12,3 +12,4 @@ class DocumentAdmin(admin.ModelAdmin):
     search_fields = ['entity_name', 'document_number']
 
 
+

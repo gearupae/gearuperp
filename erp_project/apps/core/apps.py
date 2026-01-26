@@ -7,3 +7,4 @@ class CoreConfig(AppConfig):
     verbose_name = 'Core'
 
 
+

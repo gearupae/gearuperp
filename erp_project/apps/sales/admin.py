@@ -30,3 +30,4 @@ class InvoiceAdmin(admin.ModelAdmin):
     inlines = [InvoiceItemInline]
 
 
+

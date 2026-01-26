@@ -136,3 +136,4 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'\nCompleted! Created: {created_count}, Updated: {updated_count}'))
 
 
+

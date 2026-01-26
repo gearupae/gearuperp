@@ -40,3 +40,4 @@ class StockMovementAdmin(admin.ModelAdmin):
     search_fields = ['item__name', 'reference']
 
 
+

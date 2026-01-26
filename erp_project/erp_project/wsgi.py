@@ -8,3 +8,4 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_project.settings')
 application = get_wsgi_application()
 
 
+

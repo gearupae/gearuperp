@@ -7,3 +7,4 @@ class InventoryConfig(AppConfig):
     verbose_name = 'Inventory'
 
 
+

@@ -7,3 +7,4 @@ class CrmConfig(AppConfig):
     verbose_name = 'CRM'
 
 
+

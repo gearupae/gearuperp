@@ -259,3 +259,4 @@ class BulkPDCForm(forms.Form):
             raise ValidationError('First cheque number must be numeric for auto-increment.')
         return value
 
+

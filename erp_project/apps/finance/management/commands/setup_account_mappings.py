@@ -160,3 +160,4 @@ class Command(BaseCommand):
                 f'{status} {module_name}: {"Configured" if is_configured else "Incomplete"}'
             )
 
+

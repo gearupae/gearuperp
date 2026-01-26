@@ -26,3 +26,4 @@ def dashboard(request):
     return render(request, 'core/dashboard.html', context)
 
 
+

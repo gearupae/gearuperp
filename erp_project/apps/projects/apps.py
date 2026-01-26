@@ -7,3 +7,4 @@ class ProjectsConfig(AppConfig):
     verbose_name = 'Projects'
 
 
+

@@ -6,3 +6,4 @@ class PropertyConfig(AppConfig):
     name = 'apps.property'
     verbose_name = 'Property Management'
 
+

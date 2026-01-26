@@ -7,3 +7,4 @@ class SettingsAppConfig(AppConfig):
     verbose_name = 'Settings'
 
 
+

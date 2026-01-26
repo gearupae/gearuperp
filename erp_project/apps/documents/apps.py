@@ -6,3 +6,4 @@ class DocumentsConfig(AppConfig):
     verbose_name = 'Documents'
 
 
+

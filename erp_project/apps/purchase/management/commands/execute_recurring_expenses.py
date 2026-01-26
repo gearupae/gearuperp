@@ -99,3 +99,4 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.SUCCESS('\nAll recurring expenses processed successfully.'))
 
+

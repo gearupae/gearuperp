@@ -51,3 +51,4 @@ def user_can(user, module, permission_type):
     return PermissionChecker.has_permission(user, module, permission_type)
 
 
+

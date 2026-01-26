@@ -7,3 +7,4 @@ class PurchaseConfig(AppConfig):
     verbose_name = 'Purchase'
 
 
+

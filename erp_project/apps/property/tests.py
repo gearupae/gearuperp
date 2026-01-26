@@ -595,3 +595,4 @@ class TestAuditTrail(PDCSetupMixin, TestCase):
             JournalEntry.objects.filter(pk=journal.pk).exists()
         )
 
+

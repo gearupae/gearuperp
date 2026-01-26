@@ -42,17 +42,26 @@ def style_title_row(ws, row_num, title, col_count):
 
 def auto_width_columns(ws):
     """Auto-adjust column widths based on content."""
+    from openpyxl.cell.cell import MergedCell
+    
     for column_cells in ws.columns:
         max_length = 0
-        column = column_cells[0].column_letter
+        column = None
         for cell in column_cells:
+            # Skip merged cells
+            if isinstance(cell, MergedCell):
+                continue
+            # Get column letter from first non-merged cell
+            if column is None:
+                column = cell.column_letter
             try:
                 if cell.value:
                     max_length = max(max_length, len(str(cell.value)))
             except:
                 pass
-        adjusted_width = min(max_length + 2, 50)
-        ws.column_dimensions[column].width = adjusted_width
+        if column:
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column].width = adjusted_width
 
 
 def format_currency(value):
