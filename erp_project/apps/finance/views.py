@@ -206,9 +206,10 @@ class JournalEntryUpdateView(UpdatePermissionMixin, UpdateView):
     
     def get_object(self, queryset=None):
         obj = super().get_object(queryset)
-        # Block editing posted/reversed entries
-        if obj.status in ['posted', 'reversed']:
-            messages.error(self.request, 'Posted or reversed entries cannot be edited. Use reversal instead.')
+        # Use the new is_editable property for SAP/Oracle compliant rules
+        if not obj.is_editable:
+            reason = obj.edit_restriction_reason or 'This journal entry cannot be edited.'
+            messages.error(self.request, reason)
             return None
         return obj
     
@@ -253,15 +254,23 @@ class JournalEntryDetailView(PermissionRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['title'] = f'Journal Entry: {self.object.entry_number}'
-        context['can_edit'] = (
+        
+        has_edit_permission = (
             self.request.user.is_superuser or 
             PermissionChecker.has_permission(self.request.user, 'finance', 'edit')
-        ) and self.object.status == 'draft'
-        context['can_post'] = context['can_edit'] and self.object.is_balanced and self.object.line_count >= 2
-        context['can_reverse'] = (
-            self.request.user.is_superuser or 
-            PermissionChecker.has_permission(self.request.user, 'finance', 'edit')
-        ) and self.object.status == 'posted'
+        )
+        
+        # Use new SAP/Oracle compliant properties
+        context['can_edit'] = has_edit_permission and self.object.is_editable
+        context['can_delete'] = has_edit_permission and self.object.is_deletable
+        context['can_post'] = has_edit_permission and self.object.is_editable and self.object.is_balanced and self.object.line_count >= 2
+        context['can_reverse'] = has_edit_permission and self.object.is_reversible
+        
+        # Show reason why actions are blocked
+        context['edit_restriction_reason'] = self.object.edit_restriction_reason
+        context['is_system_generated'] = self.object.is_system_generated
+        context['is_locked'] = self.object.is_locked
+        
         return context
 
 
@@ -299,15 +308,25 @@ def journal_post(request, pk):
 
 @login_required
 def journal_reverse(request, pk):
-    """Reverse a posted journal entry - creates auto-reversal entry."""
+    """
+    Reverse a posted journal entry - creates auto-reversal entry.
+    This is the ONLY way to correct posted transactions (SAP/Oracle compliant).
+    """
     entry = get_object_or_404(JournalEntry, pk=pk)
     
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
         messages.error(request, 'Permission denied.')
         return redirect('finance:journal_list')
     
-    if entry.status != 'posted':
-        messages.error(request, 'Only posted entries can be reversed.')
+    if not entry.is_reversible:
+        if entry.status != 'posted':
+            messages.error(request, 'Only posted entries can be reversed.')
+        elif entry.period and entry.period.is_locked:
+            messages.error(request, f'Cannot reverse - accounting period {entry.period.name} is locked.')
+        elif entry.fiscal_year and entry.fiscal_year.is_closed:
+            messages.error(request, f'Cannot reverse - fiscal year {entry.fiscal_year.name} is closed.')
+        else:
+            messages.error(request, 'This journal entry cannot be reversed.')
         return redirect('finance:journal_detail', pk=pk)
     
     reason = request.POST.get('reason', 'User requested reversal')
@@ -315,6 +334,7 @@ def journal_reverse(request, pk):
     try:
         reversal = entry.reverse(user=request.user, reason=reason)
         messages.success(request, f'Journal Entry {entry.entry_number} reversed. Reversal entry: {reversal.entry_number}')
+        return redirect('finance:journal_detail', pk=reversal.pk)
     except ValidationError as e:
         for error in e.messages:
             messages.error(request, error)

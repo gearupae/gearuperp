@@ -9,48 +9,89 @@
         </ol>
     </nav>
     <div class="d-flex justify-content-between align-items-center">
-        <h4 class="mb-0 fw-bold">{{ entry.entry_number }}</h4>
         <div>
-            {% if can_edit and entry.status == 'draft' %}
+            <h4 class="mb-0 fw-bold">
+                {{ entry.entry_number }}
+                {% if is_locked %}
+                <i class="fas fa-lock text-muted ms-2" title="Locked - Cannot be modified"></i>
+                {% endif %}
+            </h4>
+        </div>
+        <div class="d-flex gap-2">
+            {% if can_edit %}
             <a href="{% url 'finance:journal_edit' entry.pk %}" class="btn btn-primary">
-                <i class="fas fa-edit me-2"></i>Edit
+                <i class="fas fa-edit me-1"></i>Edit
             </a>
             {% endif %}
             {% if can_post %}
             <a href="{% url 'finance:journal_post' entry.pk %}" class="btn btn-success" onclick="return confirm('Post this journal entry? This action cannot be undone.');">
-                <i class="fas fa-check me-2"></i>Post
+                <i class="fas fa-check me-1"></i>Post
             </a>
             {% endif %}
+            {% if can_reverse %}
+            <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#reverseModal">
+                <i class="fas fa-undo me-1"></i>Reverse
+            </button>
+            {% endif %}
+            <a href="{% url 'finance:journal_list' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back
+            </a>
         </div>
     </div>
 </div>
 
+<!-- System-Generated Warning -->
+{% if is_system_generated %}
+<div class="alert alert-info border-0 shadow-sm mb-4">
+    <div class="d-flex align-items-center">
+        <i class="fas fa-robot fa-2x me-3 text-primary"></i>
+        <div>
+            <strong>System-Generated Journal</strong>
+            <p class="mb-0 small">This journal was automatically created by the {{ entry.get_source_module_display }} module. 
+            To make changes, please edit or cancel the source document instead.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Edit Restriction Warning -->
+{% if edit_restriction_reason and not is_system_generated %}
+<div class="alert alert-warning border-0 shadow-sm mb-4">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>Editing Restricted:</strong> {{ edit_restriction_reason }}
+</div>
+{% endif %}
+
 <div class="row g-4">
     <div class="col-lg-8">
-        <div class="card mb-4">
+        <div class="card mb-4 border-0 shadow-sm">
             <div class="card-body">
                 <div class="row g-4">
-                    <div class="col-md-4">
-                        <h6 class="text-muted mb-2">Date</h6>
-                        <p class="mb-0">{{ entry.date|date:"d/m/Y" }}</p>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2 small text-uppercase">Date</h6>
+                        <p class="mb-0 fw-medium">{{ entry.date|date:"d/m/Y" }}</p>
                     </div>
-                    <div class="col-md-4">
-                        <h6 class="text-muted mb-2">Reference</h6>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2 small text-uppercase">Reference</h6>
                         <p class="mb-0">{{ entry.reference|default:"-" }}</p>
                     </div>
-                    <div class="col-md-4">
-                        <h6 class="text-muted mb-2">Status</h6>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2 small text-uppercase">Status</h6>
                         {% if entry.status == 'draft' %}
                         <span class="badge bg-secondary">Draft</span>
                         {% elif entry.status == 'posted' %}
-                        <span class="badge badge-active">Posted</span>
+                        <span class="badge bg-success">Posted</span>
                         {% else %}
-                        <span class="badge badge-inactive">Reversed</span>
+                        <span class="badge bg-warning text-dark">Reversed</span>
                         {% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2 small text-uppercase">Source</h6>
+                        <span class="badge bg-primary">{{ entry.get_source_module_display }}</span>
                     </div>
                     {% if entry.description %}
                     <div class="col-12">
-                        <h6 class="text-muted mb-2">Description</h6>
+                        <h6 class="text-muted mb-2 small text-uppercase">Description</h6>
                         <p class="mb-0">{{ entry.description }}</p>
                     </div>
                     {% endif %}
@@ -58,30 +99,33 @@
             </div>
         </div>
         
-        <div class="card">
-            <div class="card-header"><h6 class="mb-0 fw-semibold">Entry Lines</h6></div>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white"><h6 class="mb-0 fw-semibold">Entry Lines</h6></div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table mb-0">
-                        <thead>
+                        <thead class="table-light">
                             <tr>
                                 <th>Account</th>
                                 <th>Description</th>
-                                <th class="text-end">Debit</th>
-                                <th class="text-end">Credit</th>
+                                <th class="text-end">Debit (AED)</th>
+                                <th class="text-end">Credit (AED)</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for line in entry.lines.all %}
                             <tr>
-                                <td>{{ line.account.code }} - {{ line.account.name }}</td>
+                                <td>
+                                    <span class="badge bg-light text-dark me-1">{{ line.account.code }}</span>
+                                    {{ line.account.name }}
+                                </td>
                                 <td>{{ line.description|default:"-" }}</td>
-                                <td class="text-end">{% if line.debit %}{{ line.debit|floatformat:2 }}{% endif %}</td>
-                                <td class="text-end">{% if line.credit %}{{ line.credit|floatformat:2 }}{% endif %}</td>
+                                <td class="text-end">{% if line.debit %}{{ line.debit|floatformat:2 }}{% else %}-{% endif %}</td>
+                                <td class="text-end">{% if line.credit %}{{ line.credit|floatformat:2 }}{% else %}-{% endif %}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
-                        <tfoot>
+                        <tfoot class="table-dark">
                             <tr>
                                 <td colspan="2" class="text-end fw-bold">Totals:</td>
                                 <td class="text-end fw-bold">{{ entry.total_debit|floatformat:2 }}</td>
@@ -95,9 +139,10 @@
     </div>
     
     <div class="col-lg-4">
-        <div class="card mb-4">
+        <!-- Balance Status -->
+        <div class="card mb-4 border-0 shadow-sm">
             <div class="card-body">
-                <h6 class="text-muted mb-3">Balance Status</h6>
+                <h6 class="text-muted mb-3 small text-uppercase">Balance Status</h6>
                 {% if entry.is_balanced %}
                 <div class="alert alert-success mb-0 py-2">
                     <i class="fas fa-check-circle me-1"></i> Entry is balanced
@@ -110,13 +155,77 @@
             </div>
         </div>
         
-        <div class="card">
+        <!-- Journal Type Info -->
+        <div class="card mb-4 border-0 shadow-sm">
             <div class="card-body">
-                <h6 class="text-muted mb-3">Audit Information</h6>
+                <h6 class="text-muted mb-3 small text-uppercase">Journal Type</h6>
+                <div class="d-flex align-items-center mb-3">
+                    {% if is_system_generated %}
+                    <span class="badge bg-info me-2"><i class="fas fa-robot me-1"></i>System Generated</span>
+                    {% else %}
+                    <span class="badge bg-secondary me-2"><i class="fas fa-user me-1"></i>Manual Entry</span>
+                    {% endif %}
+                    {% if is_locked %}
+                    <span class="badge bg-danger"><i class="fas fa-lock me-1"></i>Locked</span>
+                    {% endif %}
+                </div>
+                <div class="small text-muted">
+                    <strong>Entry Type:</strong> {{ entry.get_entry_type_display }}<br>
+                    {% if entry.source_id %}
+                    <strong>Source ID:</strong> {{ entry.source_id }}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Reversal Info -->
+        {% if entry.reversal_of %}
+        <div class="card mb-4 border-0 shadow-sm border-warning">
+            <div class="card-body">
+                <h6 class="text-warning mb-3"><i class="fas fa-undo me-1"></i>Reversal Information</h6>
+                <p class="mb-1 small">This is a reversal of:</p>
+                <a href="{% url 'finance:journal_detail' entry.reversal_of.pk %}" class="fw-medium">
+                    {{ entry.reversal_of.entry_number }}
+                </a>
+                {% if entry.reversal_reason %}
+                <p class="mb-0 mt-2 small text-muted">Reason: {{ entry.reversal_reason }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if entry.reversed_by.exists %}
+        <div class="card mb-4 border-0 shadow-sm border-danger">
+            <div class="card-body">
+                <h6 class="text-danger mb-3"><i class="fas fa-exclamation-triangle me-1"></i>Reversed</h6>
+                <p class="mb-1 small">This journal has been reversed by:</p>
+                {% for reversal in entry.reversed_by.all %}
+                <a href="{% url 'finance:journal_detail' reversal.pk %}" class="fw-medium">
+                    {{ reversal.entry_number }}
+                </a><br>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Audit Information -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-3 small text-uppercase">Audit Trail</h6>
                 <div class="mb-2">
                     <small class="text-muted">Created</small>
-                    <p class="mb-0 small">{{ entry.created_at|date:"d/m/Y H:i" }}</p>
+                    <p class="mb-0 small">{{ entry.created_at|date:"d/m/Y H:i" }}
+                        {% if entry.created_by %} by {{ entry.created_by.get_full_name|default:entry.created_by.username }}{% endif %}
+                    </p>
                 </div>
+                {% if entry.posted_date %}
+                <div class="mb-2">
+                    <small class="text-muted">Posted</small>
+                    <p class="mb-0 small">{{ entry.posted_date|date:"d/m/Y H:i" }}
+                        {% if entry.posted_by %} by {{ entry.posted_by.get_full_name|default:entry.posted_by.username }}{% endif %}
+                    </p>
+                </div>
+                {% endif %}
                 <div>
                     <small class="text-muted">Last Updated</small>
                     <p class="mb-0 small">{{ entry.updated_at|date:"d/m/Y H:i" }}</p>
@@ -125,7 +234,37 @@
         </div>
     </div>
 </div>
+
+<!-- Reverse Modal -->
+{% if can_reverse %}
+<div class="modal fade" id="reverseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="{% url 'finance:journal_reverse' entry.pk %}" method="post">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-undo me-2"></i>Reverse Journal Entry</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Warning:</strong> This will create a new journal entry that reverses all amounts. The original entry will be marked as "Reversed".
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reason for Reversal</label>
+                        <textarea name="reason" class="form-control" rows="3" placeholder="Enter the reason for reversing this entry..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-undo me-1"></i>Confirm Reversal
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
-
-
-

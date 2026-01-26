@@ -48,6 +48,7 @@
                         <th>Entry #</th>
                         <th>Date</th>
                         <th>Reference</th>
+                        <th>Source</th>
                         <th>Description</th>
                         <th class="text-end">Debit</th>
                         <th class="text-end">Credit</th>
@@ -60,19 +61,27 @@
                     <tr>
                         <td>
                             <a href="{% url 'finance:journal_detail' entry.pk %}" class="fw-medium text-decoration-none">{{ entry.entry_number }}</a>
+                            {% if entry.is_locked %}<i class="fas fa-lock text-muted ms-1" title="Locked"></i>{% endif %}
                         </td>
                         <td>{{ entry.date|date:"d/m/Y" }}</td>
                         <td>{{ entry.reference|default:"-" }}</td>
-                        <td>{{ entry.description|truncatechars:40|default:"-" }}</td>
+                        <td>
+                            {% if entry.is_system_generated %}
+                            <span class="badge bg-info" title="System Generated"><i class="fas fa-robot me-1"></i>{{ entry.get_source_module_display }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary"><i class="fas fa-user me-1"></i>Manual</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ entry.description|truncatechars:35|default:"-" }}</td>
                         <td class="text-end">{{ entry.total_debit|floatformat:2 }}</td>
                         <td class="text-end">{{ entry.total_credit|floatformat:2 }}</td>
                         <td>
                             {% if entry.status == 'draft' %}
                             <span class="badge bg-secondary">Draft</span>
                             {% elif entry.status == 'posted' %}
-                            <span class="badge badge-active">Posted</span>
+                            <span class="badge bg-success">Posted</span>
                             {% else %}
-                            <span class="badge badge-inactive">Reversed</span>
+                            <span class="badge bg-warning text-dark">Reversed</span>
                             {% endif %}
                         </td>
                         <td class="text-center">
