@@ -45,6 +45,13 @@ class Account(BaseModel):
     description = models.TextField(blank=True)
     is_system = models.BooleanField(default=False)  # System accounts can't be deleted
     
+    # Cash Flow Statement - IFRS compliant
+    # Mark Bank & Cash accounts for Cash Flow calculation
+    is_cash_account = models.BooleanField(
+        default=False,
+        help_text="Mark as True for Bank and Cash accounts only. Used for Cash Flow Statement."
+    )
+    
     # Balance tracking
     opening_balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))

@@ -65,7 +65,20 @@
 {% if not validation_ok %}
 <div class="alert alert-danger border-0 shadow-sm mb-4">
     <i class="fas fa-exclamation-triangle me-2"></i>
-    <strong>Warning:</strong> Cash flow validation failed. Opening + Net Change ≠ Closing. Please review the transactions.
+    <strong>Warning:</strong> Cash flow validation failed.
+    <ul class="mb-0 mt-2">
+        <li>Opening Cash: AED {{ opening_cash|floatformat:2 }}</li>
+        <li>+ Net Change: AED {{ net_change|floatformat:2 }}</li>
+        <li>= Calculated Closing: AED {{ calculated_closing|floatformat:2 }}</li>
+        <li>Actual Closing: AED {{ closing_cash|floatformat:2 }}</li>
+        <li><strong>Difference: AED {{ validation_difference|floatformat:2 }}</strong></li>
+    </ul>
+    <p class="mb-0 mt-2 small">This may be due to cash-to-cash transfers, accruals, or un-posted journals.</p>
+</div>
+{% else %}
+<div class="alert alert-success border-0 shadow-sm mb-4">
+    <i class="fas fa-check-circle me-2"></i>
+    <strong>Validated:</strong> Opening ({{ opening_cash|floatformat:2 }}) + Net Change ({{ net_change|floatformat:2 }}) = Closing ({{ closing_cash|floatformat:2 }})
 </div>
 {% endif %}
 
