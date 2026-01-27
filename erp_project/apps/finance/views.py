@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, TemplateView
 from django.urls import reverse_lazy
 from django.db.models import Q, Sum, F
+from django.db.models.functions import Coalesce
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.http import JsonResponse
