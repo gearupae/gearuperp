@@ -357,6 +357,34 @@ def journal_reverse(request, pk):
     return redirect('finance:journal_detail', pk=pk)
 
 
+@login_required
+def journal_delete(request, pk):
+    """
+    Delete a draft journal entry.
+    Only draft (unposted) entries can be deleted.
+    Posted entries must be reversed instead.
+    """
+    entry = get_object_or_404(JournalEntry, pk=pk)
+    
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'delete')):
+        messages.error(request, 'Permission denied.')
+        return redirect('finance:journal_list')
+    
+    if entry.status != 'draft':
+        messages.error(request, 'Only draft entries can be deleted. Posted entries must be reversed.')
+        return redirect('finance:journal_detail', pk=pk)
+    
+    if entry.is_system_generated:
+        messages.error(request, 'System-generated entries cannot be deleted. Cancel the source document instead.')
+        return redirect('finance:journal_detail', pk=pk)
+    
+    entry_number = entry.entry_number
+    entry.delete()
+    messages.success(request, f'Journal Entry {entry_number} deleted successfully.')
+    
+    return redirect('finance:journal_list')
+
+
 # ============ PAYMENT VIEWS ============
 
 class PaymentListView(PermissionRequiredMixin, ListView):

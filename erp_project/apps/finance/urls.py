@@ -26,6 +26,7 @@ urlpatterns = [
     path('journal/<int:pk>/edit/', views.JournalEntryUpdateView.as_view(), name='journal_edit'),
     path('journal/<int:pk>/post/', views.journal_post, name='journal_post'),
     path('journal/<int:pk>/reverse/', views.journal_reverse, name='journal_reverse'),
+    path('journal/<int:pk>/delete/', views.journal_delete, name='journal_delete'),
     
     # ============ PAYMENTS ============
     path('payments/', views.PaymentListView.as_view(), name='payment_list'),
