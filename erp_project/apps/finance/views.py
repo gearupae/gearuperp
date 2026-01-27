@@ -2227,10 +2227,10 @@ def cash_flow(request):
         is_active=True,
         account_type=AccountType.ASSET,
     ).filter(
-        models.Q(code__startswith='10') |  # Cash accounts
-        models.Q(code__startswith='11') |  # Bank accounts
-        models.Q(name__icontains='bank') |
-        models.Q(name__icontains='cash')
+        Q(code__startswith='10') |  # Cash accounts
+        Q(code__startswith='11') |  # Bank accounts
+        Q(name__icontains='bank') |
+        Q(name__icontains='cash')
     ).order_by('code')
     
     if bank_filter:
@@ -2381,10 +2381,10 @@ def cash_flow(request):
         is_active=True,
         account_type=AccountType.ASSET,
     ).filter(
-        models.Q(code__startswith='10') |
-        models.Q(code__startswith='11') |
-        models.Q(name__icontains='bank') |
-        models.Q(name__icontains='cash')
+        Q(code__startswith='10') |
+        Q(code__startswith='11') |
+        Q(name__icontains='bank') |
+        Q(name__icontains='cash')
     ).order_by('code')
     
     return render(request, 'finance/cash_flow.html', {
