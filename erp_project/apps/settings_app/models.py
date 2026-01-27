@@ -211,6 +211,7 @@ class NumberSeries(models.Model):
 class AuditLog(models.Model):
     """
     System audit log for tracking all changes.
+    UAE VAT & Corporate Tax compliant audit trail.
     """
     ACTION_CHOICES = [
         ('create', 'Create'),
@@ -219,6 +220,13 @@ class AuditLog(models.Model):
         ('view', 'View'),
         ('login', 'Login'),
         ('logout', 'Logout'),
+        ('post', 'Post'),
+        ('reverse', 'Reverse'),
+        ('approve', 'Approve'),
+        ('reject', 'Reject'),
+        ('reconcile', 'Reconcile'),
+        ('import', 'Import'),
+        ('export', 'Export'),
     ]
     
     user = models.ForeignKey(

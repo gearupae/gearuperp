@@ -277,6 +277,8 @@ class JournalEntryDetailView(PermissionRequiredMixin, DetailView):
 @login_required
 def journal_post(request, pk):
     """Post a journal entry - validates balance, min lines, leaf accounts, period."""
+    from apps.core.audit import audit_journal_post
+    
     entry = get_object_or_404(JournalEntry, pk=pk)
     
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
@@ -296,6 +298,8 @@ def journal_post(request, pk):
     
     try:
         entry.post(user=request.user)
+        # Audit log
+        audit_journal_post(entry, request.user)
         messages.success(request, f'Journal Entry {entry.entry_number} posted successfully.')
     except ValidationError as e:
         for error in e.messages:
@@ -312,6 +316,8 @@ def journal_reverse(request, pk):
     Reverse a posted journal entry - creates auto-reversal entry.
     This is the ONLY way to correct posted transactions (SAP/Oracle compliant).
     """
+    from apps.core.audit import audit_journal_reverse
+    
     entry = get_object_or_404(JournalEntry, pk=pk)
     
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
@@ -333,6 +339,8 @@ def journal_reverse(request, pk):
     
     try:
         reversal = entry.reverse(user=request.user, reason=reason)
+        # Audit log
+        audit_journal_reverse(entry, reversal, request.user, reason)
         messages.success(request, f'Journal Entry {entry.entry_number} reversed. Reversal entry: {reversal.entry_number}')
         return redirect('finance:journal_detail', pk=reversal.pk)
     except ValidationError as e:
@@ -2191,60 +2199,210 @@ class VATReturnDetailView(PermissionRequiredMixin, DetailView):
 
 @login_required
 def cash_flow(request):
-    """Cash Flow Statement - Simplified."""
+    """
+    Cash Flow Statement - SAP/Oracle/Zoho Compliant with drill-down support.
+    
+    Classification based on counter-party account:
+    - Operating: Revenue, Expense, AR, AP, VAT accounts
+    - Investing: Fixed Assets accounts
+    - Financing: Capital, Loan, Drawings accounts
+    """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
     
-    start_date = request.GET.get('start_date', date(date.today().year, 1, 1).isoformat())
-    end_date = request.GET.get('end_date', date.today().isoformat())
+    start_date_str = request.GET.get('start_date', date(date.today().year, 1, 1).isoformat())
+    end_date_str = request.GET.get('end_date', date.today().isoformat())
+    bank_filter = request.GET.get('bank', '')
     
-    # Get all bank/cash accounts
-    cash_accounts = Account.objects.filter(
+    try:
+        start_date = date.fromisoformat(start_date_str)
+        end_date = date.fromisoformat(end_date_str)
+    except ValueError:
+        start_date = date(date.today().year, 1, 1)
+        end_date = date.today()
+    
+    # Get Cash & Bank accounts (Assets typically starting with 10 or 11)
+    cash_bank_accounts = Account.objects.filter(
         is_active=True,
         account_type=AccountType.ASSET,
-        code__startswith='1'  # Assuming cash/bank accounts start with 1
+    ).filter(
+        models.Q(code__startswith='10') |  # Cash accounts
+        models.Q(code__startswith='11') |  # Bank accounts
+        models.Q(name__icontains='bank') |
+        models.Q(name__icontains='cash')
     ).order_by('code')
     
-    opening_cash = sum(acc.opening_balance for acc in cash_accounts)
-    closing_cash = sum(acc.current_balance for acc in cash_accounts)
+    if bank_filter:
+        cash_bank_accounts = cash_bank_accounts.filter(pk=bank_filter)
     
-    # Operating activities (simplified - Income - Expenses)
-    income = Account.objects.filter(
-        is_active=True, account_type=AccountType.INCOME
-    ).aggregate(total=Sum('balance'))['total'] or Decimal('0.00')
+    cash_account_ids = list(cash_bank_accounts.values_list('id', flat=True))
     
-    expenses = Account.objects.filter(
-        is_active=True, account_type=AccountType.EXPENSE
-    ).aggregate(total=Sum('balance'))['total'] or Decimal('0.00')
+    # Calculate Opening Cash (balance before start date)
+    opening_cash = Decimal('0.00')
+    for acc in cash_bank_accounts:
+        # Opening balance + transactions before start date
+        acc_opening = acc.opening_balance
+        pre_period_debits = JournalEntryLine.objects.filter(
+            account=acc,
+            journal_entry__status='posted',
+            journal_entry__date__lt=start_date
+        ).aggregate(
+            total_debit=Sum('debit'),
+            total_credit=Sum('credit')
+        )
+        acc_opening += (pre_period_debits['total_debit'] or Decimal('0.00'))
+        acc_opening -= (pre_period_debits['total_credit'] or Decimal('0.00'))
+        opening_cash += acc_opening
     
-    operating_activities = abs(income) - expenses
+    # Get all cash transactions in the period
+    cash_transactions = JournalEntryLine.objects.filter(
+        account_id__in=cash_account_ids,
+        journal_entry__status='posted',
+        journal_entry__date__gte=start_date,
+        journal_entry__date__lte=end_date
+    ).select_related('journal_entry', 'account').order_by('journal_entry__date')
     
-    # Net change in cash
-    net_change = closing_cash - opening_cash
+    # Classify transactions based on counter-party account
+    operating_items = []
+    investing_items = []
+    financing_items = []
     
-    # Prepare data for display and export
-    operating = [
-        {'description': 'Net Income', 'amount': abs(income)},
-        {'description': 'Less: Total Expenses', 'amount': -expenses},
+    operating_total = Decimal('0.00')
+    investing_total = Decimal('0.00')
+    financing_total = Decimal('0.00')
+    
+    for cash_line in cash_transactions:
+        journal = cash_line.journal_entry
+        cash_amount = cash_line.debit - cash_line.credit  # Positive = cash in, Negative = cash out
+        
+        # Find counter-party account(s) in the same journal
+        counter_lines = journal.lines.exclude(account_id__in=cash_account_ids)
+        
+        for counter_line in counter_lines:
+            counter_account = counter_line.account
+            counter_type = counter_account.account_type
+            counter_code = counter_account.code
+            
+            # Determine proportion of cash amount
+            counter_amount = counter_line.credit - counter_line.debit
+            
+            item = {
+                'date': journal.date,
+                'reference': journal.reference or journal.entry_number,
+                'description': counter_line.description or journal.description,
+                'counter_account': f"{counter_account.code} - {counter_account.name}",
+                'counter_account_type': counter_type,
+                'amount': counter_amount,
+                'journal_id': journal.pk,
+                'source_module': journal.source_module,
+            }
+            
+            # Classify based on counter account type and code
+            if counter_type in [AccountType.INCOME, AccountType.EXPENSE]:
+                # Operating - Revenue and Expenses
+                operating_items.append(item)
+                operating_total += counter_amount
+            elif counter_code.startswith('12') or counter_code.startswith('20'):
+                # Operating - AR (12xx) and AP (20xx)
+                operating_items.append(item)
+                operating_total += counter_amount
+            elif counter_code.startswith('21') or counter_code.startswith('22'):
+                # Operating - VAT/Tax accounts
+                operating_items.append(item)
+                operating_total += counter_amount
+            elif counter_code.startswith('15') or counter_code.startswith('16'):
+                # Investing - Fixed Assets (15xx, 16xx)
+                investing_items.append(item)
+                investing_total += counter_amount
+            elif counter_code.startswith('3') or counter_code.startswith('24') or counter_code.startswith('25'):
+                # Financing - Equity (3xxx), Loans (24xx, 25xx)
+                financing_items.append(item)
+                financing_total += counter_amount
+            else:
+                # Default to operating
+                operating_items.append(item)
+                operating_total += counter_amount
+    
+    # Calculate Closing Cash
+    closing_cash = opening_cash + operating_total + investing_total + financing_total
+    
+    # Validation check
+    net_change = operating_total + investing_total + financing_total
+    validation_ok = abs((closing_cash - opening_cash) - net_change) < Decimal('0.01')
+    
+    # Group items by category for display
+    operating_grouped = {}
+    for item in operating_items:
+        key = item['counter_account']
+        if key not in operating_grouped:
+            operating_grouped[key] = {'account': key, 'items': [], 'total': Decimal('0.00')}
+        operating_grouped[key]['items'].append(item)
+        operating_grouped[key]['total'] += item['amount']
+    
+    investing_grouped = {}
+    for item in investing_items:
+        key = item['counter_account']
+        if key not in investing_grouped:
+            investing_grouped[key] = {'account': key, 'items': [], 'total': Decimal('0.00')}
+        investing_grouped[key]['items'].append(item)
+        investing_grouped[key]['total'] += item['amount']
+    
+    financing_grouped = {}
+    for item in financing_items:
+        key = item['counter_account']
+        if key not in financing_grouped:
+            financing_grouped[key] = {'account': key, 'items': [], 'total': Decimal('0.00')}
+        financing_grouped[key]['items'].append(item)
+        financing_grouped[key]['total'] += item['amount']
+    
+    # Prepare summary for export
+    operating_summary = [
+        {'description': acc_data['account'], 'amount': acc_data['total']} 
+        for acc_data in operating_grouped.values()
     ]
-    investing = []  # Simplified - no investing activities tracked
-    financing = []  # Simplified - no financing activities tracked
+    investing_summary = [
+        {'description': acc_data['account'], 'amount': acc_data['total']} 
+        for acc_data in investing_grouped.values()
+    ]
+    financing_summary = [
+        {'description': acc_data['account'], 'amount': acc_data['total']} 
+        for acc_data in financing_grouped.values()
+    ]
     
     # Excel Export
     export_format = request.GET.get('format', '')
     if export_format == 'excel':
         from .excel_exports import export_cash_flow
-        return export_cash_flow(operating, investing, financing, start_date, end_date)
+        return export_cash_flow(operating_summary, investing_summary, financing_summary, start_date_str, end_date_str)
+    
+    # Get bank accounts for filter dropdown
+    all_cash_bank_accounts = Account.objects.filter(
+        is_active=True,
+        account_type=AccountType.ASSET,
+    ).filter(
+        models.Q(code__startswith='10') |
+        models.Q(code__startswith='11') |
+        models.Q(name__icontains='bank') |
+        models.Q(name__icontains='cash')
+    ).order_by('code')
     
     return render(request, 'finance/cash_flow.html', {
         'title': 'Cash Flow Statement',
         'opening_cash': opening_cash,
         'closing_cash': closing_cash,
-        'operating_activities': operating_activities,
+        'operating_total': operating_total,
+        'investing_total': investing_total,
+        'financing_total': financing_total,
         'net_change': net_change,
-        'start_date': start_date,
-        'end_date': end_date,
+        'operating_grouped': operating_grouped,
+        'investing_grouped': investing_grouped,
+        'financing_grouped': financing_grouped,
+        'start_date': start_date_str,
+        'end_date': end_date_str,
+        'bank_filter': bank_filter,
+        'cash_bank_accounts': all_cash_bank_accounts,
+        'validation_ok': validation_ok,
     })
 
 

@@ -1,5 +1,20 @@
 {% extends 'base.html' %}
 
+{% block extra_css %}
+<style>
+    .expandable { cursor: pointer; }
+    .expandable:hover { background-color: #f8f9fa; }
+    .expand-icon { transition: transform 0.3s ease; }
+    .expand-icon.expanded { transform: rotate(90deg); }
+    .detail-row { display: none; }
+    .detail-row.show { display: table-row; }
+    .level-2 { background-color: #f8f9fa; }
+    .level-3 { background-color: #fff; }
+    .amount-link { text-decoration: none; color: inherit; }
+    .amount-link:hover { text-decoration: underline; color: var(--bs-primary); }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
@@ -7,16 +22,16 @@
         <small class="text-muted">{{ start_date }} to {{ end_date }}</small>
     </div>
     <div class="btn-group">
-        <a href="?start_date={{ start_date }}&end_date={{ end_date }}&format=excel" class="btn btn-success">
-            <i class="fas fa-file-excel me-2"></i>Excel
+        <a href="?start_date={{ start_date }}&end_date={{ end_date }}&bank={{ bank_filter }}&format=excel" class="btn btn-success">
+            <i class="fas fa-file-excel me-1"></i>Excel
         </a>
         <button class="btn btn-outline-dark" onclick="window.print()">
-            <i class="fas fa-print me-2"></i>Print
+            <i class="fas fa-print me-1"></i>Print
         </button>
     </div>
 </div>
 
-<!-- Date Filter -->
+<!-- Filters -->
 <div class="card mb-4 border-0 shadow-sm">
     <div class="card-body py-3">
         <form method="get" class="row g-3 align-items-end">
@@ -28,90 +43,341 @@
                 <label class="form-label fw-medium">End Date</label>
                 <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
             </div>
-            <div class="col-md-6">
+            <div class="col-md-3">
+                <label class="form-label fw-medium">Bank/Cash Account</label>
+                <select name="bank" class="form-select">
+                    <option value="">All Cash & Bank Accounts</option>
+                    {% for acc in cash_bank_accounts %}
+                    <option value="{{ acc.pk }}" {% if bank_filter == acc.pk|stringformat:"d" %}selected{% endif %}>
+                        {{ acc.code }} - {{ acc.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
                 <button type="submit" class="btn btn-primary"><i class="fas fa-sync me-1"></i>Update</button>
             </div>
         </form>
     </div>
 </div>
 
+<!-- Validation Alert -->
+{% if not validation_ok %}
+<div class="alert alert-danger border-0 shadow-sm mb-4">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>Warning:</strong> Cash flow validation failed. Opening + Net Change ≠ Closing. Please review the transactions.
+</div>
+{% endif %}
+
+<!-- Summary Cards -->
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card border-0 shadow-sm h-100 bg-primary text-white">
             <div class="card-body text-center">
-                <h6 class="mb-2">Opening Cash Balance</h6>
+                <h6 class="mb-2"><i class="fas fa-wallet me-1"></i> Opening Cash</h6>
                 <h3 class="mb-0">AED {{ opening_cash|floatformat:2 }}</h3>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card border-0 shadow-sm h-100 {% if net_change >= 0 %}bg-success{% else %}bg-danger{% endif %} text-white">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 {% if operating_total >= 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
             <div class="card-body text-center">
-                <h6 class="mb-2">Net Change in Cash</h6>
-                <h3 class="mb-0">AED {{ net_change|floatformat:2 }}</h3>
+                <h6 class="mb-2"><i class="fas fa-cogs me-1"></i> Operating</h6>
+                <h3 class="mb-0">AED {{ operating_total|floatformat:2 }}</h3>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 {% if investing_total >= 0 %}bg-info{% else %}bg-secondary{% endif %} text-white">
+            <div class="card-body text-center">
+                <h6 class="mb-2"><i class="fas fa-building me-1"></i> Investing</h6>
+                <h3 class="mb-0">AED {{ investing_total|floatformat:2 }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card border-0 shadow-sm h-100 bg-dark text-white">
             <div class="card-body text-center">
-                <h6 class="mb-2">Closing Cash Balance</h6>
+                <h6 class="mb-2"><i class="fas fa-hand-holding-usd me-1"></i> Closing Cash</h6>
                 <h3 class="mb-0">AED {{ closing_cash|floatformat:2 }}</h3>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Cash Flow Detail with Drill-Down -->
 <div class="card border-0 shadow-sm">
-    <div class="card-header bg-white py-3">
-        <h6 class="mb-0 fw-bold"><i class="fas fa-water me-2 text-primary"></i>Cash Flow Summary</h6>
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-water me-2 text-primary"></i>Cash Flow Statement (Drill-Down)</h6>
+        <button class="btn btn-sm btn-outline-secondary" onclick="expandAll()">
+            <i class="fas fa-expand-arrows-alt me-1"></i>Expand All
+        </button>
     </div>
     <div class="card-body p-0">
         <table class="table table-hover mb-0">
-            <tbody>
-                <tr class="table-info">
-                    <td colspan="2" class="fw-bold">Cash Flows from Operating Activities</td>
-                </tr>
+            <thead class="table-light">
                 <tr>
-                    <td class="ps-4">Net Income from Operations</td>
-                    <td class="text-end fw-bold {% if operating_activities >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        AED {{ operating_activities|floatformat:2 }}
+                    <th style="width: 50%;">Description</th>
+                    <th class="text-end" style="width: 25%;">Amount (AED)</th>
+                    <th class="text-center" style="width: 25%;">Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- OPERATING ACTIVITIES -->
+                <tr class="table-primary expandable" onclick="toggleSection('operating')">
+                    <td class="fw-bold">
+                        <i class="fas fa-chevron-right expand-icon me-2" id="icon-operating"></i>
+                        <i class="fas fa-cogs me-2"></i>Cash Flows from Operating Activities
+                    </td>
+                    <td class="text-end fw-bold {% if operating_total >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ operating_total|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-primary">{{ operating_grouped|length }} accounts</span>
                     </td>
                 </tr>
+                {% for account, data in operating_grouped.items %}
+                <tr class="detail-row level-2 operating-detail expandable" onclick="toggleAccount('operating-{{ forloop.counter }}')">
+                    <td class="ps-4">
+                        <i class="fas fa-chevron-right expand-icon me-2" id="icon-operating-{{ forloop.counter }}"></i>
+                        {{ account }}
+                    </td>
+                    <td class="text-end {% if data.total >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ data.total|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary">{{ data.items|length }} txns</span>
+                    </td>
+                </tr>
+                {% for item in data.items %}
+                <tr class="detail-row level-3 operating-{{ forloop.parentloop.counter }}-detail">
+                    <td class="ps-5">
+                        <small class="text-muted">{{ item.date|date:"d/m/Y" }}</small>
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link ms-2">
+                            {{ item.reference }}
+                        </a>
+                        <br><small class="text-muted">{{ item.description|truncatechars:50 }}</small>
+                    </td>
+                    <td class="text-end {% if item.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ item.amount|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-outline-primary" title="View Journal">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% empty %}
+                <tr class="detail-row operating-detail">
+                    <td colspan="3" class="text-center text-muted py-3">No operating activities recorded</td>
+                </tr>
+                {% endfor %}
                 <tr class="table-warning fw-bold">
-                    <td>Net Cash from Operating Activities</td>
-                    <td class="text-end">AED {{ operating_activities|floatformat:2 }}</td>
+                    <td class="ps-4">Net Cash from Operating Activities</td>
+                    <td class="text-end">{{ operating_total|floatformat:2 }}</td>
+                    <td></td>
                 </tr>
                 
-                <tr class="table-info">
-                    <td colspan="2" class="fw-bold">Cash Flows from Investing Activities</td>
+                <!-- INVESTING ACTIVITIES -->
+                <tr class="table-info expandable" onclick="toggleSection('investing')">
+                    <td class="fw-bold">
+                        <i class="fas fa-chevron-right expand-icon me-2" id="icon-investing"></i>
+                        <i class="fas fa-building me-2"></i>Cash Flows from Investing Activities
+                    </td>
+                    <td class="text-end fw-bold {% if investing_total >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ investing_total|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-info">{{ investing_grouped|length }} accounts</span>
+                    </td>
+                </tr>
+                {% for account, data in investing_grouped.items %}
+                <tr class="detail-row level-2 investing-detail expandable" onclick="toggleAccount('investing-{{ forloop.counter }}')">
+                    <td class="ps-4">
+                        <i class="fas fa-chevron-right expand-icon me-2" id="icon-investing-{{ forloop.counter }}"></i>
+                        {{ account }}
+                    </td>
+                    <td class="text-end {% if data.total >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ data.total|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary">{{ data.items|length }} txns</span>
+                    </td>
+                </tr>
+                {% for item in data.items %}
+                <tr class="detail-row level-3 investing-{{ forloop.parentloop.counter }}-detail">
+                    <td class="ps-5">
+                        <small class="text-muted">{{ item.date|date:"d/m/Y" }}</small>
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link ms-2">
+                            {{ item.reference }}
+                        </a>
+                    </td>
+                    <td class="text-end {% if item.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ item.amount|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-outline-primary" title="View Journal">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% empty %}
+                <tr class="detail-row investing-detail">
+                    <td colspan="3" class="text-center text-muted py-3">No investing activities recorded</td>
+                </tr>
+                {% endfor %}
+                <tr class="table-secondary fw-bold">
+                    <td class="ps-4">Net Cash from Investing Activities</td>
+                    <td class="text-end">{{ investing_total|floatformat:2 }}</td>
+                    <td></td>
+                </tr>
+                
+                <!-- FINANCING ACTIVITIES -->
+                <tr class="table-success expandable" onclick="toggleSection('financing')">
+                    <td class="fw-bold">
+                        <i class="fas fa-chevron-right expand-icon me-2" id="icon-financing"></i>
+                        <i class="fas fa-university me-2"></i>Cash Flows from Financing Activities
+                    </td>
+                    <td class="text-end fw-bold {% if financing_total >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ financing_total|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-success">{{ financing_grouped|length }} accounts</span>
+                    </td>
+                </tr>
+                {% for account, data in financing_grouped.items %}
+                <tr class="detail-row level-2 financing-detail expandable" onclick="toggleAccount('financing-{{ forloop.counter }}')">
+                    <td class="ps-4">
+                        <i class="fas fa-chevron-right expand-icon me-2" id="icon-financing-{{ forloop.counter }}"></i>
+                        {{ account }}
+                    </td>
+                    <td class="text-end {% if data.total >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ data.total|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary">{{ data.items|length }} txns</span>
+                    </td>
+                </tr>
+                {% for item in data.items %}
+                <tr class="detail-row level-3 financing-{{ forloop.parentloop.counter }}-detail">
+                    <td class="ps-5">
+                        <small class="text-muted">{{ item.date|date:"d/m/Y" }}</small>
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link ms-2">
+                            {{ item.reference }}
+                        </a>
+                    </td>
+                    <td class="text-end {% if item.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ item.amount|floatformat:2 }}
+                    </td>
+                    <td class="text-center">
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-outline-primary" title="View Journal">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% empty %}
+                <tr class="detail-row financing-detail">
+                    <td colspan="3" class="text-center text-muted py-3">No financing activities recorded</td>
+                </tr>
+                {% endfor %}
+                <tr class="table-secondary fw-bold">
+                    <td class="ps-4">Net Cash from Financing Activities</td>
+                    <td class="text-end">{{ financing_total|floatformat:2 }}</td>
+                    <td></td>
+                </tr>
+                
+                <!-- SUMMARY -->
+                <tr class="table-dark text-white">
+                    <td class="fw-bold fs-5">Net Increase/(Decrease) in Cash</td>
+                    <td class="text-end fw-bold fs-5">{{ net_change|floatformat:2 }}</td>
+                    <td></td>
                 </tr>
                 <tr>
-                    <td class="ps-4 text-muted">No investing activities recorded</td>
-                    <td class="text-end">AED 0.00</td>
+                    <td>Add: Opening Cash Balance</td>
+                    <td class="text-end">{{ opening_cash|floatformat:2 }}</td>
+                    <td></td>
                 </tr>
-                
-                <tr class="table-info">
-                    <td colspan="2" class="fw-bold">Cash Flows from Financing Activities</td>
-                </tr>
-                <tr>
-                    <td class="ps-4 text-muted">No financing activities recorded</td>
-                    <td class="text-end">AED 0.00</td>
-                </tr>
-                
-                <tr class="table-dark text-white fs-5">
-                    <td class="fw-bold">Net Increase/(Decrease) in Cash</td>
-                    <td class="text-end fw-bold">AED {{ net_change|floatformat:2 }}</td>
+                <tr class="table-dark text-white">
+                    <td class="fw-bold fs-5">Closing Cash Balance</td>
+                    <td class="text-end fw-bold fs-5">{{ closing_cash|floatformat:2 }}</td>
+                    <td></td>
                 </tr>
             </tbody>
         </table>
     </div>
 </div>
 
-<div class="alert alert-info mt-3">
-    <i class="fas fa-info-circle me-2"></i>
-    <strong>Note:</strong> This is a simplified cash flow statement. For detailed analysis, please review the Bank Ledger and General Ledger reports.
+<div class="alert alert-info mt-3 border-0 shadow-sm">
+    <div class="d-flex">
+        <i class="fas fa-info-circle me-3 mt-1"></i>
+        <div>
+            <strong>Cash Flow Classification:</strong>
+            <ul class="mb-0 mt-2 small">
+                <li><strong>Operating:</strong> Revenue, Expenses, AR, AP, VAT transactions</li>
+                <li><strong>Investing:</strong> Fixed Asset purchases/sales</li>
+                <li><strong>Financing:</strong> Capital, Loans, Drawings</li>
+            </ul>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
+{% block extra_js %}
+<script>
+function toggleSection(section) {
+    const details = document.querySelectorAll('.' + section + '-detail');
+    const icon = document.getElementById('icon-' + section);
+    const isExpanded = icon.classList.contains('expanded');
+    
+    details.forEach(row => {
+        if (isExpanded) {
+            row.classList.remove('show');
+        } else {
+            row.classList.add('show');
+        }
+    });
+    
+    if (isExpanded) {
+        icon.classList.remove('expanded');
+    } else {
+        icon.classList.add('expanded');
+    }
+    
+    // Also collapse sub-details when collapsing
+    if (isExpanded) {
+        const subDetails = document.querySelectorAll('[class*="' + section + '-"][class*="-detail"]');
+        subDetails.forEach(row => row.classList.remove('show'));
+        document.querySelectorAll('[id^="icon-' + section + '-"]').forEach(ic => ic.classList.remove('expanded'));
+    }
+}
 
+function toggleAccount(accountKey) {
+    event.stopPropagation();
+    const details = document.querySelectorAll('.' + accountKey + '-detail');
+    const icon = document.getElementById('icon-' + accountKey);
+    const isExpanded = icon.classList.contains('expanded');
+    
+    details.forEach(row => {
+        if (isExpanded) {
+            row.classList.remove('show');
+        } else {
+            row.classList.add('show');
+        }
+    });
+    
+    if (isExpanded) {
+        icon.classList.remove('expanded');
+    } else {
+        icon.classList.add('expanded');
+    }
+}
+
+function expandAll() {
+    document.querySelectorAll('.detail-row').forEach(row => row.classList.add('show'));
+    document.querySelectorAll('.expand-icon').forEach(icon => icon.classList.add('expanded'));
+}
+</script>
+{% endblock %}
