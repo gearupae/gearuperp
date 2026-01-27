@@ -232,7 +232,7 @@ class CompanySettingsView(PermissionRequiredMixin, UpdateView):
 
 
 class AuditLogListView(PermissionRequiredMixin, ListView):
-    """Audit log viewer."""
+    """Audit log viewer - IFRS & UAE audit compliant."""
     model = AuditLog
     template_name = 'settings/audit_log.html'
     context_object_name = 'logs'
@@ -256,7 +256,37 @@ class AuditLogListView(PermissionRequiredMixin, ListView):
         if user:
             queryset = queryset.filter(user__username__icontains=user)
         
+        # Module filter (for Finance)
+        module = self.request.GET.get('module')
+        if module:
+            if module == 'finance':
+                queryset = queryset.filter(model__startswith='Finance.')
+            else:
+                queryset = queryset.filter(model__icontains=module)
+        
+        # Date range filters
+        date_from = self.request.GET.get('date_from')
+        date_to = self.request.GET.get('date_to')
+        if date_from:
+            queryset = queryset.filter(timestamp__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(timestamp__date__lte=date_to)
+        
         return queryset
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['title'] = 'Audit Log'
+        context['action_choices'] = AuditLog.ACTION_CHOICES
+        context['module_choices'] = [
+            ('finance', 'Finance'),
+            ('sales', 'Sales'),
+            ('purchase', 'Purchase'),
+            ('inventory', 'Inventory'),
+            ('hr', 'HR'),
+            ('settings', 'Settings'),
+        ]
+        return context
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'finance:payment_list' %}">Payments</a></li>
+            <li class="breadcrumb-item active">{{ payment.payment_number }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold">{{ payment.payment_number }}</h4>
+            <span class="text-muted">{{ payment.party_name }}</span>
+        </div>
+        <div>
+            {% if can_edit %}
+            <a href="{% url 'finance:payment_edit' payment.pk %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Edit
+            </a>
+            {% endif %}
+            {% if can_cancel %}
+            <form action="{% url 'finance:payment_cancel' payment.pk %}" method="post" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Cancel this payment? This will create a reversal journal entry.');">
+                    <i class="fas fa-times me-2"></i>Cancel Payment
+                </button>
+            </form>
+            {% endif %}
+            <a href="{% url 'finance:payment_list' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Back to List
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <!-- Payment Info -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Party</h6>
+                        <p class="fw-medium mb-0">{{ payment.party_name }}</p>
+                        {% if payment.party_type %}
+                        <small class="text-muted text-capitalize">{{ payment.party_type }}</small>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Payment Date</h6>
+                        <p class="mb-0">{{ payment.payment_date|date:"d/m/Y" }}</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted mb-2">Payment Type</h6>
+                        <p class="mb-0 text-capitalize">{{ payment.get_payment_type_display }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Payment Details -->
+        <div class="card mb-4">
+            <div class="card-header"><h6 class="mb-0 fw-semibold">Payment Details</h6></div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Payment Method</span>
+                            <span class="fw-medium">{{ payment.get_payment_method_display }}</span>
+                        </div>
+                    </div>
+                    {% if payment.bank_account %}
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Bank Account</span>
+                            <span class="fw-medium">{{ payment.bank_account.name }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if payment.reference %}
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Reference</span>
+                            <span class="fw-medium">{{ payment.reference }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if payment.cheque_number %}
+                    <div class="col-md-6">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Cheque Number</span>
+                            <span class="fw-medium">{{ payment.cheque_number }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if payment.description %}
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Description</span>
+                            <span class="fw-medium">{{ payment.description }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fs-5 fw-bold">Amount</span>
+                    <span class="fs-4 fw-bold text-primary">AED {{ payment.amount|floatformat:2 }}</span>
+                </div>
+            </div>
+        </div>
+        
+        {% if payment.journal_entry %}
+        <!-- Accounting -->
+        <div class="card">
+            <div class="card-header"><h6 class="mb-0 fw-semibold">Accounting Entry</h6></div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Account</th>
+                            <th class="text-end">Debit</th>
+                            <th class="text-end">Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for line in payment.journal_entry.lines.all %}
+                        <tr>
+                            <td>{{ line.account.code }} - {{ line.account.name }}</td>
+                            <td class="text-end">{% if line.debit %}AED {{ line.debit|floatformat:2 }}{% endif %}</td>
+                            <td class="text-end">{% if line.credit %}AED {{ line.credit|floatformat:2 }}{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="p-3 bg-light d-flex justify-content-between align-items-center">
+                    <span>Journal Entry:</span>
+                    <a href="{% url 'finance:journal_detail' payment.journal_entry.pk %}" class="fw-medium">
+                        {{ payment.journal_entry.entry_number }}
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Status -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Status</h6>
+                {% if payment.status == 'draft' %}
+                <span class="badge bg-secondary fs-6">Draft</span>
+                {% elif payment.status == 'posted' %}
+                <span class="badge fs-6" style="background:#dcfce7;color:#166534;">Posted</span>
+                {% elif payment.status == 'cancelled' %}
+                <span class="badge badge-inactive fs-6">Cancelled</span>
+                {% else %}
+                <span class="badge bg-secondary fs-6">{{ payment.get_status_display }}</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Audit Info -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Audit Information</h6>
+                <div class="mb-2">
+                    <small class="text-muted">Created</small>
+                    <p class="mb-0 small">{{ payment.created_at|date:"d/m/Y H:i" }}</p>
+                </div>
+                <div>
+                    <small class="text-muted">Last Updated</small>
+                    <p class="mb-0 small">{{ payment.updated_at|date:"d/m/Y H:i" }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Full Audit History -->
+        {% include 'includes/audit_history.html' with audit_history=audit_history %}
+    </div>
+</div>
+{% endblock %}
+

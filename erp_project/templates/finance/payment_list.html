@@ -114,6 +114,9 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
+                            <a href="{% url 'finance:payment_detail' payment.pk %}" class="btn btn-action btn-outline-secondary" title="View">
+                                <i class="fas fa-eye"></i>
+                            </a>
                             {% if can_edit and payment.status == 'draft' %}
                             <a href="{% url 'finance:payment_edit' payment.pk %}" class="btn btn-action btn-outline-primary" title="Edit">
                                 <i class="fas fa-edit"></i>

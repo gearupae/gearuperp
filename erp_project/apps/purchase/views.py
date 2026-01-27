@@ -610,6 +610,8 @@ class VendorBillDetailView(PermissionRequiredMixin, DetailView):
     permission_type = 'view'
     
     def get_context_data(self, **kwargs):
+        from apps.core.audit import get_entity_audit_history
+        
         context = super().get_context_data(**kwargs)
         context['title'] = f'Bill: {self.object.bill_number}'
         has_permission = self.request.user.is_superuser or PermissionChecker.has_permission(self.request.user, 'purchase', 'edit')
@@ -617,6 +619,10 @@ class VendorBillDetailView(PermissionRequiredMixin, DetailView):
         context['can_edit'] = has_permission and self.object.status == 'draft'
         # Allow posting draft bills
         context['can_post'] = has_permission and self.object.status == 'draft' and self.object.total_amount > 0
+        
+        # Audit History
+        context['audit_history'] = get_entity_audit_history('Bill', self.object.pk)
+        
         return context
 
 
@@ -638,6 +644,8 @@ def bill_post(request, pk):
     Post vendor bill to accounting - creates journal entry.
     Debit Expense, Debit VAT Recoverable, Credit AP
     """
+    from apps.core.audit import audit_bill_post
+    
     bill = get_object_or_404(VendorBill, pk=pk)
     
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'purchase', 'edit')):
@@ -650,6 +658,8 @@ def bill_post(request, pk):
     
     try:
         journal = bill.post_to_accounting(user=request.user)
+        # Audit log with IP address
+        audit_bill_post(bill, request.user, request=request)
         messages.success(request, f'Bill {bill.bill_number} posted to accounting. Journal: {journal.entry_number}')
     except ValidationError as e:
         messages.error(request, str(e))
@@ -752,6 +762,8 @@ class ExpenseClaimDetailView(PermissionRequiredMixin, DetailView):
     permission_type = 'view'
     
     def get_context_data(self, **kwargs):
+        from apps.core.audit import get_entity_audit_history
+        
         context = super().get_context_data(**kwargs)
         context['title'] = f'Expense Claim: {self.object.claim_number}'
         
@@ -767,6 +779,9 @@ class ExpenseClaimDetailView(PermissionRequiredMixin, DetailView):
         # Payment form for approved claims
         if self.object.status == 'approved':
             context['payment_form'] = ExpenseClaimPaymentForm(initial={'payment_date': date.today()})
+        
+        # Audit History
+        context['audit_history'] = get_entity_audit_history('ExpenseClaim', self.object.pk)
         
         return context
 
@@ -796,6 +811,8 @@ def expenseclaim_approve(request, pk):
     Approve an expense claim and post to accounting.
     Creates journal entry: Dr Expense, Dr VAT Recoverable, Cr Employee Payable
     """
+    from apps.core.audit import audit_expense_approve
+    
     claim = get_object_or_404(ExpenseClaim, pk=pk)
     
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'purchase', 'approve')):
@@ -814,6 +831,8 @@ def expenseclaim_approve(request, pk):
     # Post to accounting
     try:
         journal = claim.post_approval_journal(user=request.user)
+        # Audit log with IP address
+        audit_expense_approve(claim, request.user, request=request)
         messages.success(request, f'Expense Claim {claim.claim_number} approved and posted to accounting. Journal: {journal.entry_number}')
     except ValidationError as e:
         messages.warning(request, f'Claim approved but journal entry failed: {str(e)}')

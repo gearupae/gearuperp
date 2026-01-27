@@ -208,8 +208,8 @@
         </div>
         {% endif %}
         
-        <!-- Audit Information -->
-        <div class="card border-0 shadow-sm">
+        <!-- Basic Audit Information -->
+        <div class="card border-0 shadow-sm mb-4">
             <div class="card-body">
                 <h6 class="text-muted mb-3 small text-uppercase">Audit Trail</h6>
                 <div class="mb-2">
@@ -232,6 +232,61 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Full Audit History -->
+        {% if audit_history %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent border-bottom-0">
+                <h6 class="text-muted mb-0 small text-uppercase">
+                    <i class="fas fa-history me-1"></i>Audit History
+                </h6>
+            </div>
+            <div class="card-body pt-0">
+                <div class="audit-timeline">
+                    {% for log in audit_history %}
+                    <div class="audit-item d-flex align-items-start mb-3 pb-3 {% if not forloop.last %}border-bottom{% endif %}">
+                        <div class="audit-icon me-3">
+                            {% if log.action == 'create' %}
+                            <span class="badge bg-success rounded-pill"><i class="fas fa-plus fa-xs"></i></span>
+                            {% elif log.action == 'post' %}
+                            <span class="badge bg-primary rounded-pill"><i class="fas fa-check fa-xs"></i></span>
+                            {% elif log.action == 'reverse' %}
+                            <span class="badge bg-warning rounded-pill"><i class="fas fa-undo fa-xs"></i></span>
+                            {% elif log.action == 'update' %}
+                            <span class="badge bg-info rounded-pill"><i class="fas fa-edit fa-xs"></i></span>
+                            {% elif log.action == 'delete' %}
+                            <span class="badge bg-danger rounded-pill"><i class="fas fa-trash fa-xs"></i></span>
+                            {% else %}
+                            <span class="badge bg-secondary rounded-pill"><i class="fas fa-circle fa-xs"></i></span>
+                            {% endif %}
+                        </div>
+                        <div class="audit-content flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong class="text-capitalize small">{{ log.action }}</strong>
+                                    <span class="text-muted small">by {{ log.user.get_full_name|default:log.user.username }}</span>
+                                </div>
+                                <small class="text-muted">{{ log.timestamp|date:"d/m/Y H:i" }}</small>
+                            </div>
+                            {% if log.ip_address %}
+                            <small class="text-muted d-block">IP: {{ log.ip_address }}</small>
+                            {% endif %}
+                            {% if log.changes.amount_after %}
+                            <small class="text-muted d-block">Amount: AED {{ log.changes.amount_after }}</small>
+                            {% endif %}
+                            {% if log.changes.reason %}
+                            <small class="text-muted d-block">Reason: {{ log.changes.reason }}</small>
+                            {% endif %}
+                            {% if log.changes.affected_accounts %}
+                            <small class="text-muted d-block">Accounts: {{ log.changes.affected_accounts|join:", " }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 

@@ -252,6 +252,8 @@ class JournalEntryDetailView(PermissionRequiredMixin, DetailView):
     permission_type = 'view'
     
     def get_context_data(self, **kwargs):
+        from apps.core.audit import get_entity_audit_history
+        
         context = super().get_context_data(**kwargs)
         context['title'] = f'Journal Entry: {self.object.entry_number}'
         
@@ -270,6 +272,9 @@ class JournalEntryDetailView(PermissionRequiredMixin, DetailView):
         context['edit_restriction_reason'] = self.object.edit_restriction_reason
         context['is_system_generated'] = self.object.is_system_generated
         context['is_locked'] = self.object.is_locked
+        
+        # Audit History
+        context['audit_history'] = get_entity_audit_history('JournalEntry', self.object.pk)
         
         return context
 
@@ -298,8 +303,8 @@ def journal_post(request, pk):
     
     try:
         entry.post(user=request.user)
-        # Audit log
-        audit_journal_post(entry, request.user)
+        # Audit log with IP address
+        audit_journal_post(entry, request.user, request=request)
         messages.success(request, f'Journal Entry {entry.entry_number} posted successfully.')
     except ValidationError as e:
         for error in e.messages:
@@ -339,8 +344,8 @@ def journal_reverse(request, pk):
     
     try:
         reversal = entry.reverse(user=request.user, reason=reason)
-        # Audit log
-        audit_journal_reverse(entry, reversal, request.user, reason)
+        # Audit log with IP address
+        audit_journal_reverse(entry, reversal, request.user, reason=reason, request=request)
         messages.success(request, f'Journal Entry {entry.entry_number} reversed. Reversal entry: {reversal.entry_number}')
         return redirect('finance:journal_detail', pk=reversal.pk)
     except ValidationError as e:
@@ -413,6 +418,33 @@ class PaymentCreateView(CreatePermissionMixin, CreateView):
         form.instance.party_id = 0
         messages.success(self.request, 'Payment created.')
         return super().form_valid(form)
+
+
+class PaymentDetailView(PermissionRequiredMixin, DetailView):
+    """View payment details with audit history."""
+    model = Payment
+    template_name = 'finance/payment_detail.html'
+    context_object_name = 'payment'
+    module_name = 'finance'
+    permission_type = 'view'
+    
+    def get_context_data(self, **kwargs):
+        from apps.core.audit import get_entity_audit_history
+        
+        context = super().get_context_data(**kwargs)
+        context['title'] = f'Payment: {self.object.payment_number}'
+        
+        has_permission = (
+            self.request.user.is_superuser or 
+            PermissionChecker.has_permission(self.request.user, 'finance', 'edit')
+        )
+        context['can_edit'] = has_permission and self.object.status == 'draft'
+        context['can_cancel'] = has_permission and self.object.status == 'posted'
+        
+        # Audit History
+        context['audit_history'] = get_entity_audit_history('Payment', self.object.pk)
+        
+        return context
 
 
 class PaymentUpdateView(UpdatePermissionMixin, UpdateView):
@@ -3017,6 +3049,11 @@ def payment_post(request, pk):
         payment.journal_entry = journal
         payment.status = 'confirmed'
         payment.save()
+        
+        # Audit log with IP address
+        from apps.core.audit import audit_payment_post
+        audit_payment_post(payment, request.user, request=request)
+        
         messages.success(request, f'Payment {payment.payment_number} posted successfully.')
     except Exception as e:
         journal.delete()
@@ -3314,6 +3351,8 @@ class BankStatementDetailView(PermissionRequiredMixin, DetailView):
     
     def get_context_data(self, **kwargs):
         from .forms import AdjustmentForm
+        from apps.core.audit import get_entity_audit_history
+        
         context = super().get_context_data(**kwargs)
         context['title'] = f'Bank Statement: {self.object.statement_number}'
         
@@ -3354,6 +3393,9 @@ class BankStatementDetailView(PermissionRequiredMixin, DetailView):
         ) and self.object.status not in ['reconciled', 'locked']
         
         context['can_finalize'] = context['can_edit'] and self.object.unmatched_count == 0
+        
+        # Audit History
+        context['audit_history'] = get_entity_audit_history('BankReconciliation', self.object.pk)
         
         return context
 

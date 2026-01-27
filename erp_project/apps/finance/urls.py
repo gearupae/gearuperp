@@ -30,6 +30,7 @@ urlpatterns = [
     # ============ PAYMENTS ============
     path('payments/', views.PaymentListView.as_view(), name='payment_list'),
     path('payments/create/', views.PaymentCreateView.as_view(), name='payment_create'),
+    path('payments/<int:pk>/', views.PaymentDetailView.as_view(), name='payment_detail'),
     path('payments/<int:pk>/edit/', views.PaymentUpdateView.as_view(), name='payment_edit'),
     path('payments/<int:pk>/post/', views.payment_post, name='payment_post'),
     path('payments/<int:pk>/cancel/', views.payment_cancel, name='payment_cancel'),

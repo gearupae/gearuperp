@@ -522,6 +522,8 @@ class InvoiceDetailView(PermissionRequiredMixin, DetailView):
     permission_type = 'view'
     
     def get_context_data(self, **kwargs):
+        from apps.core.audit import get_entity_audit_history
+        
         context = super().get_context_data(**kwargs)
         context['title'] = f'Invoice: {self.object.invoice_number}'
         has_permission = self.request.user.is_superuser or PermissionChecker.has_permission(
@@ -531,6 +533,10 @@ class InvoiceDetailView(PermissionRequiredMixin, DetailView):
         context['can_edit'] = has_permission and self.object.status == 'draft'
         # Allow posting draft invoices
         context['can_post'] = has_permission and self.object.status == 'draft' and self.object.total_amount > 0
+        
+        # Audit History
+        context['audit_history'] = get_entity_audit_history('Invoice', self.object.pk)
+        
         return context
 
 
@@ -553,6 +559,8 @@ def invoice_post(request, pk):
     Post invoice to accounting - creates journal entry.
     Debit AR, Credit Sales, Credit VAT Payable
     """
+    from apps.core.audit import audit_invoice_post
+    
     if request.method != 'POST':
         messages.error(request, 'Invalid request method.')
         return redirect('sales:invoice_detail', pk=pk)
@@ -569,6 +577,8 @@ def invoice_post(request, pk):
     
     try:
         journal = invoice.post_to_accounting(user=request.user)
+        # Audit log with IP address
+        audit_invoice_post(invoice, request.user, request=request)
         messages.success(request, f'Invoice {invoice.invoice_number} posted to accounting. Journal: {journal.entry_number}')
     except ValidationError as e:
         messages.error(request, str(e))

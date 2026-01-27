@@ -328,9 +328,15 @@ class PayrollDetailView(PermissionRequiredMixin, DetailView):
         )
     
     def get_context_data(self, **kwargs):
+        from apps.core.audit import get_entity_audit_history
+        
         context = super().get_context_data(**kwargs)
         context['title'] = f'Payroll - {self.object.employee.full_name}'
         context['can_edit'] = self.request.user.is_superuser or PermissionChecker.has_permission(self.request.user, 'hr', 'edit')
+        
+        # Audit History
+        context['audit_history'] = get_entity_audit_history('Payroll', self.object.pk)
+        
         return context
 
 
@@ -377,6 +383,8 @@ def payroll_process(request, pk):
     Process payroll and post to accounting.
     SAP/Oracle Standard: Dr Salary Expense, Cr Salary Payable
     """
+    from apps.core.audit import audit_payroll_process
+    
     payroll = get_object_or_404(Payroll, pk=pk)
     
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'hr', 'edit')):
@@ -389,6 +397,8 @@ def payroll_process(request, pk):
     
     try:
         journal = payroll.post_to_accounting(user=request.user)
+        # Audit log with IP address
+        audit_payroll_process(payroll, request.user, request=request)
         messages.success(request, f'Payroll for {payroll.employee.full_name} processed and posted. Journal: {journal.entry_number}')
     except ValidationError as e:
         messages.error(request, str(e))
