@@ -5,10 +5,10 @@
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-1 fw-bold">{{ title }}</h4>
-        <p class="text-muted mb-0">As of {{ as_of_date }}</p>
+        <p class="text-muted mb-0">Period: {{ start_date }} to {{ end_date }}</p>
     </div>
     <div>
-        <a href="?date={{ as_of_date }}&format=excel" class="btn btn-success me-2">
+        <a href="?start_date={{ start_date }}&end_date={{ end_date }}&format=excel" class="btn btn-success me-2">
             <i class="fas fa-file-excel me-1"></i>Excel
         </a>
         <button class="btn btn-outline-secondary" onclick="window.print()">
@@ -21,11 +21,15 @@
 <div class="card mb-4 border-0 shadow-sm">
     <div class="card-body py-3">
         <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label fw-medium">As of Date</label>
-                <input type="date" name="date" class="form-control" value="{{ as_of_date }}">
+            <div class="col-md-3">
+                <label class="form-label fw-medium">Start Date</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
             </div>
-            <div class="col-md-8">
+            <div class="col-md-3">
+                <label class="form-label fw-medium">End Date</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-6">
                 <button type="submit" class="btn btn-primary"><i class="fas fa-sync me-1"></i>Update</button>
             </div>
         </form>
@@ -33,66 +37,302 @@
 </div>
 
 <!-- Balance Status -->
-<div class="alert {% if is_balanced %}alert-success{% else %}alert-danger{% endif %} mb-4">
-    <i class="fas {% if is_balanced %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} me-2"></i>
-    {% if is_balanced %}
-        <strong>Balanced:</strong> Total Debits equal Total Credits
-    {% else %}
-        <strong>NOT BALANCED:</strong> Total Debits do not equal Total Credits. Please review journal entries.
-    {% endif %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="alert {% if opening_balanced %}alert-success{% else %}alert-danger{% endif %} mb-0">
+            <i class="fas {% if opening_balanced %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} me-2"></i>
+            <strong>Opening Balance:</strong>
+            {% if opening_balanced %}
+                Balanced (Dr {{ total_opening_debit|floatformat:2|intcomma }} = Cr {{ total_opening_credit|floatformat:2|intcomma }})
+            {% else %}
+                <span class="text-danger">NOT BALANCED (Dr {{ total_opening_debit|floatformat:2|intcomma }} ≠ Cr {{ total_opening_credit|floatformat:2|intcomma }})</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="alert {% if closing_balanced %}alert-success{% else %}alert-danger{% endif %} mb-0">
+            <i class="fas {% if closing_balanced %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} me-2"></i>
+            <strong>Closing Balance:</strong>
+            {% if closing_balanced %}
+                Balanced (Dr {{ total_closing_debit|floatformat:2|intcomma }} = Cr {{ total_closing_credit|floatformat:2|intcomma }})
+            {% else %}
+                <span class="text-danger">NOT BALANCED (Dr {{ total_closing_debit|floatformat:2|intcomma }} ≠ Cr {{ total_closing_credit|floatformat:2|intcomma }})</span>
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover table-sm mb-0" id="trialBalanceTable">
                 <thead class="table-light">
                     <tr>
-                        <th>Account Code</th>
-                        <th>Account Name</th>
-                        <th>Type</th>
-                        <th class="text-end">Debit (AED)</th>
-                        <th class="text-end">Credit (AED)</th>
+                        <th rowspan="2" class="align-middle">Account Code</th>
+                        <th rowspan="2" class="align-middle">Account Name</th>
+                        <th rowspan="2" class="align-middle text-center">Type</th>
+                        <th colspan="2" class="text-center bg-light border-start">Opening Balance</th>
+                        <th colspan="2" class="text-center bg-info bg-opacity-10 border-start">Period Movement</th>
+                        <th colspan="2" class="text-center bg-success bg-opacity-10 border-start">Closing Balance</th>
+                    </tr>
+                    <tr>
+                        <th class="text-end bg-light border-start">Debit</th>
+                        <th class="text-end bg-light">Credit</th>
+                        <th class="text-end bg-info bg-opacity-10 border-start">Debit</th>
+                        <th class="text-end bg-info bg-opacity-10">Credit</th>
+                        <th class="text-end bg-success bg-opacity-10 border-start">Debit</th>
+                        <th class="text-end bg-success bg-opacity-10">Credit</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for item in trial_data %}
                     <tr {% if item.abnormal %}class="table-warning"{% endif %}>
                         <td>
-                            {{ item.account.code }}
+                            {{ item.code }}
                             {% if item.abnormal %}
                                 <i class="fas fa-exclamation-triangle text-warning ms-1" title="Abnormal balance"></i>
                             {% endif %}
                         </td>
-                        <td>{{ item.account.name }}</td>
-                        <td>
-                            <span class="badge bg-secondary">{{ item.account.get_account_type_display }}</span>
+                        <td>{{ item.name }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary small">{{ item.account_type }}</span>
+                        </td>
+                        <!-- Opening Balance -->
+                        <td class="text-end border-start">
+                            {% if item.opening_debit %}
+                            <a href="#" class="text-decoration-none drill-down" 
+                               data-account="{{ item.account.pk }}" 
+                               data-type="opening" 
+                               data-end="{{ start_date }}">
+                                {{ item.opening_debit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
                         </td>
                         <td class="text-end">
-                            {% if item.debit %}{{ item.debit|floatformat:2|intcomma }}{% else %}-{% endif %}
+                            {% if item.opening_credit %}
+                            <a href="#" class="text-decoration-none drill-down" 
+                               data-account="{{ item.account.pk }}" 
+                               data-type="opening" 
+                               data-end="{{ start_date }}">
+                                {{ item.opening_credit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <!-- Period Movement -->
+                        <td class="text-end border-start">
+                            {% if item.period_debit %}
+                            <a href="#" class="text-decoration-none drill-down" 
+                               data-account="{{ item.account.pk }}" 
+                               data-type="period" 
+                               data-start="{{ start_date }}" 
+                               data-end="{{ end_date }}">
+                                {{ item.period_debit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
                         </td>
                         <td class="text-end">
-                            {% if item.credit %}{{ item.credit|floatformat:2|intcomma }}{% else %}-{% endif %}
+                            {% if item.period_credit %}
+                            <a href="#" class="text-decoration-none drill-down" 
+                               data-account="{{ item.account.pk }}" 
+                               data-type="period" 
+                               data-start="{{ start_date }}" 
+                               data-end="{{ end_date }}">
+                                {{ item.period_credit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <!-- Closing Balance -->
+                        <td class="text-end border-start fw-medium">
+                            {% if item.closing_debit %}
+                            <a href="#" class="text-decoration-none drill-down fw-medium" 
+                               data-account="{{ item.account.pk }}" 
+                               data-type="closing" 
+                               data-end="{{ end_date }}">
+                                {{ item.closing_debit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-end fw-medium">
+                            {% if item.closing_credit %}
+                            <a href="#" class="text-decoration-none drill-down fw-medium" 
+                               data-account="{{ item.account.pk }}" 
+                               data-type="closing" 
+                               data-end="{{ end_date }}">
+                                {{ item.closing_credit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="5" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <i class="fas fa-balance-scale fa-3x mb-3 d-block"></i>
-                            No account balances found
+                            No account balances found for this period
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
                 <tfoot class="table-dark">
                     <tr>
-                        <th colspan="3" class="text-end">Total:</th>
-                        <th class="text-end">{{ total_debit|floatformat:2|intcomma }}</th>
-                        <th class="text-end">{{ total_credit|floatformat:2|intcomma }}</th>
+                        <th colspan="3" class="text-end">Totals:</th>
+                        <th class="text-end border-start">{{ total_opening_debit|floatformat:2|intcomma }}</th>
+                        <th class="text-end">{{ total_opening_credit|floatformat:2|intcomma }}</th>
+                        <th class="text-end border-start">{{ total_period_debit|floatformat:2|intcomma }}</th>
+                        <th class="text-end">{{ total_period_credit|floatformat:2|intcomma }}</th>
+                        <th class="text-end border-start">{{ total_closing_debit|floatformat:2|intcomma }}</th>
+                        <th class="text-end">{{ total_closing_credit|floatformat:2|intcomma }}</th>
+                    </tr>
+                    <tr class="table-secondary">
+                        <th colspan="3" class="text-end small">Difference:</th>
+                        <th colspan="2" class="text-center small {% if opening_balanced %}text-success{% else %}text-danger{% endif %}">
+                            {% if opening_balanced %}
+                                <i class="fas fa-check"></i> Balanced
+                            {% else %}
+                                <i class="fas fa-times"></i> {{ total_opening_debit|add:total_opening_credit|floatformat:2|intcomma }}
+                            {% endif %}
+                        </th>
+                        <th colspan="2" class="text-center small text-muted">
+                            Movement: {{ total_period_debit|floatformat:2|intcomma }} / {{ total_period_credit|floatformat:2|intcomma }}
+                        </th>
+                        <th colspan="2" class="text-center small {% if closing_balanced %}text-success{% else %}text-danger{% endif %}">
+                            {% if closing_balanced %}
+                                <i class="fas fa-check"></i> Balanced
+                            {% else %}
+                                <i class="fas fa-times"></i> {{ total_closing_debit|add:total_closing_credit|floatformat:2|intcomma }}
+                            {% endif %}
+                        </th>
                     </tr>
                 </tfoot>
             </table>
         </div>
     </div>
 </div>
+
+<!-- Drill-Down Modal -->
+<div class="modal fade" id="drillDownModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-list me-2"></i>Journal Entries - <span id="modalAccountName"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="drillDownContent" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .page-header > div:last-child { display: none !important; }
+    .card.mb-4.border-0.shadow-sm { display: none !important; }
+    .drill-down { color: inherit !important; text-decoration: none !important; pointer-events: none !important; }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Drill-down functionality
+    document.querySelectorAll('.drill-down').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const accountId = this.dataset.account;
+            const type = this.dataset.type;
+            const startDate = this.dataset.start || '';
+            const endDate = this.dataset.end || '';
+            const accountName = this.closest('tr').querySelector('td:nth-child(2)').textContent;
+            
+            document.getElementById('modalAccountName').textContent = accountName;
+            document.getElementById('drillDownContent').innerHTML = `
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            `;
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('drillDownModal'));
+            modal.show();
+            
+            // Fetch journal entries
+            let url = `/finance/reports/general-ledger/?account=${accountId}`;
+            if (type === 'opening') {
+                url += `&end_date=${endDate}`;
+            } else if (type === 'period') {
+                url += `&start_date=${startDate}&end_date=${endDate}`;
+            } else {
+                url += `&end_date=${endDate}`;
+            }
+            
+            fetch(url + '&format=json')
+                .then(response => response.json())
+                .then(data => {
+                    let html = `
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Journal #</th>
+                                    <th>Source</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Debit</th>
+                                    <th class="text-end">Credit</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    if (data.entries && data.entries.length > 0) {
+                        data.entries.forEach(entry => {
+                            html += `
+                                <tr>
+                                    <td>${entry.date}</td>
+                                    <td>
+                                        <a href="/finance/journal/${entry.journal_id}/" target="_blank">
+                                            ${entry.entry_number}
+                                        </a>
+                                    </td>
+                                    <td><span class="badge bg-secondary">${entry.source_module || 'Manual'}</span></td>
+                                    <td>${entry.description}</td>
+                                    <td class="text-end">${entry.debit ? parseFloat(entry.debit).toLocaleString('en-AE', {minimumFractionDigits: 2}) : '-'}</td>
+                                    <td class="text-end">${entry.credit ? parseFloat(entry.credit).toLocaleString('en-AE', {minimumFractionDigits: 2}) : '-'}</td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        html += `
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">
+                                    No journal entries found for this period
+                                </td>
+                            </tr>
+                        `;
+                    }
+                    
+                    html += `
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    document.getElementById('drillDownContent').innerHTML = html;
+                })
+                .catch(error => {
+                    document.getElementById('drillDownContent').innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <a href="${url.replace('&format=json', '')}" target="_blank">View full General Ledger for this account</a>
+                        </div>
+                    `;
+                });
+        });
+    });
+});
+</script>
 {% endblock %}

@@ -558,62 +558,183 @@ class TaxCodeListView(PermissionRequiredMixin, ListView):
 
 @login_required
 def trial_balance(request):
-    """Trial Balance Report - Total Debit must equal Total Credit."""
+    """
+    Trial Balance Report with Opening Balances.
+    IFRS & UAE Audit Compliant - Shows Opening, Period Movement, and Closing balances.
+    
+    Opening Balance = All posted journals BEFORE start_date
+    Period Movement = All posted journals BETWEEN start_date and end_date
+    Closing Balance = Opening + Period Movement
+    """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
     
-    as_of_date = request.GET.get('date', date.today().isoformat())
+    # Get date range (default: current fiscal year)
+    today = date.today()
+    default_start = date(today.year, 1, 1).isoformat()
+    default_end = today.isoformat()
+    
+    start_date_str = request.GET.get('start_date', default_start)
+    end_date_str = request.GET.get('end_date', default_end)
     export_format = request.GET.get('format', '')
     
-    accounts = Account.objects.filter(is_active=True).order_by('code')
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        start_date = date(today.year, 1, 1)
+        end_date = today
+    
+    accounts = Account.objects.filter(is_active=True).order_by('account_type', 'code')
     
     trial_data = []
-    total_debit = Decimal('0.00')
-    total_credit = Decimal('0.00')
+    
+    # Totals
+    total_opening_debit = Decimal('0.00')
+    total_opening_credit = Decimal('0.00')
+    total_period_debit = Decimal('0.00')
+    total_period_credit = Decimal('0.00')
+    total_closing_debit = Decimal('0.00')
+    total_closing_credit = Decimal('0.00')
     
     for account in accounts:
-        balance = account.current_balance
-        debit = Decimal('0.00')
-        credit = Decimal('0.00')
+        # Opening Balance: Sum of all posted journal lines BEFORE start_date
+        opening_lines = JournalEntryLine.objects.filter(
+            account=account,
+            journal_entry__status='posted',
+            journal_entry__date__lt=start_date
+        ).aggregate(
+            debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            credit=Coalesce(Sum('credit'), Decimal('0.00'))
+        )
+        opening_debit = opening_lines['debit']
+        opening_credit = opening_lines['credit']
+        opening_balance = opening_debit - opening_credit
         
-        if account.debit_increases:
-            if balance >= 0:
-                debit = balance
+        # Period Movement: Sum of all posted journal lines BETWEEN start_date and end_date
+        period_lines = JournalEntryLine.objects.filter(
+            account=account,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date
+        ).aggregate(
+            debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            credit=Coalesce(Sum('credit'), Decimal('0.00'))
+        )
+        period_debit = period_lines['debit']
+        period_credit = period_lines['credit']
+        
+        # Closing Balance = Opening + Period Movement
+        closing_balance = opening_balance + (period_debit - period_credit)
+        
+        # Convert balances to debit/credit columns based on account nature
+        # For debit-normal accounts (Assets, Expenses): positive = debit
+        # For credit-normal accounts (Liabilities, Equity, Income): positive = credit
+        
+        # Opening columns
+        if opening_balance > 0:
+            if account.debit_increases:
+                open_dr = opening_balance
+                open_cr = Decimal('0.00')
             else:
-                credit = abs(balance)
+                open_dr = Decimal('0.00')
+                open_cr = abs(opening_balance)
+        elif opening_balance < 0:
+            if account.debit_increases:
+                open_dr = Decimal('0.00')
+                open_cr = abs(opening_balance)
+            else:
+                open_dr = abs(opening_balance)
+                open_cr = Decimal('0.00')
         else:
-            if balance >= 0:
-                credit = balance
-            else:
-                debit = abs(balance)
+            open_dr = Decimal('0.00')
+            open_cr = Decimal('0.00')
         
-        if debit != 0 or credit != 0:
+        # Closing columns
+        if closing_balance > 0:
+            if account.debit_increases:
+                close_dr = closing_balance
+                close_cr = Decimal('0.00')
+            else:
+                close_dr = Decimal('0.00')
+                close_cr = abs(closing_balance)
+        elif closing_balance < 0:
+            if account.debit_increases:
+                close_dr = Decimal('0.00')
+                close_cr = abs(closing_balance)
+            else:
+                close_dr = abs(closing_balance)
+                close_cr = Decimal('0.00')
+        else:
+            close_dr = Decimal('0.00')
+            close_cr = Decimal('0.00')
+        
+        # Only include accounts with activity
+        has_activity = (open_dr != 0 or open_cr != 0 or 
+                       period_debit != 0 or period_credit != 0 or
+                       close_dr != 0 or close_cr != 0)
+        
+        if has_activity:
+            # Check for abnormal balance
+            abnormal = False
+            if account.debit_increases and close_cr > 0:
+                abnormal = True
+            elif not account.debit_increases and close_dr > 0:
+                abnormal = True
+            
             trial_data.append({
                 'account': account,
                 'code': account.code,
                 'name': account.name,
-                'debit': debit,
-                'credit': credit,
-                'abnormal': account.has_abnormal_balance,
+                'account_type': account.get_account_type_display(),
+                'opening_debit': open_dr,
+                'opening_credit': open_cr,
+                'period_debit': period_debit,
+                'period_credit': period_credit,
+                'closing_debit': close_dr,
+                'closing_credit': close_cr,
+                'abnormal': abnormal,
             })
-            total_debit += debit
-            total_credit += credit
+            
+            total_opening_debit += open_dr
+            total_opening_credit += open_cr
+            total_period_debit += period_debit
+            total_period_credit += period_credit
+            total_closing_debit += close_dr
+            total_closing_credit += close_cr
     
-    is_balanced = total_debit == total_credit
+    # Validation checks
+    opening_balanced = total_opening_debit == total_opening_credit
+    closing_balanced = total_closing_debit == total_closing_credit
+    is_balanced = opening_balanced and closing_balanced
     
     # Excel Export
     if export_format == 'excel':
         from .excel_exports import export_trial_balance
-        return export_trial_balance(trial_data, as_of_date)
+        return export_trial_balance(trial_data, start_date_str, end_date_str, {
+            'total_opening_debit': total_opening_debit,
+            'total_opening_credit': total_opening_credit,
+            'total_period_debit': total_period_debit,
+            'total_period_credit': total_period_credit,
+            'total_closing_debit': total_closing_debit,
+            'total_closing_credit': total_closing_credit,
+        })
     
     return render(request, 'finance/trial_balance.html', {
         'title': 'Trial Balance',
         'trial_data': trial_data,
-        'total_debit': total_debit,
-        'total_credit': total_credit,
+        'start_date': start_date_str,
+        'end_date': end_date_str,
+        'total_opening_debit': total_opening_debit,
+        'total_opening_credit': total_opening_credit,
+        'total_period_debit': total_period_debit,
+        'total_period_credit': total_period_credit,
+        'total_closing_debit': total_closing_debit,
+        'total_closing_credit': total_closing_credit,
+        'opening_balanced': opening_balanced,
+        'closing_balanced': closing_balanced,
         'is_balanced': is_balanced,
-        'as_of_date': as_of_date,
     })
 
 
@@ -861,6 +982,8 @@ def balance_sheet(request):
 @login_required
 def general_ledger(request):
     """General Ledger - All transactions for an account."""
+    from django.http import JsonResponse
+    
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
@@ -868,6 +991,7 @@ def general_ledger(request):
     account_id = request.GET.get('account')
     start_date = request.GET.get('start_date', date(date.today().year, 1, 1).isoformat())
     end_date = request.GET.get('end_date', date.today().isoformat())
+    export_format = request.GET.get('format', '')
     
     accounts = Account.objects.filter(is_active=True).order_by('code')
     selected_account = None
@@ -894,16 +1018,41 @@ def general_ledger(request):
             transactions.append({
                 'date': line.journal_entry.date,
                 'journal_pk': line.journal_entry.pk,
+                'journal_id': line.journal_entry.pk,
                 'entry_number': line.journal_entry.entry_number,
                 'reference': line.journal_entry.reference,
+                'source_module': line.journal_entry.source_module,
                 'description': line.description or line.journal_entry.description,
                 'debit': line.debit,
                 'credit': line.credit,
                 'balance': running_balance,
             })
     
+    # JSON Export (for drill-down)
+    if export_format == 'json' and selected_account:
+        return JsonResponse({
+            'account': {
+                'code': selected_account.code,
+                'name': selected_account.name,
+            },
+            'start_date': start_date,
+            'end_date': end_date,
+            'entries': [
+                {
+                    'date': str(t['date']),
+                    'journal_id': t['journal_pk'],
+                    'entry_number': t['entry_number'],
+                    'source_module': t.get('source_module', 'Manual'),
+                    'description': t['description'],
+                    'debit': str(t['debit']) if t['debit'] else None,
+                    'credit': str(t['credit']) if t['credit'] else None,
+                    'balance': str(t['balance']),
+                }
+                for t in transactions
+            ]
+        })
+    
     # Excel Export
-    export_format = request.GET.get('format', '')
     if export_format == 'excel' and selected_account:
         from .excel_exports import export_general_ledger
         return export_general_ledger(transactions, selected_account.name, start_date, end_date)

@@ -75,53 +75,108 @@ def format_currency(value):
 
 # ============ TRIAL BALANCE EXPORT ============
 
-def export_trial_balance(accounts, as_of_date, company_name=''):
-    """Export Trial Balance to Excel."""
+def export_trial_balance(accounts, start_date, end_date=None, totals=None, company_name=''):
+    """
+    Export Trial Balance to Excel with Opening, Period Movement, and Closing columns.
+    IFRS & UAE Audit Compliant.
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = 'Trial Balance'
     
-    # Title
-    style_title_row(ws, 1, f'Trial Balance as of {as_of_date}', 4)
-    if company_name:
-        ws.cell(row=2, column=1, value=company_name)
+    # For backward compatibility
+    if end_date is None:
+        end_date = start_date
     
-    # Headers
-    headers = ['Account Code', 'Account Name', 'Debit', 'Credit']
+    # Title
+    style_title_row(ws, 1, f'Trial Balance', 9)
+    ws.cell(row=2, column=1, value=f'Period: {start_date} to {end_date}')
+    if company_name:
+        ws.cell(row=3, column=1, value=company_name)
+    
+    # Headers Row 1 - Groups
+    ws.cell(row=5, column=1, value='Account Code')
+    ws.cell(row=5, column=2, value='Account Name')
+    ws.cell(row=5, column=3, value='Type')
+    ws.merge_cells('D5:E5')
+    ws.cell(row=5, column=4, value='Opening Balance')
+    ws.cell(row=5, column=4).alignment = Alignment(horizontal='center')
+    ws.merge_cells('F5:G5')
+    ws.cell(row=5, column=6, value='Period Movement')
+    ws.cell(row=5, column=6).alignment = Alignment(horizontal='center')
+    ws.merge_cells('H5:I5')
+    ws.cell(row=5, column=8, value='Closing Balance')
+    ws.cell(row=5, column=8).alignment = Alignment(horizontal='center')
+    
+    # Headers Row 2 - Columns
+    headers = ['Account Code', 'Account Name', 'Type', 
+               'Opening Dr', 'Opening Cr', 
+               'Period Dr', 'Period Cr', 
+               'Closing Dr', 'Closing Cr']
     for col, header in enumerate(headers, 1):
-        ws.cell(row=4, column=col, value=header)
-    style_header_row(ws, 4, len(headers))
+        cell = ws.cell(row=6, column=col, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
+        cell.border = Border(
+            bottom=Side(style='thin'),
+            top=Side(style='thin')
+        )
     
     # Data
-    row = 5
-    total_debit = Decimal('0.00')
-    total_credit = Decimal('0.00')
-    
+    row = 7
     for acc in accounts:
-        ws.cell(row=row, column=1, value=acc.get('code', acc.get('account_code', '')))
-        ws.cell(row=row, column=2, value=acc.get('name', acc.get('account_name', '')))
+        ws.cell(row=row, column=1, value=acc.get('code', ''))
+        ws.cell(row=row, column=2, value=acc.get('name', ''))
+        ws.cell(row=row, column=3, value=acc.get('account_type', ''))
         
-        debit = acc.get('debit', Decimal('0.00'))
-        credit = acc.get('credit', Decimal('0.00'))
+        # Opening
+        ws.cell(row=row, column=4, value=format_currency(acc.get('opening_debit', Decimal('0.00'))))
+        ws.cell(row=row, column=5, value=format_currency(acc.get('opening_credit', Decimal('0.00'))))
         
-        ws.cell(row=row, column=3, value=format_currency(debit))
-        ws.cell(row=row, column=4, value=format_currency(credit))
+        # Period
+        ws.cell(row=row, column=6, value=format_currency(acc.get('period_debit', Decimal('0.00'))))
+        ws.cell(row=row, column=7, value=format_currency(acc.get('period_credit', Decimal('0.00'))))
         
-        total_debit += debit or Decimal('0.00')
-        total_credit += credit or Decimal('0.00')
+        # Closing
+        ws.cell(row=row, column=8, value=format_currency(acc.get('closing_debit', Decimal('0.00'))))
+        ws.cell(row=row, column=9, value=format_currency(acc.get('closing_credit', Decimal('0.00'))))
+        
+        # Highlight abnormal balances
+        if acc.get('abnormal', False):
+            for col in range(1, 10):
+                ws.cell(row=row, column=col).fill = PatternFill(
+                    start_color='FFF3CD', end_color='FFF3CD', fill_type='solid'
+                )
+        
         row += 1
     
     # Totals
-    ws.cell(row=row, column=1, value='TOTAL')
-    ws.cell(row=row, column=1).font = Font(bold=True)
-    ws.cell(row=row, column=3, value=format_currency(total_debit))
-    ws.cell(row=row, column=3).font = Font(bold=True)
-    ws.cell(row=row, column=4, value=format_currency(total_credit))
-    ws.cell(row=row, column=4).font = Font(bold=True)
+    if totals:
+        ws.cell(row=row, column=1, value='TOTAL')
+        ws.cell(row=row, column=1).font = Font(bold=True)
+        
+        ws.cell(row=row, column=4, value=format_currency(totals.get('total_opening_debit', Decimal('0.00'))))
+        ws.cell(row=row, column=4).font = Font(bold=True)
+        ws.cell(row=row, column=5, value=format_currency(totals.get('total_opening_credit', Decimal('0.00'))))
+        ws.cell(row=row, column=5).font = Font(bold=True)
+        
+        ws.cell(row=row, column=6, value=format_currency(totals.get('total_period_debit', Decimal('0.00'))))
+        ws.cell(row=row, column=6).font = Font(bold=True)
+        ws.cell(row=row, column=7, value=format_currency(totals.get('total_period_credit', Decimal('0.00'))))
+        ws.cell(row=row, column=7).font = Font(bold=True)
+        
+        ws.cell(row=row, column=8, value=format_currency(totals.get('total_closing_debit', Decimal('0.00'))))
+        ws.cell(row=row, column=8).font = Font(bold=True)
+        ws.cell(row=row, column=9, value=format_currency(totals.get('total_closing_credit', Decimal('0.00'))))
+        ws.cell(row=row, column=9).font = Font(bold=True)
+        
+        # Add border to totals row
+        for col in range(1, 10):
+            ws.cell(row=row, column=col).border = Border(top=Side(style='double'))
     
     auto_width_columns(ws)
     
-    response = create_excel_response(f'trial_balance_{as_of_date}.xlsx')
+    response = create_excel_response(f'trial_balance_{start_date}_to_{end_date}.xlsx')
     wb.save(response)
     return response
 
