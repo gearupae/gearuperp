@@ -4410,6 +4410,54 @@ class OpeningBalanceListView(PermissionRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context['title'] = 'Opening Balances'
         context['entry_types'] = OpeningBalanceEntry.ENTRY_TYPE_CHOICES
+        
+        # Get system-generated opening balance journal entry
+        system_opening_journal = JournalEntry.objects.filter(
+            entry_type='opening',
+            is_system_generated=True,
+            status='posted'
+        ).prefetch_related('lines', 'lines__account').first()
+        
+        context['system_opening_journal'] = system_opening_journal
+        
+        if system_opening_journal:
+            # Get opening balance lines grouped by account type
+            lines = system_opening_journal.lines.all().select_related('account')
+            
+            # Aggregate by account type
+            assets = []
+            liabilities = []
+            equity = []
+            total_debit = Decimal('0.00')
+            total_credit = Decimal('0.00')
+            
+            for line in lines:
+                account = line.account
+                line_data = {
+                    'code': account.code,
+                    'name': account.name,
+                    'debit': line.debit,
+                    'credit': line.credit,
+                    'type': account.account_type,
+                }
+                
+                total_debit += line.debit
+                total_credit += line.credit
+                
+                if account.account_type == 'asset':
+                    assets.append(line_data)
+                elif account.account_type == 'liability':
+                    liabilities.append(line_data)
+                elif account.account_type == 'equity':
+                    equity.append(line_data)
+            
+            context['opening_assets'] = assets
+            context['opening_liabilities'] = liabilities
+            context['opening_equity'] = equity
+            context['opening_total_debit'] = total_debit
+            context['opening_total_credit'] = total_credit
+            context['is_balanced'] = total_debit == total_credit
+        
         return context
 
 
