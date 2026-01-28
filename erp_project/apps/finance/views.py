@@ -845,6 +845,7 @@ def trial_balance_with_movements(request):
             total_closing_credit += close_cr
     
     # Validation checks
+    opening_balanced = total_opening_debit == total_opening_credit
     closing_balanced = total_closing_debit == total_closing_credit
     is_balanced = opening_balanced and closing_balanced
     
