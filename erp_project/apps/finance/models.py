@@ -27,6 +27,52 @@ class AccountType(models.TextChoices):
     EXPENSE = 'expense', 'Expense'
 
 
+class AccountCategory(models.TextChoices):
+    """Account categories for Trial Balance & Financial Statement grouping."""
+    # Assets
+    CASH_BANK = 'cash_bank', 'Cash & Bank'
+    TRADE_RECEIVABLES = 'trade_receivables', 'Trade Receivables'
+    TAX_RECEIVABLES = 'tax_receivables', 'Taxes & Statutory Receivables'
+    INVENTORY = 'inventory', 'Inventory'
+    PREPAID = 'prepaid', 'Prepaid Expenses'
+    OTHER_CURRENT_ASSETS = 'other_current_assets', 'Other Current Assets'
+    FIXED_ASSETS_FURNITURE = 'fixed_furniture', 'Furniture & Fixtures'
+    FIXED_ASSETS_IT = 'fixed_it', 'IT Equipment'
+    FIXED_ASSETS_VEHICLES = 'fixed_vehicles', 'Vehicles'
+    FIXED_ASSETS_OTHER = 'fixed_other', 'Other Fixed Assets'
+    ACCUMULATED_DEPRECIATION = 'accum_depreciation', 'Accumulated Depreciation'
+    INTANGIBLE_ASSETS = 'intangible', 'Intangible Assets'
+    
+    # Liabilities
+    TRADE_PAYABLES = 'trade_payables', 'Trade Payables'
+    TAX_PAYABLES = 'tax_payables', 'Taxes Payable'
+    ACCRUED_LIABILITIES = 'accrued_liabilities', 'Accrued Liabilities'
+    OTHER_CURRENT_LIABILITIES = 'other_current_liabilities', 'Other Current Liabilities'
+    LONG_TERM_LIABILITIES = 'long_term_liabilities', 'Long Term Liabilities'
+    
+    # Equity
+    CAPITAL = 'capital', 'Capital Accounts'
+    RESERVES = 'reserves', 'Reserves & Surplus'
+    RETAINED_EARNINGS = 'retained_earnings', 'Retained Earnings'
+    
+    # Income
+    OPERATING_REVENUE = 'operating_revenue', 'Operating Revenue'
+    OTHER_INCOME = 'other_income', 'Other Income'
+    
+    # Expenses
+    COST_OF_SALES = 'cost_of_sales', 'Cost of Sales'
+    RENT_EXPENSE = 'rent_expense', 'Rent Expenses'
+    SALARY_EXPENSE = 'salary_expense', 'Salary & Staff Costs'
+    BANKING_EXPENSE = 'banking_expense', 'Banking Expenses'
+    BAD_DEBTS = 'bad_debts', 'Bad Debts'
+    DEPRECIATION_EXPENSE = 'depreciation_expense', 'Depreciation'
+    UTILITIES = 'utilities', 'Utilities'
+    PROJECT_COSTS = 'project_costs', 'Project Costs'
+    MARKETING = 'marketing', 'Marketing'
+    ADMIN_EXPENSE = 'admin_expense', 'Administrative Expenses'
+    OTHER_EXPENSE = 'other_expense', 'Other Expenses'
+
+
 class Account(BaseModel):
     """
     Chart of Accounts - UAE compliant.
@@ -35,6 +81,16 @@ class Account(BaseModel):
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=200)
     account_type = models.CharField(max_length=20, choices=AccountType.choices)
+    
+    # Category for Trial Balance & Financial Statement grouping
+    account_category = models.CharField(
+        max_length=50, 
+        choices=AccountCategory.choices, 
+        blank=True, 
+        null=True,
+        help_text="Category for grouping in Trial Balance and Financial Statements"
+    )
+    
     parent = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -44,6 +100,12 @@ class Account(BaseModel):
     )
     description = models.TextField(blank=True)
     is_system = models.BooleanField(default=False)  # System accounts can't be deleted
+    
+    # Contra account flag (for Accumulated Depreciation, etc.)
+    is_contra_account = models.BooleanField(
+        default=False,
+        help_text="Contra accounts have opposite normal balance (e.g., Accumulated Depreciation)"
+    )
     
     # Cash Flow Statement - IFRS compliant
     # Mark Bank & Cash accounts for Cash Flow calculation

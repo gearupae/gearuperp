@@ -588,18 +588,17 @@ class TaxCodeListView(PermissionRequiredMixin, ListView):
 @login_required
 def trial_balance(request):
     """
-    Standard Trial Balance Report (As at Date).
+    Standard Trial Balance Report (As at Date) - UAE Accounting Standard.
     
     IFRS & UAE Audit Compliant - Shows NET BALANCE as of a specific date.
-    Each account shows ONLY Debit OR Credit (never both).
+    Grouped by Account Type and Category for professional presentation.
     
-    Net Balance = SUM(debit) - SUM(credit) WHERE date <= as_of_date AND status = 'posted'
-    
-    If Net Balance > 0: Show in Debit column
-    If Net Balance < 0: Show ABS in Credit column
-    If Net Balance = 0: Show zero or hide
-    
-    Total Debit MUST equal Total Credit (validation).
+    Grouping Hierarchy:
+    1. ASSETS (Current Assets, Non-Current Assets)
+    2. LIABILITIES (Current Liabilities)
+    3. EQUITY / CAPITAL
+    4. INCOME
+    5. EXPENSES (Cost of Sales, Operating Expenses)
     """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
@@ -616,14 +615,79 @@ def trial_balance(request):
     except ValueError:
         as_of_date = today
     
-    accounts = Account.objects.filter(is_active=True).order_by('account_type', 'code')
+    accounts = Account.objects.filter(is_active=True).order_by('account_type', 'account_category', 'code')
     
-    trial_data = []
+    # Group definitions for UAE standard Trial Balance
+    GROUP_STRUCTURE = {
+        'asset': {
+            'name': 'ASSETS',
+            'subgroups': {
+                'current_assets': {
+                    'name': 'Current Assets',
+                    'categories': ['cash_bank', 'trade_receivables', 'tax_receivables', 'inventory', 'prepaid', 'other_current_assets'],
+                },
+                'non_current_assets': {
+                    'name': 'Non-Current Assets (Fixed Assets)',
+                    'categories': ['fixed_furniture', 'fixed_it', 'fixed_vehicles', 'fixed_other', 'intangible', 'accum_depreciation'],
+                },
+            }
+        },
+        'liability': {
+            'name': 'LIABILITIES',
+            'subgroups': {
+                'current_liabilities': {
+                    'name': 'Current Liabilities',
+                    'categories': ['trade_payables', 'tax_payables', 'accrued_liabilities', 'other_current_liabilities'],
+                },
+                'non_current_liabilities': {
+                    'name': 'Non-Current Liabilities',
+                    'categories': ['long_term_liabilities'],
+                },
+            }
+        },
+        'equity': {
+            'name': 'EQUITY / CAPITAL',
+            'subgroups': {
+                'capital': {
+                    'name': 'Capital & Reserves',
+                    'categories': ['capital', 'reserves', 'retained_earnings'],
+                },
+            }
+        },
+        'income': {
+            'name': 'INCOME',
+            'subgroups': {
+                'revenue': {
+                    'name': 'Revenue',
+                    'categories': ['operating_revenue', 'other_income'],
+                },
+            }
+        },
+        'expense': {
+            'name': 'EXPENSES',
+            'subgroups': {
+                'cost_of_sales': {
+                    'name': 'Cost of Sales',
+                    'categories': ['cost_of_sales'],
+                },
+                'operating_expenses': {
+                    'name': 'Operating Expenses',
+                    'categories': ['rent_expense', 'salary_expense', 'banking_expense', 'bad_debts', 
+                                   'depreciation_expense', 'utilities', 'project_costs', 'marketing', 
+                                   'admin_expense', 'other_expense'],
+                },
+            }
+        },
+    }
+    
+    # Process accounts and calculate balances
+    grouped_data = {}
     total_debit = Decimal('0.00')
     total_credit = Decimal('0.00')
+    flat_data = []  # For Excel export
     
     for account in accounts:
-        # Calculate net balance: Sum of all posted journal lines up to as_of_date
+        # Calculate net balance
         totals = JournalEntryLine.objects.filter(
             account=account,
             journal_entry__status='posted',
@@ -639,9 +703,7 @@ def trial_balance(request):
         if net_balance == 0 and not show_zero_balances:
             continue
         
-        # Determine debit or credit column based on net balance
-        # Positive net = more debits than credits
-        # Negative net = more credits than debits
+        # Determine debit or credit column
         if net_balance > 0:
             debit_amount = net_balance
             credit_amount = Decimal('0.00')
@@ -652,39 +714,84 @@ def trial_balance(request):
             debit_amount = Decimal('0.00')
             credit_amount = Decimal('0.00')
         
-        # Check for abnormal balance (contra accounts handled)
-        # Assets & Expenses normally have debit balance
-        # Liabilities, Equity & Income normally have credit balance
-        # Accumulated Depreciation (contra asset) normally has credit balance
+        # Check for abnormal balance
+        is_contra = getattr(account, 'is_contra_account', False) or 'accumulated' in account.name.lower()
         abnormal = False
-        is_contra_asset = 'accumulated' in account.name.lower() or 'contra' in account.name.lower()
         
-        if is_contra_asset:
-            # Contra assets should have credit balance
+        if is_contra:
             if debit_amount > 0:
                 abnormal = True
         elif account.debit_increases:
-            # Asset/Expense accounts should have debit balance
             if credit_amount > 0:
                 abnormal = True
         else:
-            # Liability/Equity/Income accounts should have credit balance
             if debit_amount > 0:
                 abnormal = True
         
-        trial_data.append({
+        account_data = {
             'account': account,
             'code': account.code,
             'name': account.name,
-            'account_type': account.get_account_type_display(),
+            'account_type': account.account_type,
+            'account_type_display': account.get_account_type_display(),
+            'category': getattr(account, 'account_category', None) or 'other',
             'debit': debit_amount,
             'credit': credit_amount,
             'abnormal': abnormal,
-            'is_contra': is_contra_asset,
-        })
+            'is_contra': is_contra,
+        }
         
+        flat_data.append(account_data)
         total_debit += debit_amount
         total_credit += credit_amount
+        
+        # Group by account type and category
+        acc_type = account.account_type
+        acc_category = getattr(account, 'account_category', None)
+        
+        if acc_type not in grouped_data:
+            grouped_data[acc_type] = {
+                'name': GROUP_STRUCTURE.get(acc_type, {}).get('name', acc_type.title()),
+                'subgroups': {},
+                'total_debit': Decimal('0.00'),
+                'total_credit': Decimal('0.00'),
+            }
+        
+        # Find the appropriate subgroup
+        subgroup_key = None
+        if acc_type in GROUP_STRUCTURE:
+            for sg_key, sg_data in GROUP_STRUCTURE[acc_type]['subgroups'].items():
+                if acc_category in sg_data['categories']:
+                    subgroup_key = sg_key
+                    break
+        
+        if not subgroup_key:
+            subgroup_key = 'other'
+        
+        if subgroup_key not in grouped_data[acc_type]['subgroups']:
+            sg_name = GROUP_STRUCTURE.get(acc_type, {}).get('subgroups', {}).get(subgroup_key, {}).get('name', 'Other')
+            grouped_data[acc_type]['subgroups'][subgroup_key] = {
+                'name': sg_name,
+                'accounts': [],
+                'total_debit': Decimal('0.00'),
+                'total_credit': Decimal('0.00'),
+            }
+        
+        grouped_data[acc_type]['subgroups'][subgroup_key]['accounts'].append(account_data)
+        grouped_data[acc_type]['subgroups'][subgroup_key]['total_debit'] += debit_amount
+        grouped_data[acc_type]['subgroups'][subgroup_key]['total_credit'] += credit_amount
+        grouped_data[acc_type]['total_debit'] += debit_amount
+        grouped_data[acc_type]['total_credit'] += credit_amount
+    
+    # Sort groups in proper order
+    group_order = ['asset', 'liability', 'equity', 'income', 'expense']
+    sorted_groups = []
+    for group_type in group_order:
+        if group_type in grouped_data:
+            sorted_groups.append({
+                'type': group_type,
+                **grouped_data[group_type]
+            })
     
     # Validation: Total Debit MUST equal Total Credit
     is_balanced = total_debit == total_credit
@@ -694,11 +801,12 @@ def trial_balance(request):
         from .excel_exports import export_trial_balance
         from apps.settings_app.models import CompanySettings
         company = CompanySettings.get_settings()
-        return export_trial_balance(trial_data, as_of_date_str, company.company_name if company else '')
+        return export_trial_balance(flat_data, as_of_date_str, company.company_name if company else '')
     
     return render(request, 'finance/trial_balance.html', {
         'title': f'Trial Balance (As at {as_of_date_str})',
-        'trial_data': trial_data,
+        'grouped_data': sorted_groups,
+        'trial_data': flat_data,  # For backward compatibility
         'total_debit': total_debit,
         'total_credit': total_credit,
         'is_balanced': is_balanced,

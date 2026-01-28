@@ -5,7 +5,7 @@
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-1 fw-bold">{{ title }}</h4>
-        <p class="text-muted mb-0">Standard Trial Balance showing net balances</p>
+        <p class="text-muted mb-0">UAE Accounting Standard - Grouped by Account Classification</p>
     </div>
     <div>
         <a href="{% url 'finance:trial_balance_with_movements' %}" class="btn btn-outline-primary me-2">
@@ -47,53 +47,66 @@
         {% if is_balanced %}
         <div class="alert alert-success mb-0">
             <i class="fas fa-check-circle me-2"></i>
-            <strong>Trial Balance is Balanced</strong> - Total Debit ({{ total_debit|floatformat:2|intcomma }}) equals Total Credit ({{ total_credit|floatformat:2|intcomma }})
+            <strong>Trial Balance is Balanced</strong> - Total Debit (AED {{ total_debit|floatformat:2|intcomma }}) equals Total Credit (AED {{ total_credit|floatformat:2|intcomma }})
         </div>
         {% else %}
         <div class="alert alert-danger mb-0">
             <i class="fas fa-exclamation-triangle me-2"></i>
             <strong>SYSTEM ERROR: Trial Balance is NOT Balanced!</strong>
-            <br>Total Debit: {{ total_debit|floatformat:2|intcomma }} | Total Credit: {{ total_credit|floatformat:2|intcomma }}
-            <br>Difference: {{ difference|floatformat:2|intcomma }}
-            <br><small class="text-muted">This indicates a posting error in the system. Please investigate immediately.</small>
+            <br>Total Debit: AED {{ total_debit|floatformat:2|intcomma }} | Total Credit: AED {{ total_credit|floatformat:2|intcomma }}
+            <br>Difference: AED {{ difference|floatformat:2|intcomma }}
         </div>
         {% endif %}
     </div>
 </div>
 
-<div class="card">
+<!-- Grouped Trial Balance -->
+<div class="card border-0 shadow-sm">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover table-sm mb-0" id="trialBalanceTable">
-                <thead class="table-light">
+            <table class="table table-sm mb-0" id="trialBalanceTable">
+                <thead class="table-dark">
                     <tr>
-                        <th>Account Code</th>
-                        <th>Account Name</th>
-                        <th class="text-center">Type</th>
-                        <th class="text-end">Debit (AED)</th>
-                        <th class="text-end">Credit (AED)</th>
+                        <th style="width: 15%;">Account Code</th>
+                        <th style="width: 45%;">Account Name</th>
+                        <th class="text-end" style="width: 20%;">Debit (AED)</th>
+                        <th class="text-end" style="width: 20%;">Credit (AED)</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for item in trial_data %}
+                    {% for group in grouped_data %}
+                    <!-- Group Header -->
+                    <tr class="table-primary">
+                        <td colspan="4" class="fw-bold fs-6 py-2">
+                            <i class="fas fa-folder me-2"></i>{{ group.name }}
+                        </td>
+                    </tr>
+                    
+                    {% for subgroup_key, subgroup in group.subgroups.items %}
+                    <!-- Subgroup Header -->
+                    <tr class="table-light">
+                        <td colspan="4" class="fw-semibold ps-4 py-2" style="background-color: #f8f9fa;">
+                            <i class="fas fa-angle-right me-2"></i>{{ subgroup.name }}
+                        </td>
+                    </tr>
+                    
+                    {% for item in subgroup.accounts %}
+                    <!-- Account Row -->
                     <tr {% if item.abnormal %}class="table-warning"{% endif %}>
-                        <td>
+                        <td class="ps-5">
                             {{ item.code }}
                             {% if item.abnormal %}
-                                <i class="fas fa-exclamation-triangle text-warning ms-1" title="Abnormal balance for this account type"></i>
+                                <i class="fas fa-exclamation-triangle text-warning ms-1" title="Abnormal balance"></i>
                             {% endif %}
                             {% if item.is_contra %}
                                 <span class="badge bg-info ms-1" title="Contra Account">C</span>
                             {% endif %}
                         </td>
-                        <td>{{ item.name }}</td>
-                        <td class="text-center">
-                            <span class="badge bg-secondary small">{{ item.account_type }}</span>
-                        </td>
+                        <td class="ps-5">{{ item.name }}</td>
                         <td class="text-end">
                             {% if item.debit %}
                             <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ as_of_date }}" 
-                               class="text-decoration-none drill-down">
+                               class="text-decoration-none">
                                 {{ item.debit|floatformat:2|intcomma }}
                             </a>
                             {% else %}-{% endif %}
@@ -101,15 +114,46 @@
                         <td class="text-end">
                             {% if item.credit %}
                             <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ as_of_date }}" 
-                               class="text-decoration-none drill-down">
+                               class="text-decoration-none">
                                 {{ item.credit|floatformat:2|intcomma }}
                             </a>
                             {% else %}-{% endif %}
                         </td>
                     </tr>
+                    {% endfor %}
+                    
+                    <!-- Subgroup Total -->
+                    <tr class="table-secondary">
+                        <td class="ps-4 fw-semibold" colspan="2">
+                            <em>Subtotal: {{ subgroup.name }}</em>
+                        </td>
+                        <td class="text-end fw-semibold">
+                            {% if subgroup.total_debit %}{{ subgroup.total_debit|floatformat:2|intcomma }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-end fw-semibold">
+                            {% if subgroup.total_credit %}{{ subgroup.total_credit|floatformat:2|intcomma }}{% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                    <!-- Group Total -->
+                    <tr class="table-info">
+                        <td class="fw-bold" colspan="2">
+                            <strong>Total {{ group.name }}</strong>
+                        </td>
+                        <td class="text-end fw-bold">
+                            {{ group.total_debit|floatformat:2|intcomma }}
+                        </td>
+                        <td class="text-end fw-bold">
+                            {{ group.total_credit|floatformat:2|intcomma }}
+                        </td>
+                    </tr>
+                    
+                    <!-- Spacer Row -->
+                    <tr><td colspan="4" class="py-1" style="background-color: #fff;"></td></tr>
                     {% empty %}
                     <tr>
-                        <td colspan="5" class="text-center py-5 text-muted">
+                        <td colspan="4" class="text-center py-5 text-muted">
                             <i class="fas fa-balance-scale fa-3x mb-3 d-block"></i>
                             No account balances found as of this date
                         </td>
@@ -118,9 +162,9 @@
                 </tbody>
                 <tfoot class="table-dark">
                     <tr>
-                        <th colspan="3" class="text-end">Totals:</th>
-                        <th class="text-end">{{ total_debit|floatformat:2|intcomma }}</th>
-                        <th class="text-end">{{ total_credit|floatformat:2|intcomma }}</th>
+                        <th colspan="2" class="text-end fs-6">GRAND TOTAL:</th>
+                        <th class="text-end fs-6">{{ total_debit|floatformat:2|intcomma }}</th>
+                        <th class="text-end fs-6">{{ total_credit|floatformat:2|intcomma }}</th>
                     </tr>
                 </tfoot>
             </table>
@@ -129,7 +173,7 @@
 </div>
 
 <!-- Legend -->
-<div class="card mt-3">
+<div class="card mt-3 border-0 shadow-sm">
     <div class="card-body py-2">
         <small class="text-muted">
             <i class="fas fa-info-circle me-1"></i>
@@ -141,12 +185,44 @@
     </div>
 </div>
 
+<!-- Summary Cards -->
+<div class="row mt-4">
+    {% for group in grouped_data %}
+    <div class="col-md-{% if grouped_data|length == 5 %}2{% else %}3{% endif %} col-6 mb-3">
+        <div class="card border-0 shadow-sm h-100 
+            {% if group.type == 'asset' %}bg-primary{% endif %}
+            {% if group.type == 'liability' %}bg-danger{% endif %}
+            {% if group.type == 'equity' %}bg-success{% endif %}
+            {% if group.type == 'income' %}bg-info{% endif %}
+            {% if group.type == 'expense' %}bg-warning{% endif %}
+            text-white">
+            <div class="card-body text-center py-3">
+                <small class="d-block text-white-50">{{ group.name }}</small>
+                <h6 class="mb-0 fw-bold">
+                    {% if group.total_debit > group.total_credit %}
+                        Dr {{ group.total_debit|floatformat:0|intcomma }}
+                    {% else %}
+                        Cr {{ group.total_credit|floatformat:0|intcomma }}
+                    {% endif %}
+                </h6>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
 <style>
 @media print {
     .page-header > div:last-child { display: none !important; }
     .card.mb-4.border-0.shadow-sm { display: none !important; }
-    .card.mt-3 { display: none !important; }
-    .drill-down { color: inherit !important; text-decoration: none !important; pointer-events: none !important; }
+    .card.mt-3.border-0.shadow-sm { display: none !important; }
+    .row.mt-4 { display: none !important; }
+    a { color: inherit !important; text-decoration: none !important; pointer-events: none !important; }
+    .table-primary { background-color: #cfe2ff !important; -webkit-print-color-adjust: exact; }
+    .table-light { background-color: #f8f9fa !important; -webkit-print-color-adjust: exact; }
+    .table-secondary { background-color: #e2e3e5 !important; -webkit-print-color-adjust: exact; }
+    .table-info { background-color: #cff4fc !important; -webkit-print-color-adjust: exact; }
+    .table-dark { background-color: #212529 !important; color: #fff !important; -webkit-print-color-adjust: exact; }
 }
 </style>
 {% endblock %}
