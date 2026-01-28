@@ -270,7 +270,7 @@ class Command(BaseCommand):
             self.stdout.write(f'   Line {line_num}: Dr {retained_account.code} - {abs(balancing_amount):,.2f} (BALANCING)')
         
         # Update totals
-        journal_entry.update_totals()
+        journal_entry.calculate_totals()
         
         return journal_entry
     
