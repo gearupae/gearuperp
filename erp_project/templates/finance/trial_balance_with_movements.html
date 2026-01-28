@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-1 fw-bold">{{ title }}</h4>
+        <p class="text-muted mb-0">Period: {{ start_date }} to {{ end_date }}</p>
+    </div>
+    <div>
+        <a href="{% url 'finance:trial_balance' %}" class="btn btn-outline-primary me-2">
+            <i class="fas fa-balance-scale me-1"></i>Standard TB
+        </a>
+        <a href="?start_date={{ start_date }}&end_date={{ end_date }}&format=excel" class="btn btn-success me-2">
+            <i class="fas fa-file-excel me-1"></i>Excel
+        </a>
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Date Filter -->
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body py-3">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label fw-medium">Start Date</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-medium">End Date</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-6">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-sync me-1"></i>Update</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Balance Status -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="alert {% if opening_balanced %}alert-success{% else %}alert-danger{% endif %} mb-0">
+            <i class="fas {% if opening_balanced %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} me-2"></i>
+            <strong>Opening Balance:</strong>
+            {% if opening_balanced %}
+                Balanced (Dr {{ total_opening_debit|floatformat:2|intcomma }} = Cr {{ total_opening_credit|floatformat:2|intcomma }})
+            {% else %}
+                <span class="text-danger">NOT BALANCED (Dr {{ total_opening_debit|floatformat:2|intcomma }} ≠ Cr {{ total_opening_credit|floatformat:2|intcomma }})</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="alert {% if closing_balanced %}alert-success{% else %}alert-danger{% endif %} mb-0">
+            <i class="fas {% if closing_balanced %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} me-2"></i>
+            <strong>Closing Balance:</strong>
+            {% if closing_balanced %}
+                Balanced (Dr {{ total_closing_debit|floatformat:2|intcomma }} = Cr {{ total_closing_credit|floatformat:2|intcomma }})
+            {% else %}
+                <span class="text-danger">NOT BALANCED (Dr {{ total_closing_debit|floatformat:2|intcomma }} ≠ Cr {{ total_closing_credit|floatformat:2|intcomma }})</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0" id="trialBalanceTable">
+                <thead class="table-light">
+                    <tr>
+                        <th rowspan="2" class="align-middle">Account Code</th>
+                        <th rowspan="2" class="align-middle">Account Name</th>
+                        <th rowspan="2" class="align-middle text-center">Type</th>
+                        <th colspan="2" class="text-center bg-light border-start">Opening Balance</th>
+                        <th colspan="2" class="text-center bg-info bg-opacity-10 border-start">Period Movement</th>
+                        <th colspan="2" class="text-center bg-success bg-opacity-10 border-start">Closing Balance</th>
+                    </tr>
+                    <tr>
+                        <th class="text-end bg-light border-start">Debit</th>
+                        <th class="text-end bg-light">Credit</th>
+                        <th class="text-end bg-info bg-opacity-10 border-start">Debit</th>
+                        <th class="text-end bg-info bg-opacity-10">Credit</th>
+                        <th class="text-end bg-success bg-opacity-10 border-start">Debit</th>
+                        <th class="text-end bg-success bg-opacity-10">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in trial_data %}
+                    <tr {% if item.abnormal %}class="table-warning"{% endif %}>
+                        <td>
+                            {{ item.code }}
+                            {% if item.abnormal %}
+                                <i class="fas fa-exclamation-triangle text-warning ms-1" title="Abnormal balance"></i>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.name }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary small">{{ item.account_type }}</span>
+                        </td>
+                        <!-- Opening Balance -->
+                        <td class="text-end border-start">
+                            {% if item.opening_debit %}
+                            <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ start_date }}" 
+                               class="text-decoration-none drill-down">
+                                {{ item.opening_debit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if item.opening_credit %}
+                            <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ start_date }}" 
+                               class="text-decoration-none drill-down">
+                                {{ item.opening_credit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <!-- Period Movement -->
+                        <td class="text-end border-start">
+                            {% if item.period_debit %}
+                            <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&start_date={{ start_date }}&end_date={{ end_date }}" 
+                               class="text-decoration-none drill-down">
+                                {{ item.period_debit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if item.period_credit %}
+                            <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&start_date={{ start_date }}&end_date={{ end_date }}" 
+                               class="text-decoration-none drill-down">
+                                {{ item.period_credit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <!-- Closing Balance -->
+                        <td class="text-end border-start fw-medium">
+                            {% if item.closing_debit %}
+                            <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ end_date }}" 
+                               class="text-decoration-none drill-down fw-medium">
+                                {{ item.closing_debit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-end fw-medium">
+                            {% if item.closing_credit %}
+                            <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ end_date }}" 
+                               class="text-decoration-none drill-down fw-medium">
+                                {{ item.closing_credit|floatformat:2|intcomma }}
+                            </a>
+                            {% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted">
+                            <i class="fas fa-balance-scale fa-3x mb-3 d-block"></i>
+                            No account balances found for this period
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-dark">
+                    <tr>
+                        <th colspan="3" class="text-end">Totals:</th>
+                        <th class="text-end border-start">{{ total_opening_debit|floatformat:2|intcomma }}</th>
+                        <th class="text-end">{{ total_opening_credit|floatformat:2|intcomma }}</th>
+                        <th class="text-end border-start">{{ total_period_debit|floatformat:2|intcomma }}</th>
+                        <th class="text-end">{{ total_period_credit|floatformat:2|intcomma }}</th>
+                        <th class="text-end border-start">{{ total_closing_debit|floatformat:2|intcomma }}</th>
+                        <th class="text-end">{{ total_closing_credit|floatformat:2|intcomma }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .page-header > div:last-child { display: none !important; }
+    .card.mb-4.border-0.shadow-sm { display: none !important; }
+    .drill-down { color: inherit !important; text-decoration: none !important; pointer-events: none !important; }
+}
+</style>
+{% endblock %}
+

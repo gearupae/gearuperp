@@ -89,6 +89,7 @@ urlpatterns = [
     
     # Core Financial Statements
     path('reports/trial-balance/', views.trial_balance, name='trial_balance'),
+    path('reports/trial-balance-movements/', views.trial_balance_with_movements, name='trial_balance_with_movements'),
     path('reports/profit-loss/', views.profit_loss, name='profit_loss'),
     path('reports/balance-sheet/', views.balance_sheet, name='balance_sheet'),
     path('reports/cash-flow/', views.cash_flow, name='cash_flow'),

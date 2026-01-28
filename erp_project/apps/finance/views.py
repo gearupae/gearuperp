@@ -588,8 +588,133 @@ class TaxCodeListView(PermissionRequiredMixin, ListView):
 @login_required
 def trial_balance(request):
     """
-    Trial Balance Report with Opening Balances.
-    IFRS & UAE Audit Compliant - Shows Opening, Period Movement, and Closing balances.
+    Standard Trial Balance Report (As at Date).
+    
+    IFRS & UAE Audit Compliant - Shows NET BALANCE as of a specific date.
+    Each account shows ONLY Debit OR Credit (never both).
+    
+    Net Balance = SUM(debit) - SUM(credit) WHERE date <= as_of_date AND status = 'posted'
+    
+    If Net Balance > 0: Show in Debit column
+    If Net Balance < 0: Show ABS in Credit column
+    If Net Balance = 0: Show zero or hide
+    
+    Total Debit MUST equal Total Credit (validation).
+    """
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
+        messages.error(request, 'Permission denied.')
+        return redirect('dashboard')
+    
+    # Get as-of date (default: today)
+    today = date.today()
+    as_of_date_str = request.GET.get('as_of_date', today.isoformat())
+    export_format = request.GET.get('format', '')
+    show_zero_balances = request.GET.get('show_zero', '') == '1'
+    
+    try:
+        as_of_date = datetime.strptime(as_of_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        as_of_date = today
+    
+    accounts = Account.objects.filter(is_active=True).order_by('account_type', 'code')
+    
+    trial_data = []
+    total_debit = Decimal('0.00')
+    total_credit = Decimal('0.00')
+    
+    for account in accounts:
+        # Calculate net balance: Sum of all posted journal lines up to as_of_date
+        totals = JournalEntryLine.objects.filter(
+            account=account,
+            journal_entry__status='posted',
+            journal_entry__date__lte=as_of_date
+        ).aggregate(
+            total_debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
+        )
+        
+        net_balance = totals['total_debit'] - totals['total_credit']
+        
+        # Skip zero balance accounts unless requested
+        if net_balance == 0 and not show_zero_balances:
+            continue
+        
+        # Determine debit or credit column based on net balance
+        # Positive net = more debits than credits
+        # Negative net = more credits than debits
+        if net_balance > 0:
+            debit_amount = net_balance
+            credit_amount = Decimal('0.00')
+        elif net_balance < 0:
+            debit_amount = Decimal('0.00')
+            credit_amount = abs(net_balance)
+        else:
+            debit_amount = Decimal('0.00')
+            credit_amount = Decimal('0.00')
+        
+        # Check for abnormal balance (contra accounts handled)
+        # Assets & Expenses normally have debit balance
+        # Liabilities, Equity & Income normally have credit balance
+        # Accumulated Depreciation (contra asset) normally has credit balance
+        abnormal = False
+        is_contra_asset = 'accumulated' in account.name.lower() or 'contra' in account.name.lower()
+        
+        if is_contra_asset:
+            # Contra assets should have credit balance
+            if debit_amount > 0:
+                abnormal = True
+        elif account.debit_increases:
+            # Asset/Expense accounts should have debit balance
+            if credit_amount > 0:
+                abnormal = True
+        else:
+            # Liability/Equity/Income accounts should have credit balance
+            if debit_amount > 0:
+                abnormal = True
+        
+        trial_data.append({
+            'account': account,
+            'code': account.code,
+            'name': account.name,
+            'account_type': account.get_account_type_display(),
+            'debit': debit_amount,
+            'credit': credit_amount,
+            'abnormal': abnormal,
+            'is_contra': is_contra_asset,
+        })
+        
+        total_debit += debit_amount
+        total_credit += credit_amount
+    
+    # Validation: Total Debit MUST equal Total Credit
+    is_balanced = total_debit == total_credit
+    difference = total_debit - total_credit
+    
+    if export_format == 'excel':
+        from .excel_exports import export_trial_balance
+        from apps.settings_app.models import Company
+        company = Company.get_settings()
+        return export_trial_balance(trial_data, as_of_date_str, company.name if company else '')
+    
+    return render(request, 'finance/trial_balance.html', {
+        'title': f'Trial Balance (As at {as_of_date_str})',
+        'trial_data': trial_data,
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'is_balanced': is_balanced,
+        'difference': difference,
+        'as_of_date': as_of_date_str,
+        'show_zero_balances': show_zero_balances,
+    })
+
+
+@login_required
+def trial_balance_with_movements(request):
+    """
+    Trial Balance with Movements Report.
+    
+    Shows Opening Balance, Period Movement, and Closing Balance.
+    This is a separate report from the standard Trial Balance.
     
     Opening Balance = All posted journals BEFORE start_date
     Period Movement = All posted journals BETWEEN start_date and end_date
@@ -658,43 +783,24 @@ def trial_balance(request):
         closing_balance = opening_balance + (period_debit - period_credit)
         
         # Convert balances to debit/credit columns based on account nature
-        # For debit-normal accounts (Assets, Expenses): positive = debit
-        # For credit-normal accounts (Liabilities, Equity, Income): positive = credit
-        
         # Opening columns
         if opening_balance > 0:
-            if account.debit_increases:
-                open_dr = opening_balance
-                open_cr = Decimal('0.00')
-            else:
-                open_dr = Decimal('0.00')
-                open_cr = abs(opening_balance)
+            open_dr = opening_balance
+            open_cr = Decimal('0.00')
         elif opening_balance < 0:
-            if account.debit_increases:
-                open_dr = Decimal('0.00')
-                open_cr = abs(opening_balance)
-            else:
-                open_dr = abs(opening_balance)
-                open_cr = Decimal('0.00')
+            open_dr = Decimal('0.00')
+            open_cr = abs(opening_balance)
         else:
             open_dr = Decimal('0.00')
             open_cr = Decimal('0.00')
         
         # Closing columns
         if closing_balance > 0:
-            if account.debit_increases:
-                close_dr = closing_balance
-                close_cr = Decimal('0.00')
-            else:
-                close_dr = Decimal('0.00')
-                close_cr = abs(closing_balance)
+            close_dr = closing_balance
+            close_cr = Decimal('0.00')
         elif closing_balance < 0:
-            if account.debit_increases:
-                close_dr = Decimal('0.00')
-                close_cr = abs(closing_balance)
-            else:
-                close_dr = abs(closing_balance)
-                close_cr = Decimal('0.00')
+            close_dr = Decimal('0.00')
+            close_cr = abs(closing_balance)
         else:
             close_dr = Decimal('0.00')
             close_cr = Decimal('0.00')
@@ -707,7 +813,12 @@ def trial_balance(request):
         if has_activity:
             # Check for abnormal balance
             abnormal = False
-            if account.debit_increases and close_cr > 0:
+            is_contra_asset = 'accumulated' in account.name.lower() or 'contra' in account.name.lower()
+            
+            if is_contra_asset:
+                if close_dr > 0:
+                    abnormal = True
+            elif account.debit_increases and close_cr > 0:
                 abnormal = True
             elif not account.debit_increases and close_dr > 0:
                 abnormal = True
@@ -734,24 +845,25 @@ def trial_balance(request):
             total_closing_credit += close_cr
     
     # Validation checks
-    opening_balanced = total_opening_debit == total_opening_credit
     closing_balanced = total_closing_debit == total_closing_credit
     is_balanced = opening_balanced and closing_balanced
     
     # Excel Export
     if export_format == 'excel':
-        from .excel_exports import export_trial_balance
-        return export_trial_balance(trial_data, start_date_str, end_date_str, {
+        from .excel_exports import export_trial_balance_with_movements
+        from apps.settings_app.models import Company
+        company = Company.get_settings()
+        return export_trial_balance_with_movements(trial_data, start_date_str, end_date_str, {
             'total_opening_debit': total_opening_debit,
             'total_opening_credit': total_opening_credit,
             'total_period_debit': total_period_debit,
             'total_period_credit': total_period_credit,
             'total_closing_debit': total_closing_debit,
             'total_closing_credit': total_closing_credit,
-        })
+        }, company.name if company else '')
     
-    return render(request, 'finance/trial_balance.html', {
-        'title': 'Trial Balance',
+    return render(request, 'finance/trial_balance_with_movements.html', {
+        'title': 'Trial Balance with Movements',
         'trial_data': trial_data,
         'start_date': start_date_str,
         'end_date': end_date_str,

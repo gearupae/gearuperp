@@ -73,23 +73,104 @@ def format_currency(value):
     return value
 
 
-# ============ TRIAL BALANCE EXPORT ============
+# ============ TRIAL BALANCE EXPORT (Standard - As at Date) ============
 
-def export_trial_balance(accounts, start_date, end_date=None, totals=None, company_name=''):
+def export_trial_balance(accounts, as_of_date, company_name=''):
     """
-    Export Trial Balance to Excel with Opening, Period Movement, and Closing columns.
+    Export Standard Trial Balance to Excel.
+    Shows only net balances as Debit OR Credit per account.
     IFRS & UAE Audit Compliant.
     """
     wb = Workbook()
     ws = wb.active
     ws.title = 'Trial Balance'
     
-    # For backward compatibility
-    if end_date is None:
-        end_date = start_date
+    # Title
+    style_title_row(ws, 1, f'Trial Balance (As at {as_of_date})', 5)
+    if company_name:
+        ws.cell(row=2, column=1, value=company_name)
+    
+    # Headers
+    headers = ['Account Code', 'Account Name', 'Type', 'Debit (AED)', 'Credit (AED)']
+    header_row = 4 if company_name else 3
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=header_row, column=col, value=header)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color='366092', end_color='366092', fill_type='solid')
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.alignment = Alignment(horizontal='center')
+    
+    # Data
+    row = header_row + 1
+    total_debit = Decimal('0.00')
+    total_credit = Decimal('0.00')
+    
+    for acc in accounts:
+        ws.cell(row=row, column=1, value=acc.get('code', ''))
+        ws.cell(row=row, column=2, value=acc.get('name', ''))
+        ws.cell(row=row, column=3, value=acc.get('account_type', ''))
+        
+        debit = acc.get('debit', Decimal('0.00'))
+        credit = acc.get('credit', Decimal('0.00'))
+        
+        ws.cell(row=row, column=4, value=format_currency(debit) if debit else '')
+        ws.cell(row=row, column=5, value=format_currency(credit) if credit else '')
+        
+        total_debit += debit or Decimal('0.00')
+        total_credit += credit or Decimal('0.00')
+        
+        # Highlight abnormal balances
+        if acc.get('abnormal', False):
+            for col in range(1, 6):
+                ws.cell(row=row, column=col).fill = PatternFill(
+                    start_color='FFF3CD', end_color='FFF3CD', fill_type='solid'
+                )
+        
+        row += 1
+    
+    # Totals
+    ws.cell(row=row, column=1, value='TOTAL')
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    ws.cell(row=row, column=4, value=format_currency(total_debit))
+    ws.cell(row=row, column=4).font = Font(bold=True)
+    ws.cell(row=row, column=5, value=format_currency(total_credit))
+    ws.cell(row=row, column=5).font = Font(bold=True)
+    
+    # Add border to totals row
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = Border(top=Side(style='double'))
+    
+    # Balance check
+    row += 2
+    is_balanced = total_debit == total_credit
+    if is_balanced:
+        ws.cell(row=row, column=1, value='✓ Trial Balance is BALANCED')
+        ws.cell(row=row, column=1).font = Font(bold=True, color='008000')
+    else:
+        ws.cell(row=row, column=1, value=f'✗ UNBALANCED - Difference: {format_currency(total_debit - total_credit)}')
+        ws.cell(row=row, column=1).font = Font(bold=True, color='FF0000')
+    
+    auto_width_columns(ws)
+    
+    response = create_excel_response(f'trial_balance_as_at_{as_of_date}.xlsx')
+    wb.save(response)
+    return response
+
+
+# ============ TRIAL BALANCE WITH MOVEMENTS EXPORT ============
+
+def export_trial_balance_with_movements(accounts, start_date, end_date, totals=None, company_name=''):
+    """
+    Export Trial Balance with Movements to Excel.
+    Shows Opening Balance, Period Movement, and Closing Balance.
+    IFRS & UAE Audit Compliant.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'TB with Movements'
     
     # Title
-    style_title_row(ws, 1, f'Trial Balance', 9)
+    style_title_row(ws, 1, f'Trial Balance with Movements', 9)
     ws.cell(row=2, column=1, value=f'Period: {start_date} to {end_date}')
     if company_name:
         ws.cell(row=3, column=1, value=company_name)
@@ -176,7 +257,7 @@ def export_trial_balance(accounts, start_date, end_date=None, totals=None, compa
     
     auto_width_columns(ws)
     
-    response = create_excel_response(f'trial_balance_{start_date}_to_{end_date}.xlsx')
+    response = create_excel_response(f'trial_balance_movements_{start_date}_to_{end_date}.xlsx')
     wb.save(response)
     return response
 
