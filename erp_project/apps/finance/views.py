@@ -692,8 +692,8 @@ def trial_balance(request):
     
     if export_format == 'excel':
         from .excel_exports import export_trial_balance
-        from apps.settings_app.models import Company
-        company = Company.get_settings()
+        from apps.settings_app.models import CompanySettings
+        company = CompanySettings.objects.first()
         return export_trial_balance(trial_data, as_of_date_str, company.name if company else '')
     
     return render(request, 'finance/trial_balance.html', {
@@ -852,8 +852,8 @@ def trial_balance_with_movements(request):
     # Excel Export
     if export_format == 'excel':
         from .excel_exports import export_trial_balance_with_movements
-        from apps.settings_app.models import Company
-        company = Company.get_settings()
+        from apps.settings_app.models import CompanySettings
+        company = CompanySettings.objects.first()
         return export_trial_balance_with_movements(trial_data, start_date_str, end_date_str, {
             'total_opening_debit': total_opening_debit,
             'total_opening_credit': total_opening_credit,
