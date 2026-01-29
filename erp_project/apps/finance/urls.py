@@ -129,6 +129,11 @@ urlpatterns = [
     path('opening-balances/<int:pk>/post/', views.openingbalance_post, name='openingbalance_post'),
     path('opening-balances/<int:pk>/reverse/', views.openingbalance_reverse, name='openingbalance_reverse'),
     
+    # System Opening Balance Edit (editable before fiscal year lock)
+    path('opening-balances/system/edit/', views.system_opening_balance_edit, name='system_opening_balance_edit'),
+    path('opening-balances/system/add-line/', views.system_opening_balance_add_line, name='system_opening_balance_add_line'),
+    path('opening-balances/system/delete-line/<int:line_id>/', views.system_opening_balance_delete_line, name='system_opening_balance_delete_line'),
+    
     # ============ WRITE-OFFS / ADJUSTMENTS ============
     path('write-offs/', views.WriteOffListView.as_view(), name='writeoff_list'),
     path('write-offs/create/', views.WriteOffCreateView.as_view(), name='writeoff_create'),

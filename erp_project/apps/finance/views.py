@@ -4778,6 +4778,314 @@ def openingbalance_reverse(request, pk):
     return redirect('finance:openingbalance_detail', pk=pk)
 
 
+# ============ SYSTEM OPENING BALANCE EDIT ============
+
+@login_required
+def system_opening_balance_edit(request):
+    """
+    Edit system-generated opening balances.
+    
+    ACCOUNTING RULES:
+    - Editable BEFORE fiscal year is closed
+    - Restricted AFTER fiscal year is closed
+    - If account has other transactions, cannot change the account
+    - All changes are logged in audit trail
+    """
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('finance:openingbalance_list')
+    
+    # Get the system opening balance journal entry
+    journal = JournalEntry.objects.filter(
+        entry_type='opening',
+        is_system_generated=True
+    ).prefetch_related('lines', 'lines__account').first()
+    
+    if not journal:
+        messages.error(request, 'No system opening balance entry found.')
+        return redirect('finance:openingbalance_list')
+    
+    # Check if fiscal year is closed
+    fiscal_year = journal.fiscal_year
+    if fiscal_year and fiscal_year.is_closed:
+        messages.error(request, f'Cannot edit opening balances - Fiscal Year {fiscal_year.name} is closed.')
+        return redirect('finance:openingbalance_list')
+    
+    # Get lines with editability check
+    lines_data = []
+    for line in journal.lines.all().select_related('account'):
+        # Check if this account has other transactions besides opening balance
+        other_transactions = JournalEntryLine.objects.filter(
+            account=line.account,
+            journal_entry__status='posted'
+        ).exclude(
+            journal_entry=journal
+        ).exists()
+        
+        lines_data.append({
+            'id': line.id,
+            'account': line.account,
+            'description': line.description,
+            'debit': line.debit,
+            'credit': line.credit,
+            'has_transactions': other_transactions,
+            'editable': not other_transactions,  # Can edit if no other transactions
+        })
+    
+    if request.method == 'POST':
+        # Process the form
+        try:
+            from apps.core.audit import log_finance_audit
+            
+            changes_made = []
+            total_debit = Decimal('0.00')
+            total_credit = Decimal('0.00')
+            
+            for line_data in lines_data:
+                line_id = line_data['id']
+                line = JournalEntryLine.objects.get(pk=line_id)
+                
+                # Get new values from form
+                new_debit = request.POST.get(f'debit_{line_id}', '0')
+                new_credit = request.POST.get(f'credit_{line_id}', '0')
+                
+                try:
+                    new_debit = Decimal(new_debit) if new_debit else Decimal('0.00')
+                    new_credit = Decimal(new_credit) if new_credit else Decimal('0.00')
+                except:
+                    new_debit = Decimal('0.00')
+                    new_credit = Decimal('0.00')
+                
+                # Track changes
+                if line.debit != new_debit or line.credit != new_credit:
+                    if line_data['has_transactions']:
+                        # Cannot edit account with transactions
+                        messages.warning(request, f'Cannot edit {line.account.code} - account has transactions.')
+                        continue
+                    
+                    # Log the change
+                    change_record = {
+                        'account': line.account.code,
+                        'account_name': line.account.name,
+                        'old_debit': float(line.debit),
+                        'old_credit': float(line.credit),
+                        'new_debit': float(new_debit),
+                        'new_credit': float(new_credit),
+                    }
+                    changes_made.append(change_record)
+                    
+                    # Update the line
+                    line.debit = new_debit
+                    line.credit = new_credit
+                    line.save()
+                
+                total_debit += new_debit
+                total_credit += new_credit
+            
+            # Validate balance
+            if total_debit != total_credit:
+                messages.error(request, f'Opening balance is not balanced. Debit: {total_debit}, Credit: {total_credit}')
+                return redirect('finance:system_opening_balance_edit')
+            
+            # Update journal totals
+            journal.total_debit = total_debit
+            journal.total_credit = total_credit
+            journal.save(update_fields=['total_debit', 'total_credit'])
+            
+            # Log audit
+            if changes_made:
+                log_finance_audit(
+                    user=request.user,
+                    action='update',
+                    entity_type='OpeningBalance',
+                    entity_id=journal.pk,
+                    request=request,
+                    details={
+                        'journal_number': journal.entry_number,
+                        'changes': changes_made,
+                        'total_debit': float(total_debit),
+                        'total_credit': float(total_credit),
+                    }
+                )
+                messages.success(request, f'Opening balances updated successfully. {len(changes_made)} line(s) changed.')
+            else:
+                messages.info(request, 'No changes were made.')
+            
+            return redirect('finance:openingbalance_list')
+            
+        except Exception as e:
+            messages.error(request, f'Error updating opening balances: {str(e)}')
+            return redirect('finance:system_opening_balance_edit')
+    
+    # Group lines by account type for display
+    assets = [l for l in lines_data if l['account'].account_type == 'asset']
+    liabilities = [l for l in lines_data if l['account'].account_type == 'liability']
+    equity = [l for l in lines_data if l['account'].account_type == 'equity']
+    
+    # Calculate totals
+    total_debit = sum(l['debit'] for l in lines_data)
+    total_credit = sum(l['credit'] for l in lines_data)
+    
+    # Get all accounts for adding new lines
+    available_accounts = Account.objects.filter(
+        is_active=True,
+        account_type__in=['asset', 'liability', 'equity']
+    ).exclude(
+        id__in=[l['account'].id for l in lines_data]
+    ).order_by('account_type', 'code')
+    
+    context = {
+        'title': 'Edit System Opening Balances',
+        'journal': journal,
+        'assets': assets,
+        'liabilities': liabilities,
+        'equity': equity,
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'is_balanced': total_debit == total_credit,
+        'available_accounts': available_accounts,
+        'fiscal_year_closed': fiscal_year.is_closed if fiscal_year else False,
+    }
+    
+    return render(request, 'finance/system_opening_balance_edit.html', context)
+
+
+@login_required
+def system_opening_balance_add_line(request):
+    """Add a new line to system opening balance."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
+        return JsonResponse({'success': False, 'error': 'Permission denied'})
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid method'})
+    
+    journal = JournalEntry.objects.filter(
+        entry_type='opening',
+        is_system_generated=True
+    ).first()
+    
+    if not journal:
+        return JsonResponse({'success': False, 'error': 'No opening balance journal found'})
+    
+    # Check fiscal year
+    if journal.fiscal_year and journal.fiscal_year.is_closed:
+        return JsonResponse({'success': False, 'error': 'Fiscal year is closed'})
+    
+    account_id = request.POST.get('account_id')
+    debit = request.POST.get('debit', '0')
+    credit = request.POST.get('credit', '0')
+    
+    try:
+        account = Account.objects.get(pk=account_id, is_active=True)
+        debit = Decimal(debit) if debit else Decimal('0.00')
+        credit = Decimal(credit) if credit else Decimal('0.00')
+        
+        # Check if account already exists in opening balance
+        if journal.lines.filter(account=account).exists():
+            return JsonResponse({'success': False, 'error': 'Account already exists in opening balances'})
+        
+        # Create new line
+        line = JournalEntryLine.objects.create(
+            journal_entry=journal,
+            account=account,
+            description=f'Opening Balance for {account.name}',
+            debit=debit,
+            credit=credit,
+        )
+        
+        # Update journal totals
+        journal.calculate_totals()
+        
+        # Log audit
+        from apps.core.audit import log_finance_audit
+        log_finance_audit(
+            user=request.user,
+            action='create',
+            entity_type='OpeningBalanceLine',
+            entity_id=line.pk,
+            request=request,
+            details={
+                'journal_number': journal.entry_number,
+                'account': account.code,
+                'account_name': account.name,
+                'debit': float(debit),
+                'credit': float(credit),
+            }
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'line_id': line.pk,
+            'message': f'Opening balance for {account.code} added successfully'
+        })
+        
+    except Account.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Account not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def system_opening_balance_delete_line(request, line_id):
+    """Delete a line from system opening balance."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
+        return JsonResponse({'success': False, 'error': 'Permission denied'})
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid method'})
+    
+    try:
+        line = JournalEntryLine.objects.select_related('journal_entry', 'account').get(pk=line_id)
+        journal = line.journal_entry
+        
+        # Check if it's the opening balance journal
+        if journal.entry_type != 'opening' or not journal.is_system_generated:
+            return JsonResponse({'success': False, 'error': 'Not an opening balance entry'})
+        
+        # Check fiscal year
+        if journal.fiscal_year and journal.fiscal_year.is_closed:
+            return JsonResponse({'success': False, 'error': 'Fiscal year is closed'})
+        
+        # Check if account has other transactions
+        has_transactions = JournalEntryLine.objects.filter(
+            account=line.account,
+            journal_entry__status='posted'
+        ).exclude(journal_entry=journal).exists()
+        
+        if has_transactions:
+            return JsonResponse({'success': False, 'error': 'Cannot delete - account has transactions'})
+        
+        # Log before deletion
+        from apps.core.audit import log_finance_audit
+        log_finance_audit(
+            user=request.user,
+            action='delete',
+            entity_type='OpeningBalanceLine',
+            entity_id=line.pk,
+            request=request,
+            details={
+                'journal_number': journal.entry_number,
+                'account': line.account.code,
+                'account_name': line.account.name,
+                'debit': float(line.debit),
+                'credit': float(line.credit),
+            }
+        )
+        
+        # Delete the line
+        line.delete()
+        
+        # Update journal totals
+        journal.calculate_totals()
+        
+        return JsonResponse({'success': True, 'message': 'Line deleted successfully'})
+        
+    except JournalEntryLine.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Line not found'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
 # ============ WRITE-OFF VIEWS ============
 
 class WriteOffListView(PermissionRequiredMixin, ListView):

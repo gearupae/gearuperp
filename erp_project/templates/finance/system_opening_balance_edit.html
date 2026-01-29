@@ -1,0 +1,551 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block extra_css %}
+<style>
+    .editable-input {
+        max-width: 150px;
+        text-align: right;
+    }
+    .readonly-cell {
+        background-color: #f8f9fa;
+    }
+    .has-transactions {
+        background-color: #fff3cd !important;
+    }
+    .account-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .transaction-warning {
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h4 class="mb-0 fw-bold">{{ title }}</h4>
+        <small class="text-muted">Edit opening balances for {{ journal.entry_number }}</small>
+    </div>
+    <div>
+        <a href="{% url 'finance:openingbalance_list' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+    </div>
+</div>
+
+{% if fiscal_year_closed %}
+<div class="alert alert-danger mb-4">
+    <i class="fas fa-lock me-2"></i>
+    <strong>Editing Disabled:</strong> The fiscal year is closed. Opening balances cannot be edited.
+</div>
+{% else %}
+
+<!-- Instructions -->
+<div class="alert alert-info mb-4">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Editing Rules:</strong>
+    <ul class="mb-0 mt-2 small">
+        <li>Opening balances can be edited <strong>before the fiscal year is closed</strong></li>
+        <li>Accounts with existing transactions (highlighted in yellow) <strong>cannot be edited or deleted</strong></li>
+        <li>Total Debits must equal Total Credits for the entry to be balanced</li>
+        <li>All changes are logged in the audit trail</li>
+    </ul>
+</div>
+
+<form method="post" id="openingBalanceForm">
+{% csrf_token %}
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+            <div class="card-body text-center py-3">
+                <i class="fas fa-arrow-up fa-2x mb-2"></i>
+                <small class="d-block">Total Debits</small>
+                <h5 class="mb-0" id="totalDebit">AED {{ total_debit|floatformat:2|intcomma }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-success text-white">
+            <div class="card-body text-center py-3">
+                <i class="fas fa-arrow-down fa-2x mb-2"></i>
+                <small class="d-block">Total Credits</small>
+                <h5 class="mb-0" id="totalCredit">AED {{ total_credit|floatformat:2|intcomma }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 {% if is_balanced %}bg-success{% else %}bg-danger{% endif %} text-white">
+            <div class="card-body text-center py-3">
+                <i class="fas {% if is_balanced %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} fa-2x mb-2"></i>
+                <small class="d-block">Status</small>
+                <h5 class="mb-0" id="balanceStatus">{% if is_balanced %}Balanced{% else %}Unbalanced{% endif %}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100 bg-dark text-white">
+            <div class="card-body text-center py-3">
+                <i class="fas fa-calendar fa-2x mb-2"></i>
+                <small class="d-block">Entry Date</small>
+                <h5 class="mb-0">{{ journal.date|date:"d/m/Y" }}</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <div>
+            <strong><i class="fas fa-edit me-2"></i>Edit Opening Balances</strong>
+            <span class="badge bg-secondary ms-2">{{ journal.entry_number }}</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+            <i class="fas fa-plus me-1"></i>Add Account
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <!-- ASSETS -->
+        {% if assets %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-primary bg-opacity-10">
+                    <tr>
+                        <th colspan="5" class="fw-bold text-primary">
+                            <i class="fas fa-building me-2"></i>ASSETS
+                        </th>
+                    </tr>
+                    <tr class="small text-muted">
+                        <th style="width: 15%;">Account Code</th>
+                        <th style="width: 35%;">Account Name</th>
+                        <th style="width: 20%;" class="text-end">Debit (AED)</th>
+                        <th style="width: 20%;" class="text-end">Credit (AED)</th>
+                        <th style="width: 10%;" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in assets %}
+                    <tr class="{% if line.has_transactions %}has-transactions{% endif %}">
+                        <td class="fw-medium">{{ line.account.code }}</td>
+                        <td>
+                            <div class="account-info">
+                                <span>{{ line.account.name }}</span>
+                                {% if line.has_transactions %}
+                                <span class="badge bg-warning text-dark transaction-warning" title="Account has transactions">
+                                    <i class="fas fa-lock"></i> Has Transactions
+                                </span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            {% if line.editable %}
+                            <input type="number" name="debit_{{ line.id }}" value="{{ line.debit }}" 
+                                   class="form-control form-control-sm editable-input amount-input" 
+                                   step="0.01" min="0" data-line-id="{{ line.id }}">
+                            {% else %}
+                            <input type="hidden" name="debit_{{ line.id }}" value="{{ line.debit }}">
+                            <span class="text-muted">{{ line.debit|floatformat:2|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if line.editable %}
+                            <input type="number" name="credit_{{ line.id }}" value="{{ line.credit }}" 
+                                   class="form-control form-control-sm editable-input amount-input" 
+                                   step="0.01" min="0" data-line-id="{{ line.id }}">
+                            {% else %}
+                            <input type="hidden" name="credit_{{ line.id }}" value="{{ line.credit }}">
+                            <span class="text-muted">{{ line.credit|floatformat:2|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if line.editable %}
+                            <button type="button" class="btn btn-sm btn-outline-danger delete-line" 
+                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            {% else %}
+                            <span class="text-muted" title="Cannot delete - has transactions">
+                                <i class="fas fa-lock"></i>
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- LIABILITIES -->
+        {% if liabilities %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-danger bg-opacity-10">
+                    <tr>
+                        <th colspan="5" class="fw-bold text-danger">
+                            <i class="fas fa-hand-holding-usd me-2"></i>LIABILITIES
+                        </th>
+                    </tr>
+                    <tr class="small text-muted">
+                        <th style="width: 15%;">Account Code</th>
+                        <th style="width: 35%;">Account Name</th>
+                        <th style="width: 20%;" class="text-end">Debit (AED)</th>
+                        <th style="width: 20%;" class="text-end">Credit (AED)</th>
+                        <th style="width: 10%;" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in liabilities %}
+                    <tr class="{% if line.has_transactions %}has-transactions{% endif %}">
+                        <td class="fw-medium">{{ line.account.code }}</td>
+                        <td>
+                            <div class="account-info">
+                                <span>{{ line.account.name }}</span>
+                                {% if line.has_transactions %}
+                                <span class="badge bg-warning text-dark transaction-warning">
+                                    <i class="fas fa-lock"></i> Has Transactions
+                                </span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            {% if line.editable %}
+                            <input type="number" name="debit_{{ line.id }}" value="{{ line.debit }}" 
+                                   class="form-control form-control-sm editable-input amount-input" 
+                                   step="0.01" min="0" data-line-id="{{ line.id }}">
+                            {% else %}
+                            <input type="hidden" name="debit_{{ line.id }}" value="{{ line.debit }}">
+                            <span class="text-muted">{{ line.debit|floatformat:2|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if line.editable %}
+                            <input type="number" name="credit_{{ line.id }}" value="{{ line.credit }}" 
+                                   class="form-control form-control-sm editable-input amount-input" 
+                                   step="0.01" min="0" data-line-id="{{ line.id }}">
+                            {% else %}
+                            <input type="hidden" name="credit_{{ line.id }}" value="{{ line.credit }}">
+                            <span class="text-muted">{{ line.credit|floatformat:2|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if line.editable %}
+                            <button type="button" class="btn btn-sm btn-outline-danger delete-line" 
+                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            {% else %}
+                            <span class="text-muted"><i class="fas fa-lock"></i></span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- EQUITY -->
+        {% if equity %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="bg-success bg-opacity-10">
+                    <tr>
+                        <th colspan="5" class="fw-bold text-success">
+                            <i class="fas fa-landmark me-2"></i>EQUITY
+                        </th>
+                    </tr>
+                    <tr class="small text-muted">
+                        <th style="width: 15%;">Account Code</th>
+                        <th style="width: 35%;">Account Name</th>
+                        <th style="width: 20%;" class="text-end">Debit (AED)</th>
+                        <th style="width: 20%;" class="text-end">Credit (AED)</th>
+                        <th style="width: 10%;" class="text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in equity %}
+                    <tr class="{% if line.has_transactions %}has-transactions{% endif %}">
+                        <td class="fw-medium">{{ line.account.code }}</td>
+                        <td>
+                            <div class="account-info">
+                                <span>{{ line.account.name }}</span>
+                                {% if line.has_transactions %}
+                                <span class="badge bg-warning text-dark transaction-warning">
+                                    <i class="fas fa-lock"></i> Has Transactions
+                                </span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            {% if line.editable %}
+                            <input type="number" name="debit_{{ line.id }}" value="{{ line.debit }}" 
+                                   class="form-control form-control-sm editable-input amount-input" 
+                                   step="0.01" min="0" data-line-id="{{ line.id }}">
+                            {% else %}
+                            <input type="hidden" name="debit_{{ line.id }}" value="{{ line.debit }}">
+                            <span class="text-muted">{{ line.debit|floatformat:2|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if line.editable %}
+                            <input type="number" name="credit_{{ line.id }}" value="{{ line.credit }}" 
+                                   class="form-control form-control-sm editable-input amount-input" 
+                                   step="0.01" min="0" data-line-id="{{ line.id }}">
+                            {% else %}
+                            <input type="hidden" name="credit_{{ line.id }}" value="{{ line.credit }}">
+                            <span class="text-muted">{{ line.credit|floatformat:2|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if line.editable %}
+                            <button type="button" class="btn btn-sm btn-outline-danger delete-line" 
+                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            {% else %}
+                            <span class="text-muted"><i class="fas fa-lock"></i></span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- TOTALS -->
+        <div class="table-responsive">
+            <table class="table table-dark mb-0">
+                <tfoot>
+                    <tr>
+                        <th colspan="2" style="width: 50%;" class="text-end">TOTAL</th>
+                        <th style="width: 20%;" class="text-end" id="totalDebitRow">{{ total_debit|floatformat:2|intcomma }}</th>
+                        <th style="width: 20%;" class="text-end" id="totalCreditRow">{{ total_credit|floatformat:2|intcomma }}</th>
+                        <th style="width: 10%;"></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <span class="text-muted small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Yellow rows indicate accounts with existing transactions and cannot be edited.
+                </span>
+            </div>
+            <div>
+                <a href="{% url 'finance:openingbalance_list' %}" class="btn btn-outline-secondary me-2">
+                    <i class="fas fa-times me-1"></i>Cancel
+                </a>
+                <button type="submit" class="btn btn-primary" id="saveBtn">
+                    <i class="fas fa-save me-1"></i>Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+</form>
+{% endif %}
+
+<!-- Add Account Modal -->
+<div class="modal fade" id="addAccountModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus me-2"></i>Add Opening Balance Account</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addAccountForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Account</label>
+                        <select name="account_id" id="newAccountSelect" class="form-select" required>
+                            <option value="">Select Account</option>
+                            {% for account in available_accounts %}
+                            <option value="{{ account.pk }}">
+                                {{ account.code }} - {{ account.name }} ({{ account.get_account_type_display }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Debit (AED)</label>
+                                <input type="number" name="debit" id="newDebit" class="form-control" 
+                                       step="0.01" min="0" value="0">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-medium">Credit (AED)</label>
+                                <input type="number" name="credit" id="newCredit" class="form-control" 
+                                       step="0.01" min="0" value="0">
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="addAccountBtn">
+                    <i class="fas fa-plus me-1"></i>Add Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Calculate and update totals
+function updateTotals() {
+    let totalDebit = 0;
+    let totalCredit = 0;
+    
+    document.querySelectorAll('input[name^="debit_"]').forEach(input => {
+        totalDebit += parseFloat(input.value) || 0;
+    });
+    
+    document.querySelectorAll('input[name^="credit_"]').forEach(input => {
+        totalCredit += parseFloat(input.value) || 0;
+    });
+    
+    // Update display
+    const formatNumber = (num) => {
+        return num.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    
+    document.getElementById('totalDebit').textContent = 'AED ' + formatNumber(totalDebit);
+    document.getElementById('totalCredit').textContent = 'AED ' + formatNumber(totalCredit);
+    document.getElementById('totalDebitRow').textContent = formatNumber(totalDebit);
+    document.getElementById('totalCreditRow').textContent = formatNumber(totalCredit);
+    
+    // Update status
+    const statusEl = document.getElementById('balanceStatus');
+    const statusCard = statusEl.closest('.card');
+    
+    if (Math.abs(totalDebit - totalCredit) < 0.01) {
+        statusEl.textContent = 'Balanced';
+        statusCard.classList.remove('bg-danger');
+        statusCard.classList.add('bg-success');
+        statusEl.previousElementSibling.classList.remove('fa-exclamation-triangle');
+        statusEl.previousElementSibling.classList.add('fa-check-circle');
+    } else {
+        statusEl.textContent = 'Unbalanced';
+        statusCard.classList.remove('bg-success');
+        statusCard.classList.add('bg-danger');
+        statusEl.previousElementSibling.classList.remove('fa-check-circle');
+        statusEl.previousElementSibling.classList.add('fa-exclamation-triangle');
+    }
+}
+
+// Listen for input changes
+document.querySelectorAll('.amount-input').forEach(input => {
+    input.addEventListener('input', updateTotals);
+    input.addEventListener('change', updateTotals);
+});
+
+// Delete line
+document.querySelectorAll('.delete-line').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const lineId = this.dataset.lineId;
+        const accountCode = this.dataset.account;
+        
+        if (!confirm(`Are you sure you want to delete the opening balance for ${accountCode}?`)) {
+            return;
+        }
+        
+        fetch(`{% url 'finance:system_opening_balance_delete_line' 0 %}`.replace('0', lineId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove the row
+                this.closest('tr').remove();
+                updateTotals();
+                alert(data.message);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(err => {
+            alert('Error deleting line: ' + err);
+        });
+    });
+});
+
+// Add new account
+document.getElementById('addAccountBtn').addEventListener('click', function() {
+    const accountId = document.getElementById('newAccountSelect').value;
+    const debit = document.getElementById('newDebit').value;
+    const credit = document.getElementById('newCredit').value;
+    
+    if (!accountId) {
+        alert('Please select an account');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('account_id', accountId);
+    formData.append('debit', debit);
+    formData.append('credit', credit);
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    
+    fetch('{% url "finance:system_opening_balance_add_line" %}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(err => {
+        alert('Error adding account: ' + err);
+    });
+});
+
+// Form validation before submit
+document.getElementById('openingBalanceForm').addEventListener('submit', function(e) {
+    let totalDebit = 0;
+    let totalCredit = 0;
+    
+    document.querySelectorAll('input[name^="debit_"]').forEach(input => {
+        totalDebit += parseFloat(input.value) || 0;
+    });
+    
+    document.querySelectorAll('input[name^="credit_"]').forEach(input => {
+        totalCredit += parseFloat(input.value) || 0;
+    });
+    
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        e.preventDefault();
+        alert('Opening balances must be balanced. Total Debit: ' + totalDebit.toFixed(2) + ', Total Credit: ' + totalCredit.toFixed(2));
+        return false;
+    }
+});
+</script>
+{% endblock %}
+
