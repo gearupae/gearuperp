@@ -1,7 +1,7 @@
 # Gearup ERP - Finance Module Technical Documentation
 
-**Document Type:** System Documentation (Based on Actual Implementation)  
-**Version:** 1.0  
+**Document Type:** Complete System Documentation (Based on Actual Implementation)  
+**Version:** 2.0  
 **Date:** January 2026  
 **Compliance:** UAE VAT Law (Federal Decree-Law No. 8 of 2017), UAE Corporate Tax Law (Federal Decree-Law No. 47 of 2022), IFRS
 
@@ -13,31 +13,41 @@
 2. [Core Accounting Architecture](#2-core-accounting-architecture)
 3. [Sales Module](#3-sales-module)
 4. [Purchase Module](#4-purchase-module)
-5. [Payroll Module](#5-payroll-module)
-6. [Fixed Assets Module](#6-fixed-assets-module)
-7. [Inventory Module](#7-inventory-module)
-8. [Projects Module](#8-projects-module)
-9. [Property Management Module](#9-property-management-module)
-10. [Banking Module](#10-banking-module)
-11. [Journal Entries](#11-journal-entries)
-12. [Opening Balances](#12-opening-balances)
-13. [VAT & Corporate Tax](#13-vat--corporate-tax)
-14. [Report Derivations](#14-report-derivations)
+5. [Payments Module](#5-payments-module)
+6. [Payroll Module](#6-payroll-module)
+7. [Fixed Assets Module](#7-fixed-assets-module)
+8. [Inventory Module](#8-inventory-module)
+9. [Projects Module](#9-projects-module)
+10. [Property Management Module](#10-property-management-module)
+11. [Banking Module](#11-banking-module)
+12. [Journal Entries](#12-journal-entries)
+13. [Opening Balances](#13-opening-balances)
+14. [VAT & Corporate Tax](#14-vat--corporate-tax)
+15. [Report Derivations](#15-report-derivations)
+16. [Calculation Formulas](#16-calculation-formulas)
+17. [Appendices](#17-appendices)
 
 ---
 
 ## 1. Overview
 
 ### 1.1 Source of Truth
-The Finance module uses **double-entry accounting** with the `JournalEntry` and `JournalEntryLine` models as the **single source of truth**. All financial transactions from operational modules (Sales, Purchase, Payroll, etc.) create journal entries that update the General Ledger.
+
+The Finance module uses **double-entry accounting** with the `JournalEntry` and `JournalEntryLine` models as the **SINGLE SOURCE OF TRUTH**. 
+
+**CRITICAL RULE:** All financial reports (Trial Balance, General Ledger, P&L, Balance Sheet, Cash Flow) derive data EXCLUSIVELY from:
+- `JournalEntry` (header with status, date, reference)
+- `JournalEntryLine` (individual debit/credit postings)
+
+No operational module directly affects reports. All modules MUST create journal entries to impact the ledger.
 
 ### 1.2 Key Models
 
 | Model | Table | Purpose |
 |-------|-------|---------|
-| `Account` | `finance_account` | Chart of Accounts |
-| `JournalEntry` | `finance_journalentry` | Header for journal entries |
-| `JournalEntryLine` | `finance_journalentryline` | Debit/Credit lines |
+| `Account` | `finance_account` | Chart of Accounts (master data) |
+| `JournalEntry` | `finance_journalentry` | Journal header (source of truth) |
+| `JournalEntryLine` | `finance_journalentryline` | Debit/Credit lines (source of truth) |
 | `FiscalYear` | `finance_fiscalyear` | Fiscal year management |
 | `AccountingPeriod` | `finance_accountingperiod` | Monthly period controls |
 | `Payment` | `finance_payment` | Payment records |
@@ -45,20 +55,48 @@ The Finance module uses **double-entry accounting** with the `JournalEntry` and 
 | `BankStatement` | `finance_bankstatement` | Bank reconciliation |
 | `AccountMapping` | `finance_accountmapping` | Account determination rules |
 
-### 1.3 Account Types (AccountType Enum)
+### 1.3 Account Types and Normal Balances
+
+| Account Type | Normal Balance | Debit Effect | Credit Effect |
+|-------------|----------------|--------------|---------------|
+| **ASSET** | Debit | Increases | Decreases |
+| **LIABILITY** | Credit | Decreases | Increases |
+| **EQUITY** | Credit | Decreases | Increases |
+| **INCOME** | Credit | Decreases | Increases |
+| **EXPENSE** | Debit | Increases | Decreases |
+
+**CRITICAL RULE:** Cash and Bank accounts are ASSETS and MUST show DEBIT balance when positive. A CREDIT balance indicates:
+- Overdraft (if `overdraft_allowed = True`)
+- Abnormal balance / Error (if `overdraft_allowed = False`)
+
+### 1.4 Account Determination (SAP/Oracle Standard)
+
+The system uses `AccountMapping` model for centralized account determination:
+
 ```python
-ASSET = 'asset'      # Debit increases
-LIABILITY = 'liability'  # Credit increases
-EQUITY = 'equity'    # Credit increases
-INCOME = 'income'    # Credit increases
-EXPENSE = 'expense'  # Debit increases
+# How accounts are retrieved
+account = AccountMapping.get_account_or_default(transaction_type, fallback_code)
 ```
 
-### 1.4 Account Determination
-The system uses `AccountMapping` model for SAP/Oracle-style account determination:
-- Transaction types map to debit/credit accounts
-- Modules retrieve accounts via `AccountMapping.get_account_or_default(transaction_type, fallback_code)`
-- Fallback to hardcoded account codes if mapping not found
+| Transaction Type | Description | Default Fallback |
+|-----------------|-------------|------------------|
+| `sales_invoice_receivable` | AR Account | 1200 |
+| `sales_invoice_revenue` | Sales Revenue | 4000 |
+| `sales_invoice_vat` | VAT Payable | 2100 |
+| `vendor_bill_payable` | AP Account | 2000 |
+| `vendor_bill_expense` | Default Expense | 5000 |
+| `vendor_bill_vat` | VAT Recoverable | 1300 |
+| `payroll_salary_expense` | Salary Expense | 5100 |
+| `payroll_salary_payable` | Salary Payable | 2300 |
+| `fixed_asset` | Fixed Asset | 1400 |
+| `accumulated_depreciation` | Accum Depreciation | 1401 |
+| `depreciation_expense` | Depreciation Expense | 5300 |
+| `inventory_asset` | Inventory Asset | 1500 |
+| `inventory_cogs` | Cost of Goods Sold | 5100 |
+| `inventory_grn_clearing` | GRN Clearing | 2010 |
+| `inventory_variance` | Stock Variance | 5200 |
+| `project_expense` | Project Expense | 5000 |
+| `pdc_control` | PDC Control Account | 1600 |
 
 ---
 
@@ -66,13 +104,13 @@ The system uses `AccountMapping` model for SAP/Oracle-style account determinatio
 
 ### 2.1 Journal Entry Model
 
-**File:** `apps/finance/models.py` (Lines 237-510)
+**File:** `apps/finance/models.py`
 
 ```python
 class JournalEntry(BaseModel):
-    entry_number = CharField(unique=True, editable=False)  # Auto-generated
-    date = DateField()
-    reference = CharField(max_length=200)  # Source document reference
+    entry_number = CharField(unique=True, editable=False)  # Auto: JNL-YYYY-NNNN
+    date = DateField()                                      # Transaction date
+    reference = CharField(max_length=200)                   # Source document ref
     description = TextField()
     status = CharField(choices=['draft', 'posted', 'reversed'])
     entry_type = CharField(choices=[
@@ -84,58 +122,71 @@ class JournalEntry(BaseModel):
         'project', 'pdc', 'property', 'vat', 'corporate_tax',
         'opening_balance', 'year_end', 'reversal', 'adjustment'
     ])
-    source_id = PositiveIntegerField(null=True)  # ID of source document
-    is_system_generated = BooleanField(default=False)
-    is_locked = BooleanField(default=False)
+    source_id = PositiveIntegerField(null=True)      # ID of source document
+    is_system_generated = BooleanField(default=False) # True = auto-created
+    is_locked = BooleanField(default=False)           # Immutable when True
     fiscal_year = ForeignKey(FiscalYear)
     period = ForeignKey(AccountingPeriod)
     total_debit = DecimalField()
     total_credit = DecimalField()
-    reversal_of = ForeignKey('self', null=True)  # For reversal entries
+    reversal_of = ForeignKey('self', null=True)       # For reversal entries
+    posted_date = DateTimeField(null=True)
+    posted_by = ForeignKey(User, null=True)
 ```
 
 ### 2.2 Journal Entry Line Model
 
-**File:** `apps/finance/models.py` (Lines 525-600)
-
 ```python
 class JournalEntryLine(models.Model):
-    journal_entry = ForeignKey(JournalEntry)
+    journal_entry = ForeignKey(JournalEntry, related_name='lines')
     account = ForeignKey(Account)
-    description = CharField()
-    debit = DecimalField(default=0.00)
-    credit = DecimalField(default=0.00)
+    description = CharField(max_length=500)
+    debit = DecimalField(max_digits=15, decimal_places=2, default=0.00)
+    credit = DecimalField(max_digits=15, decimal_places=2, default=0.00)
     line_number = PositiveIntegerField()
 ```
 
 ### 2.3 Posting Logic
 
-**Method:** `JournalEntry.post(user)` (Lines 486-510)
+**Method:** `JournalEntry.post(user)`
 
-1. Validates entry is balanced (`total_debit == total_credit`)
-2. Validates at least 2 lines exist
-3. Validates period is not locked
-4. Validates fiscal year is not closed
-5. Validates all accounts are leaf accounts
-6. Updates account balances:
-   - For debit-increases accounts (Asset, Expense): `balance += debit - credit`
-   - For credit-increases accounts (Liability, Equity, Income): `balance += credit - debit`
-7. Sets `status = 'posted'`
-8. Records `posted_date` and `posted_by`
+**Validation Steps:**
+1. Entry must be balanced: `total_debit == total_credit`
+2. Minimum 2 lines required
+3. Period must NOT be locked (`period.is_locked == False`)
+4. Fiscal year must NOT be closed (`fiscal_year.is_closed == False`)
+5. All accounts must be leaf accounts (no children)
 
-### 2.4 Edit/Delete Rules (Immutability)
+**Balance Update Logic:**
+```python
+for line in journal.lines.all():
+    account = line.account
+    if account.debit_increases:  # Asset, Expense
+        account.balance += line.debit - line.credit
+    else:  # Liability, Equity, Income
+        account.balance += line.credit - line.debit
+    account.opening_balance_locked = True
+    account.save()
+```
 
-**Property:** `JournalEntry.is_editable` (Lines 365-387)
+### 2.4 Edit/Delete/Reversal Rules (IMMUTABILITY)
 
 | Condition | Editable | Deletable | Reversible |
 |-----------|----------|-----------|------------|
-| Status = Draft, Manual | ✅ | ✅ | ❌ |
-| Status = Posted | ❌ | ❌ | ✅ |
-| Status = Reversed | ❌ | ❌ | ❌ |
-| System-generated | ❌ | ❌ | ✅ |
-| Period locked | ❌ | ❌ | ❌ |
-| Fiscal year closed | ❌ | ❌ | ❌ |
-| is_locked = True | ❌ | ❌ | ❌ |
+| Status = Draft + Manual Entry | ✅ YES | ✅ YES | ❌ NO |
+| Status = Draft + System-Generated | ❌ NO | ❌ NO | ❌ NO |
+| Status = Posted | ❌ NO | ❌ NO | ✅ YES |
+| Status = Reversed | ❌ NO | ❌ NO | ❌ NO |
+| Period Locked | ❌ NO | ❌ NO | ❌ NO |
+| Fiscal Year Closed | ❌ NO | ❌ NO | ❌ NO |
+| is_locked = True | ❌ NO | ❌ NO | ❌ NO |
+
+**Reversal Process:**
+1. Create new JournalEntry with `entry_type = 'reversal'`
+2. Set `reversal_of = original_journal`
+3. Swap debit/credit for each line
+4. Post the reversal
+5. Set original journal `status = 'reversed'`
 
 ---
 
@@ -143,144 +194,91 @@ class JournalEntryLine(models.Model):
 
 ### 3.1 Sales Invoice
 
-**File:** `apps/sales/models.py` (Lines 105-287)
+#### 3.1.1 Status-Based Ledger Impact Matrix
 
-**Model:** `Invoice`
+| Status | Ledger Impact | Journal Created | Accounts Affected |
+|--------|---------------|-----------------|-------------------|
+| **Draft** | ❌ NO | ❌ NO | None |
+| **Posted** | ✅ YES | ✅ YES | AR (Dr), Revenue (Cr), VAT (Cr) |
+| **Sent** | ❌ NO | ❌ NO | No additional impact |
+| **Partial** | ❌ NO | ❌ NO | Payment creates separate journal |
+| **Paid** | ❌ NO | ❌ NO | Payment creates separate journal |
+| **Overdue** | ❌ NO | ❌ NO | No ledger impact, status only |
+| **Cancelled** | ✅ YES | ✅ YES | Reversal journal created |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| invoice_number | CharField | Auto-generated (INV-YYYY-NNNN) |
-| customer | ForeignKey | Link to CRM Customer |
-| invoice_date | DateField | Invoice date |
-| due_date | DateField | Payment due date |
-| status | CharField | draft, posted, sent, paid, partial, overdue, cancelled |
-| subtotal | DecimalField | Sum of line items (excl. VAT) |
-| vat_amount | DecimalField | Total VAT |
-| total_amount | DecimalField | subtotal + vat_amount |
-| paid_amount | DecimalField | Amount received |
-| journal_entry | ForeignKey | Link to posted journal |
+#### 3.1.2 Posting Trigger and Journal Entry
 
----
+**Trigger Event:** User clicks "Post Invoice" button  
+**Method:** `Invoice.post_to_accounting(user)`
 
-#### 3.1.1 Invoice Posting
+**Pre-conditions:**
+- `status == 'draft'`
+- `total_amount > 0`
 
-**Method:** `Invoice.post_to_accounting(user)` (Lines 177-287)
+**Journal Entry Created:**
 
-**Trigger Event:** User clicks "Post" on draft invoice
+| Line | Account | Debit | Credit | Formula |
+|------|---------|-------|--------|---------|
+| 1 | Accounts Receivable | `total_amount` | 0 | subtotal + vat_amount |
+| 2 | Sales Revenue | 0 | `subtotal` | Sum of line item totals |
+| 3 | VAT Payable | 0 | `vat_amount` | Sum of line item VAT |
 
-**USER ACTION:**
-1. User creates invoice with items
-2. User clicks "Post Invoice" button
+**Post-conditions:**
+- `invoice.status = 'posted'`
+- `invoice.journal_entry = journal`
 
-**SYSTEM EVENT:**
-1. Validates `status == 'draft'`
-2. Validates `total_amount > 0`
-3. Retrieves accounts from AccountMapping:
-   - `sales_invoice_receivable` → AR Account (fallback: code '1200')
-   - `sales_invoice_revenue` → Sales Account (fallback: code '4000')
-   - `sales_invoice_vat` → VAT Payable (fallback: code '2100')
+#### 3.1.3 Report Impact (Posted Invoice)
 
-**JOURNAL ENTRY CREATED:** YES
+| Report | Impact |
+|--------|--------|
+| **Trial Balance** | AR increases (Debit side), Revenue + VAT increase (Credit side) |
+| **General Ledger** | Entry visible under AR, Sales, VAT Payable accounts |
+| **Profit & Loss** | Revenue recognized under Sales |
+| **Balance Sheet** | AR shown as Current Asset |
+| **Cash Flow Statement** | NO IMPACT (accrual, not cash) |
+| **VAT Report** | Output VAT (`standard_rated_vat`) increases |
+| **AR Aging** | New receivable added with due_date |
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Accounts Receivable | total_amount | 0 | AR - {customer_name} |
-| 2 | Sales Revenue | 0 | subtotal | Sales - {invoice_number} |
-| 3 | VAT Payable | 0 | vat_amount | Output VAT - {invoice_number} |
+#### 3.1.4 Cancellation Behavior
 
-**Note:** If VAT account not found but `vat_amount > 0`, VAT is added to Sales Revenue credit.
-
-**STATUS-BASED BEHAVIOR:**
-- Draft → No ledger impact
-- Posted → Journal created and posted, AR increased
-- Paid → Separate payment journal clears AR
-- Cancelled → Behavior not found in current implementation
-
-**VAT TREATMENT:**
-- VAT calculated per line item using `vat_rate` (default 5%)
-- Supports VAT-inclusive pricing via `is_vat_inclusive` flag
-- VAT-inclusive formula: `Net = Gross / (1 + VAT_Rate/100)`
-
-**REPORT IMPACT:**
-- Trial Balance: AR increased (debit), Sales & VAT increased (credit)
-- General Ledger: Entries visible under AR, Sales, VAT accounts
-- VAT Report: `output_vat` increased
-- P&L: Sales Revenue recognized
-- Balance Sheet: AR as current asset
-
-**AUDIT LOG:**
-- Logged via `AuditLog` model on post action
-- Records: user, timestamp, action='post', entity_type='Invoice'
-
----
-
-#### 3.1.2 Invoice Item VAT Calculation
-
-**File:** `apps/sales/models.py` (Lines 316-332)
-
-**Method:** `InvoiceItem.save()`
-
+**Current Implementation:** Direct reversal journal created
 ```python
-gross = quantity * unit_price
-
-if is_vat_inclusive and vat_rate > 0:
-    # VAT-inclusive: Back-calculate
-    divisor = 1 + (vat_rate / 100)
-    total = (gross / divisor).quantize(Decimal('0.01'))
-    vat_amount = (gross - total).quantize(Decimal('0.01'))
-else:
-    # VAT-exclusive: Standard calculation
-    total = gross
-    vat_amount = (total * (vat_rate / 100)).quantize(Decimal('0.01'))
+# Reversal Entry
+Dr VAT Payable           vat_amount
+Dr Sales Revenue         subtotal
+Cr Accounts Receivable   total_amount
 ```
 
 ---
 
 ### 3.2 Sales Credit Note
 
-**File:** `apps/sales/models.py` (Lines 335-517)
+#### 3.2.1 Status-Based Ledger Impact Matrix
 
-**Model:** `SalesCreditNote`
+| Status | Ledger Impact | Journal Created |
+|--------|---------------|-----------------|
+| **Draft** | ❌ NO | ❌ NO |
+| **Posted** | ✅ YES | ✅ YES |
+| **Cancelled** | ✅ YES | ✅ YES (Reversal) |
 
-**Trigger Event:** User creates credit note against posted invoice
+#### 3.2.2 Journal Entry (Posted Credit Note)
 
-**JOURNAL ENTRY CREATED:** YES (via `post_to_accounting` method)
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Sales Returns / Revenue | `subtotal` | 0 |
+| 2 | VAT Payable | `vat_amount` | 0 |
+| 3 | Accounts Receivable | 0 | `total_amount` |
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Sales Returns | subtotal | 0 | Credit Note - {credit_note_number} |
-| 2 | VAT Payable | vat_amount | 0 | Reverse Output VAT |
-| 3 | Accounts Receivable | 0 | total_amount | Reduce AR - {customer_name} |
+**Effect:** Reduces AR and Revenue, reduces VAT liability
 
-**Note:** This reverses the original invoice posting effect.
+#### 3.2.3 Report Impact
 
----
-
-### 3.3 Customer Payment (Payment Received)
-
-**File:** `apps/finance/models.py` (Lines 949-1038)
-
-**Model:** `Payment` (payment_type = 'received')
-
-**Trigger Event:** User records payment against invoice
-
-**JOURNAL ENTRY CREATED:** YES (created in views, not in model method)
-
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Bank/Cash | amount | 0 | Payment from {customer_name} |
-| 2 | Accounts Receivable | 0 | amount | Clear AR - {invoice_reference} |
-
-**STATUS-BASED BEHAVIOR:**
-- Draft → No ledger impact
-- Confirmed → Journal posted, AR decreased, Bank increased
-- Reconciled → Matched with bank statement
-- Cancelled → Reversal entry created
-
-**EXCEPTION HANDLING:**
-- **Partial Payment:** `allocated_amount < amount`, balance remains in AR
-- **Overpayment:** `unallocated_amount > 0`, advance held in Customer Advances liability
-- **Credit Balance:** Behavior not found in current implementation (handled manually)
+| Report | Impact |
+|--------|--------|
+| **Trial Balance** | AR decreases, Revenue decreases, VAT Payable decreases |
+| **P&L** | Revenue reduced (Sales Returns) |
+| **VAT Report** | Output VAT decreased |
+| **AR Aging** | Receivable reduced or cleared |
 
 ---
 
@@ -288,182 +286,285 @@ else:
 
 ### 4.1 Vendor Bill
 
-**File:** `apps/purchase/models.py` (Lines 206-368)
+#### 4.1.1 Status-Based Ledger Impact Matrix
 
-**Model:** `VendorBill`
+| Status | Ledger Impact | Journal Created | Accounts Affected |
+|--------|---------------|-----------------|-------------------|
+| **Draft** | ❌ NO | ❌ NO | None |
+| **Posted** | ✅ YES | ✅ YES | Expense (Dr), VAT Recoverable (Dr), AP (Cr) |
+| **Pending** | ❌ NO | ❌ NO | Status flag only |
+| **Partial** | ❌ NO | ❌ NO | Payment creates separate journal |
+| **Paid** | ❌ NO | ❌ NO | Payment creates separate journal |
+| **Overdue** | ❌ NO | ❌ NO | Status flag only |
 
-**Trigger Event:** User posts draft vendor bill
+#### 4.1.2 Posting Trigger and Journal Entry
 
-**Method:** `VendorBill.post_to_accounting(user)` (Lines 276-368)
+**Trigger Event:** User clicks "Post Bill"  
+**Method:** `VendorBill.post_to_accounting(user)`
 
-**JOURNAL ENTRY CREATED:** YES
+**Journal Entry Created:**
 
 | Line | Account | Debit | Credit | Description |
 |------|---------|-------|--------|-------------|
-| 1 | Expense Account | subtotal | 0 | Expense - {bill_number} |
-| 2 | VAT Recoverable | vat_amount | 0 | Input VAT - {bill_number} |
-| 3 | Accounts Payable | 0 | total_amount | AP - {vendor_name} |
+| 1 | Expense Account | `subtotal` | 0 | Expense - {bill_number} |
+| 2 | VAT Recoverable | `vat_amount` | 0 | Input VAT - {bill_number} |
+| 3 | Accounts Payable | 0 | `total_amount` | AP - {vendor_name} |
 
-**ACCOUNT SELECTION:**
-- `vendor_bill_payable` → AP Account (fallback: '2000')
-- `vendor_bill_expense` → Expense Account (fallback: '5000')
-- `vendor_bill_vat` → VAT Recoverable (fallback: '1300')
+#### 4.1.3 Report Impact (Posted Bill)
 
-**VAT TREATMENT:**
-- Input VAT posted to Asset account (VAT Recoverable)
-- Claimable only with valid tax invoice from registered vendor
-
-**STATUS-BASED BEHAVIOR:**
-- Draft → No posting
-- Posted → Journal created, AP increased
-- Paid → Separate payment clears AP
-- Partial → Part payment recorded, balance in AP
+| Report | Impact |
+|--------|--------|
+| **Trial Balance** | Expense increases (Dr), VAT Asset increases (Dr), AP increases (Cr) |
+| **General Ledger** | Entries under Expense, VAT Recoverable, AP |
+| **Profit & Loss** | Expense recognized |
+| **Balance Sheet** | VAT Recoverable as Current Asset, AP as Current Liability |
+| **Cash Flow Statement** | NO IMPACT (accrual) |
+| **VAT Report** | Input VAT (`standard_rated_expenses`, `input_vat`) increases |
+| **AP Aging** | New payable added with due_date |
 
 ---
 
 ### 4.2 Expense Claims
 
-**File:** `apps/finance/models.py` (Lines 1041-1157) - DEPRECATED
-**New Location:** `apps/purchase/models.py`
+#### 4.2.1 Status-Based Ledger Impact Matrix
 
-**Model:** `ExpenseClaim`
+| Status | Ledger Impact | Journal Created |
+|--------|---------------|-----------------|
+| **Draft** | ❌ NO | ❌ NO |
+| **Submitted** | ❌ NO | ❌ NO |
+| **Approved** | ✅ YES | ✅ YES |
+| **Rejected** | ❌ NO | ❌ NO |
+| **Paid** | ✅ YES | ✅ YES (Payment journal) |
 
-**Note:** Model marked as DEPRECATED in finance module. Being migrated to Purchase module.
+#### 4.2.2 Approval Journal Entry
 
-**Trigger Event:** Expense claim approved
+**Trigger:** Expense claim approved  
+**Method:** `ExpenseClaim.post_approval_journal(user)`
 
-**JOURNAL ENTRY CREATED:** YES (on approval)
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Expense Account | `total_amount - total_vat` | 0 |
+| 2 | VAT Recoverable | `total_vat` | 0 |
+| 3 | Employee Payable | 0 | `total_amount` |
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Expense Account | amount | 0 | Expense - {category} |
-| 2 | VAT Recoverable | vat_amount | 0 | Input VAT (if receipt present) |
-| 3 | Employee Payable | 0 | total | Payable to {employee_name} |
+**VAT Rule:** VAT claimable ONLY if `has_receipt = True` on expense item
 
-**SPECIAL RULES:**
-- VAT claimable ONLY if `has_receipt = True`
-- Non-deductible expenses flagged via `is_non_deductible` for Corporate Tax
+#### 4.2.3 Payment Journal Entry
 
----
+**Trigger:** Expense claim paid  
+**Method:** `ExpenseClaim.post_payment_journal(bank_account, payment_date)`
 
-### 4.3 Vendor Payment (Payment Made)
-
-**Model:** `Payment` (payment_type = 'made')
-
-**JOURNAL ENTRY CREATED:** YES
-
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Accounts Payable | amount | 0 | Clear AP - {vendor_name} |
-| 2 | Bank/Cash | 0 | amount | Payment to {vendor_name} |
-
----
-
-### 4.4 Recurring Expenses
-
-**File:** `apps/purchase/models.py` (Behavior not fully found in current implementation)
-
-**Note:** Based on code structure, recurring expenses appear to be templates that generate actual documents on schedule. Direct posting to ledger from recurring template behavior not found.
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Employee Payable | `total_amount` | 0 |
+| 2 | Bank Account | 0 | `total_amount` |
 
 ---
 
-## 5. Payroll Module
+### 4.3 Recurring Expenses
 
-### 5.1 Payroll Processing
+**Current Implementation:** Template-based system
 
-**File:** `apps/hr/models.py` (Lines 121-336)
+| Action | Ledger Impact |
+|--------|---------------|
+| Create Template | ❌ NO |
+| Generate Instance | Creates document (Invoice/Bill) |
+| Post Generated Document | ✅ YES |
 
-**Model:** `Payroll`
+**Process Flow:**
+1. Recurring Expense template stores schedule and amounts
+2. Scheduler generates actual document (Invoice/Bill) based on `next_date`
+3. Generated document follows standard posting rules
 
-**Trigger Event:** User processes draft payroll
+**Note:** Template itself NEVER posts to ledger. Only generated documents post.
 
-**Method:** `Payroll.post_to_accounting(user)` (Lines 177-268)
+---
 
-**JOURNAL ENTRY CREATED:** YES
+## 5. Payments Module
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Salary Expense | gross_salary | 0 | Salary Expense - {employee_name} |
-| 2 | Salary Payable | 0 | net_salary | Salary Payable - {employee_name} |
-| 3 | Salary Payable | 0 | deductions | Deductions - {employee_name} |
+### 5.1 Payment Received (Customer Payment)
 
-**CALCULATION:**
+#### 5.1.1 Status-Based Ledger Impact Matrix
+
+| Status | Ledger Impact | Journal Created |
+|--------|---------------|-----------------|
+| **Draft** | ❌ NO | ❌ NO |
+| **Confirmed** | ✅ YES | ✅ YES |
+| **Reconciled** | ❌ NO | ❌ NO (Status update only) |
+| **Cancelled** | ✅ YES | ✅ YES (Reversal) |
+
+#### 5.1.2 Confirmation Journal Entry
+
+**Trigger:** Payment confirmed  
+**Method:** Created in `receive_payment` view
+
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Bank/Cash Account | `amount` | 0 |
+| 2 | Accounts Receivable | 0 | `amount` |
+
+#### 5.1.3 Report Impact
+
+| Report | Impact |
+|--------|--------|
+| **Trial Balance** | Bank increases (Dr), AR decreases (Cr) |
+| **Cash Flow Statement** | ✅ Operating Activity: Cash received from customers |
+| **AR Aging** | Outstanding balance reduced |
+| **Bank Ledger** | Balance increases |
+
+#### 5.1.4 Special Scenarios
+
+**Partial Payment:**
+- `allocated_amount < amount`
+- AR balance = original - payment
+- Remaining AR stays in aging report
+
+**Overpayment:**
+- `unallocated_amount = amount - allocated_amount`
+- Excess posted to Customer Advances (Liability)
+
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Bank/Cash | `amount` | 0 |
+| 2 | Accounts Receivable | 0 | `allocated_amount` |
+| 3 | Customer Advances | 0 | `unallocated_amount` |
+
+---
+
+### 5.2 Payment Made (Vendor Payment)
+
+#### 5.2.1 Status-Based Ledger Impact Matrix
+
+| Status | Ledger Impact | Journal Created |
+|--------|---------------|-----------------|
+| **Draft** | ❌ NO | ❌ NO |
+| **Confirmed** | ✅ YES | ✅ YES |
+| **Reconciled** | ❌ NO | ❌ NO |
+| **Cancelled** | ✅ YES | ✅ YES (Reversal) |
+
+#### 5.2.2 Confirmation Journal Entry
+
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Accounts Payable | `amount` | 0 |
+| 2 | Bank/Cash Account | 0 | `amount` |
+
+#### 5.2.3 Report Impact
+
+| Report | Impact |
+|--------|--------|
+| **Trial Balance** | AP decreases (Dr), Bank decreases (Cr) |
+| **Cash Flow Statement** | ✅ Operating Activity: Cash paid to suppliers |
+| **AP Aging** | Outstanding balance reduced |
+| **Bank Ledger** | Balance decreases |
+
+---
+
+## 6. Payroll Module
+
+### 6.1 Payroll Processing
+
+#### 6.1.1 Status-Based Ledger Impact Matrix
+
+| Status | Ledger Impact | Journal Created | Accounts Affected |
+|--------|---------------|-----------------|-------------------|
+| **Draft** | ❌ NO | ❌ NO | None |
+| **Processed** | ✅ YES | ✅ YES | Salary Expense (Dr), Salary Payable (Cr) |
+| **Paid** | ✅ YES | ✅ YES | Salary Payable (Dr), Bank (Cr) |
+
+#### 6.1.2 Processing Journal Entry
+
+**Trigger:** Payroll processed  
+**Method:** `Payroll.post_to_accounting(user)`
+
+**Calculation:**
 ```python
 gross_salary = basic_salary + allowances
 net_salary = gross_salary - deductions
 ```
 
-**Note:** Deductions are credited to Salary Payable in current implementation (simplified approach).
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Salary Expense | `gross_salary` | 0 |
+| 2 | Salary Payable | 0 | `net_salary` |
+| 3 | Salary Payable | 0 | `deductions` |
 
-**STATUS-BASED BEHAVIOR:**
-- Draft → No posting
-- Processed → Journal posted, expense recognized, liability created
-- Paid → Separate payment journal clears liability
+**Note:** Deductions credited to Salary Payable (simplified). For detailed tracking, individual deduction accounts can be used.
 
----
+#### 6.1.3 Payment Journal Entry
 
-### 5.2 Salary Payment
+**Trigger:** Salary paid  
+**Method:** `Payroll.post_payment_journal(bank_account, payment_date)`
 
-**Method:** `Payroll.post_payment_journal(bank_account, payment_date, reference, user)` (Lines 270-336)
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Salary Payable | `net_salary` | 0 |
+| 2 | Bank Account | 0 | `net_salary` |
 
-**JOURNAL ENTRY CREATED:** YES
+#### 6.1.4 Report Impact
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Salary Payable | net_salary | 0 | Clear Salary Payable - {employee_name} |
-| 2 | Bank Account | 0 | net_salary | Salary to {employee_name} |
-
----
-
-## 6. Fixed Assets Module
-
-### 6.1 Asset Activation (Capitalization)
-
-**File:** `apps/assets/models.py` (Lines 76-264)
-
-**Model:** `FixedAsset`
-
-**Method:** `FixedAsset.activate(user)` (Lines 210-264)
-
-**Trigger Event:** User activates draft asset
-
-**JOURNAL ENTRY CREATED:** YES
-
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Fixed Asset Account | acquisition_cost | 0 | Fixed Asset - {asset_name} |
-| 2 | AP/Clearing Account | 0 | acquisition_cost | AP/Clearing - {asset_name} |
-
-**ACCOUNT SELECTION:**
-- Uses category's `asset_account` if set
-- Fallback: `AccountMapping.get_account_or_default('fixed_asset', '1400')`
-- Clearing: `AccountMapping.get_account_or_default('fixed_asset_clearing', '2000')`
+| Report | Impact (Processed) | Impact (Paid) |
+|--------|-------------------|---------------|
+| **Trial Balance** | Expense ↑ (Dr), Payable ↑ (Cr) | Payable ↓ (Dr), Bank ↓ (Cr) |
+| **P&L** | Salary Expense recognized | No change |
+| **Balance Sheet** | Liability (Salary Payable) created | Liability cleared, Bank reduced |
+| **Cash Flow** | No impact | Operating: Cash paid to employees |
 
 ---
 
-### 6.2 Depreciation Run
+## 7. Fixed Assets Module
 
-**Method:** `FixedAsset.run_depreciation(depreciation_date, user)` (Lines 266-349)
+### 7.1 Asset Lifecycle
 
-**Trigger Event:** Monthly depreciation run
+| Status | Action | Ledger Impact | Journal Created |
+|--------|--------|---------------|-----------------|
+| **Draft** | Create asset | ❌ NO | ❌ NO |
+| **Active** | Activate/Capitalize | ✅ YES | ✅ YES |
+| **Active** | Run Depreciation | ✅ YES | ✅ YES |
+| **Fully Depreciated** | Book value = salvage | ❌ NO | ❌ NO |
+| **Disposed** | Sell/Write-off | ✅ YES | ✅ YES |
 
-**DEPRECIATION CALCULATION:**
+### 7.2 Asset Activation (Capitalization)
+
+**Trigger:** User activates draft asset  
+**Method:** `FixedAsset.activate(user)`
+
+**Journal Entry:**
+
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Fixed Asset Account | `acquisition_cost` | 0 |
+| 2 | AP/Clearing Account | 0 | `acquisition_cost` |
+
+**Report Impact:**
+- Balance Sheet: Fixed Asset increases
+- If linked to bill: AP balance matches
+
+### 7.3 Depreciation Run
+
+**Trigger:** Monthly depreciation run  
+**Method:** `FixedAsset.run_depreciation(depreciation_date, user)`
+
+**Depreciation Calculation:**
+
+**Straight-Line Method:**
 ```python
-# Straight Line Method
-monthly_depreciation = depreciable_amount / useful_life_months
 depreciable_amount = acquisition_cost - salvage_value
+monthly_depreciation = depreciable_amount / useful_life_months
+```
 
-# Declining Balance Method
-rate = 2 / useful_life_months
+**Declining Balance Method:**
+```python
+rate = 2 / useful_life_months  # Double declining
 monthly_depreciation = book_value * rate
 ```
 
-**JOURNAL ENTRY CREATED:** YES
+**Journal Entry:**
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Depreciation Expense | depreciation_amount | 0 | Depreciation Expense - {asset_name} |
-| 2 | Accumulated Depreciation | 0 | depreciation_amount | Accumulated Depreciation - {asset_name} |
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Depreciation Expense | `depreciation_amount` | 0 |
+| 2 | Accumulated Depreciation | 0 | `depreciation_amount` |
 
 **Asset Update:**
 ```python
@@ -473,423 +574,415 @@ if book_value <= salvage_value:
     status = 'fully_depreciated'
 ```
 
-**Depreciation Record Created:** `AssetDepreciation` model stores history
+**Report Impact:**
+- P&L: Depreciation Expense recognized
+- Balance Sheet: Accum Depreciation (contra asset) increases, Net Fixed Asset decreases
 
----
+### 7.4 Asset Disposal
 
-### 6.3 Asset Disposal
+**Trigger:** Asset disposed/sold  
+**Method:** `FixedAsset.dispose(disposal_date, disposal_amount, reason, user)`
 
-**Method:** `FixedAsset.dispose(disposal_date, disposal_amount, reason, user)` (Lines 351-440)
-
-**GAIN/LOSS CALCULATION:**
+**Gain/Loss Calculation:**
 ```python
-gain_loss_on_disposal = disposal_amount - book_value
+gain_loss = disposal_amount - book_value
+# If positive = Gain on Disposal
+# If negative = Loss on Disposal
 ```
 
-**JOURNAL ENTRY CREATED:** YES
+**Journal Entry:**
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Accumulated Depreciation | accumulated_depreciation | 0 | Clear Accum Depreciation |
-| 2 | Bank/Receivable | disposal_amount | 0 | Disposal Proceeds |
-| 3 | Gain/Loss on Disposal | abs(loss) or 0 | gain or 0 | Gain/Loss on Disposal |
-| 4 | Fixed Asset Account | 0 | acquisition_cost | Clear Asset |
-
----
-
-## 7. Inventory Module
-
-### 7.1 Stock Movements
-
-**File:** `apps/inventory/models.py` (Lines 163-430)
-
-**Model:** `StockMovement`
-
-**Movement Types:**
-- `in` - Stock In (Purchase)
-- `out` - Stock Out (Sales)
-- `adjustment_plus` - Positive Adjustment
-- `adjustment_minus` - Negative Adjustment
-- `transfer` - Inter-warehouse Transfer
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Accumulated Depreciation | `accumulated_depreciation` | 0 |
+| 2 | Bank/Receivable | `disposal_amount` | 0 |
+| 3 | Loss on Disposal (if loss) | `abs(loss)` | 0 |
+| 3 | Gain on Disposal (if gain) | 0 | `gain` |
+| 4 | Fixed Asset Account | 0 | `acquisition_cost` |
 
 ---
 
-#### 7.1.1 Stock In
+## 8. Inventory Module
 
-**Method:** `StockMovement.post_to_accounting(user)` (Lines 287-420)
+### 8.1 Stock Movement Types
 
-**JOURNAL ENTRY CREATED:** YES (when `movement_type = 'in'`)
+| Movement Type | Source | Ledger Impact | COGS Impact |
+|--------------|--------|---------------|-------------|
+| **Stock In** | Purchase | ✅ YES | ❌ NO |
+| **Stock Out** | Sales | ✅ YES | ✅ YES |
+| **Adjustment (+)** | Manual | ✅ YES | ❌ NO |
+| **Adjustment (-)** | Manual | ✅ YES | ❌ NO |
+| **Transfer** | Warehouse move | ❌ NO | ❌ NO |
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Inventory Asset | total_cost | 0 | Inventory - {item_name} |
-| 2 | GRN Clearing | 0 | total_cost | GRN Clearing - {reference} |
+### 8.2 Stock In (Purchase Receipt)
 
-**ACCOUNT SELECTION:**
-- `inventory_asset` (fallback: '1500')
-- `inventory_grn_clearing` (fallback: '2010')
+**Trigger:** Stock movement `movement_type = 'in'` posted  
+**Method:** `StockMovement.post_to_accounting(user)`
 
-**COST CALCULATION:**
+**Cost Calculation:**
 ```python
-total_cost = unit_cost * abs(quantity)
+total_cost = unit_cost * quantity
 # If unit_cost not set, uses item.purchase_price
 ```
 
----
-
-#### 7.1.2 Stock Out (COGS)
-
-**JOURNAL ENTRY CREATED:** YES (when `movement_type = 'out'`)
-
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Cost of Goods Sold | total_cost | 0 | COGS - {item_name} |
-| 2 | Inventory Asset | 0 | total_cost | Inventory - {item_name} |
-
-**ACCOUNT SELECTION:**
-- `inventory_cogs` (fallback: '5100')
-- `inventory_asset` (fallback: '1500')
-
----
-
-#### 7.1.3 Stock Adjustments
-
-**Positive Adjustment:**
+**Journal Entry:**
 
 | Line | Account | Debit | Credit |
 |------|---------|-------|--------|
-| 1 | Inventory Asset | total_cost | 0 |
-| 2 | Stock Variance | 0 | total_cost |
+| 1 | Inventory Asset | `total_cost` | 0 |
+| 2 | GRN Clearing / AP | 0 | `total_cost` |
 
-**Negative Adjustment:**
+**Stock Update:**
+```python
+stock.quantity += quantity
+```
+
+### 8.3 Stock Out (Sales Delivery)
+
+**Trigger:** Stock movement `movement_type = 'out'` posted
+
+**Journal Entry:**
 
 | Line | Account | Debit | Credit |
 |------|---------|-------|--------|
-| 1 | Stock Variance | total_cost | 0 |
-| 2 | Inventory Asset | 0 | total_cost |
+| 1 | Cost of Goods Sold | `total_cost` | 0 |
+| 2 | Inventory Asset | 0 | `total_cost` |
 
-**ACCOUNT SELECTION:**
-- `inventory_variance` (fallback: '5200')
+**Stock Update:**
+```python
+if stock.quantity < quantity:
+    raise ValidationError("Insufficient stock")
+stock.quantity -= quantity
+```
 
----
+**Report Impact:**
+- P&L: COGS recognized
+- Balance Sheet: Inventory decreased
 
-#### 7.1.4 Stock Transfer
+### 8.4 Stock Adjustments
 
-**JOURNAL ENTRY:** No P&L impact. Code shows memo entry or skip for transfers.
+**Positive Adjustment (+):**
 
-**Stock Level Update:**
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Inventory Asset | `total_cost` | 0 |
+| 2 | Stock Variance (Expense/Income) | 0 | `total_cost` |
+
+**Negative Adjustment (-):**
+
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Stock Variance (Expense) | `total_cost` | 0 |
+| 2 | Inventory Asset | 0 | `total_cost` |
+
+### 8.5 Stock Transfer
+
+**Ledger Impact:** ❌ NO direct P&L impact
+
+**Stock Update:**
 ```python
 # Source warehouse
-stock.quantity -= quantity
-
+source_stock.quantity -= quantity
 # Destination warehouse
-to_stock.quantity += quantity
+dest_stock.quantity += quantity
 ```
+
+**Note:** Transfer is balance sheet neutral (inventory moves between locations).
 
 ---
 
-## 8. Projects Module
+## 9. Projects Module
 
-### 8.1 Project Expenses
+### 9.1 Project Expenses
 
-**File:** `apps/projects/models.py` (Lines 175-361)
+#### 9.1.1 Status-Based Ledger Impact Matrix
 
-**Model:** `ProjectExpense`
+| Status | Ledger Impact | Journal Created |
+|--------|---------------|-----------------|
+| **Draft** | ❌ NO | ❌ NO |
+| **Approved** | ❌ NO | ❌ NO |
+| **Posted** | ✅ YES | ✅ YES |
+| **Rejected** | ❌ NO | ❌ NO |
 
-**Method:** `ProjectExpense.post_to_accounting(user)` (Lines 261-340)
+#### 9.1.2 Posting Journal Entry
 
-**Trigger Event:** Approved project expense posted
+**Trigger:** Approved expense posted  
+**Method:** `ProjectExpense.post_to_accounting(user)`
 
-**JOURNAL ENTRY CREATED:** YES
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Project Expense Account | `amount` | 0 |
+| 2 | VAT Recoverable | `vat_amount` | 0 |
+| 3 | AP/Clearing | 0 | `total_amount` |
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Project Expense Account | amount | 0 | Project {code}: {category} - {description} |
-| 2 | VAT Recoverable | vat_amount | 0 | Input VAT (if applicable) |
-| 3 | AP/Clearing | 0 | total_amount | AP - {expense_number} |
-
-**ACCOUNT SELECTION:**
-1. Expense-specific `expense_account` field
-2. Project's `expense_account` field
-3. `AccountMapping.get_account_or_default('project_expense', '5000')`
-
-**Project Totals Update:**
+**Project Update:**
 ```python
-# Called via Project.update_totals()
-total_expenses = Sum(project_expenses.filter(posted=True).amount)
+project.total_expenses += expense.amount
+project.save()
 ```
 
----
+### 9.2 Project Revenue
 
-### 8.2 Project Revenue
-
-**Implementation:** Project revenue tracked via linked invoices through `ProjectInvoice` model.
+**Current Implementation:** Revenue tracked via linked Sales Invoices
 
 ```python
 # Project.update_totals()
 for project_invoice in self.invoices.filter(is_active=True):
     if project_invoice.invoice.status in ['posted', 'paid', 'partial']:
-        revenue_total += project_invoice.invoice.total_amount
+        total_revenue += project_invoice.invoice.total_amount
 ```
 
-**Note:** No separate project revenue posting found. Revenue flows through Sales Invoice posting.
+**Report Impact:**
+- Revenue flows through Sales Invoice posting
+- Project P&L: Difference between `total_revenue` and `total_expenses`
 
 ---
 
-## 9. Property Management Module
+## 10. Property Management Module
 
-### 9.1 PDC Cheque Handling
+### 10.1 PDC Cheque Lifecycle
 
-**File:** `apps/property/models.py` (Lines 258-600)
+| Status | Action | Ledger Impact | Journal Created |
+|--------|--------|---------------|-----------------|
+| **Received** | Accept cheque | ❌ NO | ❌ NO |
+| **Deposited** | Deposit to bank | ✅ YES | ✅ YES |
+| **Cleared** | Bank confirms | ✅ YES | ✅ YES |
+| **Bounced** | Bank returns | ✅ YES | ✅ YES |
+| **Replaced** | New cheque | ❌ NO | ❌ NO |
+| **Returned** | Give back | ❌ NO | ❌ NO |
 
-**Model:** `PDCCheque`
+### 10.2 PDC Deposit
 
-**Composite Uniqueness:**
-```python
-constraints = [
-    UniqueConstraint(
-        fields=['cheque_number', 'bank_name', 'cheque_date', 'amount', 'tenant'],
-        name='unique_pdc_identification'
-    )
-]
-```
+**Trigger:** User deposits PDC  
+**Method:** `PDCCheque.deposit(bank_account, user, deposit_date)`
 
-**Status Flow:** `received` → `deposited` → `cleared` OR `bounced`
+**Journal Entry:**
 
----
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | PDC Control Account (Asset) | `amount` | 0 |
+| 2 | Trade Debtors (Tenant AR) | 0 | `amount` |
 
-#### 9.1.1 PDC Deposit
-
-**Method:** `PDCCheque.deposit(bank_account, user, deposit_date)` (Lines 427-510)
-
-**Trigger Event:** User deposits received PDC
-
-**JOURNAL ENTRY CREATED:** YES
-
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | PDC Control Account | amount | 0 | PDC from {tenant_name} |
-| 2 | Trade Debtors (Tenant AR) | 0 | amount | PDC {cheque_number} deposited |
-
-**Note:** PDC does NOT go to Bank directly on deposit. Goes to PDC Control (Asset).
+**CRITICAL:** PDC does NOT go to Bank. Goes to PDC Control (intermediate asset).
 
 **Status Update:**
-```python
-status = 'deposited'
-deposit_status = 'in_clearing'
-deposited_date = deposit_date
-deposited_to_bank = bank_account
-deposited_by = user
-```
+- `status = 'deposited'`
+- `deposit_status = 'in_clearing'`
 
----
+### 10.3 PDC Clearance
 
-#### 9.1.2 PDC Clearance
+**Trigger:** Bank confirms clearance  
+**Method:** `PDCCheque.clear(user, cleared_date, reference)`
 
-**Method:** `PDCCheque.clear(user, cleared_date, reference)` (Found in continuation of model)
+**Journal Entry:**
 
-**JOURNAL ENTRY CREATED:** YES
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Bank Account | `amount` | 0 |
+| 2 | PDC Control Account | 0 | `amount` |
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Bank Account | amount | 0 | PDC Cleared - {cheque_number} |
-| 2 | PDC Control Account | 0 | amount | Clear PDC Control |
+**Cash Flow Impact:** ✅ YES - Operating activity (cash received from tenants)
 
-**Status Update:**
-```python
-status = 'cleared'
-deposit_status = 'cleared'
-cleared_date = cleared_date
-clearing_reference = reference
-reconciled = True
-```
+### 10.4 PDC Bounce
 
----
+**Trigger:** Bank returns cheque  
+**Method:** `PDCCheque.bounce(user, bounce_date, reason, charges)`
 
-#### 9.1.3 PDC Bounce
+**Journal Entry (Reversal):**
 
-**Method:** `PDCCheque.bounce(user, bounce_date, reason, charges)` (Found in model)
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Trade Debtors (Tenant AR) | `amount` | 0 |
+| 2 | PDC Control Account | 0 | `amount` |
 
-**JOURNAL ENTRY CREATED:** YES
+**Bounce Charges (if any):**
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Trade Debtors (Tenant AR) | amount | 0 | Bounced PDC - {cheque_number} |
-| 2 | PDC Control Account | 0 | amount | Reverse PDC Control |
-| 3 | Trade Debtors (Tenant AR) | bounce_charges | 0 | Bounce Charges (if any) |
-| 4 | Other Income | 0 | bounce_charges | Bounce Charges Income |
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Trade Debtors | `bounce_charges` | 0 |
+| 2 | Other Income | 0 | `bounce_charges` |
 
----
+### 10.5 Rent Invoices
 
-### 9.2 Rent Invoices
+**Current Implementation:** Uses Sales Invoice model linked to Tenant/Lease
 
-**File:** `apps/property/models.py`
+**Posting:** Standard Sales Invoice flow with tenant-specific AR account
 
-**Model:** `RentInvoice` (if exists) or through Sales Invoice
-
-**Implementation:** Property rent invoices created through Sales module linked to Tenant/Lease. Posting follows standard Sales Invoice flow with tenant-specific AR account.
-
----
-
-### 9.3 Security Deposits
-
-**Model:** Part of `Lease` model
+### 10.6 Security Deposits
 
 **On Receipt:**
 
 | Line | Account | Debit | Credit |
 |------|---------|-------|--------|
-| 1 | Bank | amount | 0 |
-| 2 | Security Deposit Liability | 0 | amount |
+| 1 | Bank | `deposit_amount` | 0 |
+| 2 | Security Deposit Liability | 0 | `deposit_amount` |
 
-**Note:** Implementation details for security deposit journal posting behavior not fully found in current codebase.
+**On Refund:**
 
----
-
-## 10. Banking Module
-
-### 10.1 Bank Transfer
-
-**File:** `apps/finance/models.py` (Lines 1660-1729)
-
-**Model:** `BankTransfer`
-
-**Method:** `BankTransfer.post_to_accounting(user)` (Lines 1690-1729)
-
-**JOURNAL ENTRY CREATED:** YES
-
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | To Bank GL Account | amount | 0 | Transfer from {from_bank} |
-| 2 | From Bank GL Account | 0 | amount | Transfer to {to_bank} |
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Security Deposit Liability | `refund_amount` | 0 |
+| 2 | Bank | 0 | `refund_amount` |
 
 ---
 
-### 10.2 Bank Statement Import
+## 11. Banking Module
 
-**File:** `apps/finance/models.py` (Lines 1732-1943)
+### 11.1 Bank Transfer
 
-**Model:** `BankStatement`
+#### 11.1.1 Status-Based Ledger Impact Matrix
 
-**Fields:**
-- `statement_number` - Auto-generated
-- `bank_account` - ForeignKey to BankAccount
-- `opening_balance`, `closing_balance` - From bank
-- `total_debits`, `total_credits` - Calculated
+| Status | Ledger Impact | Journal Created |
+|--------|---------------|-----------------|
+| **Draft** | ❌ NO | ❌ NO |
+| **Confirmed** | ✅ YES | ✅ YES |
 
-**Line Model:** `BankStatementLine` (Lines 1946-2149)
+#### 11.1.2 Transfer Journal Entry
 
----
+**Trigger:** Bank transfer confirmed  
+**Method:** `BankTransfer.post_to_accounting(user)`
 
-### 10.3 Bank Reconciliation
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | To Bank GL Account | `amount` | 0 |
+| 2 | From Bank GL Account | 0 | `amount` |
 
-**Auto-Match Logic:** `BankStatement.auto_match(date_tolerance=3)` (Lines 1820-1910)
+**Cash Flow:** NO net impact (cash moves between accounts)
+
+### 11.2 Bank Reconciliation
+
+#### 11.2.1 Process Flow
+
+1. Import bank statement (CSV or manual)
+2. Auto-match with payments/journals
+3. Manual match remaining items
+4. Create adjustments for differences
+5. Finalize reconciliation
+
+#### 11.2.2 Auto-Match Logic
+
+**Method:** `BankStatement.auto_match(date_tolerance=3)`
 
 **Matching Criteria:**
 1. Amount exact match
 2. Date within ±3 days (configurable)
-3. Reference (if available)
+3. Reference (optional)
 
-**Matching Priorities:**
-1. Match with Payment records (received/made)
+**Match Priority:**
+1. Match with Payment records
 2. Match with JournalEntryLine on bank GL account
 
-**Match Methods:** `auto` or `manual`
+#### 11.2.3 Write-offs / Adjustments
 
-**Reconciliation Status:** `unmatched`, `matched`, `adjusted`
-
----
-
-### 10.4 Write-offs / Adjustments
-
-**Method:** `BankStatementLine.create_adjustment(adjustment_type, expense_account, user)` (Lines 2074-2134)
+**Trigger:** Unmatched bank item requires adjustment  
+**Method:** `BankStatementLine.create_adjustment(adjustment_type, expense_account, user)`
 
 **Types:** `bank_charge`, `interest_income`, `fx_difference`, `other`
 
-**JOURNAL ENTRY CREATED:** YES
+**Bank Charge (Money Out):**
 
-For money out (debit on statement):
 | Line | Account | Debit | Credit |
 |------|---------|-------|--------|
-| 1 | Expense Account | amount | 0 |
-| 2 | Bank GL Account | 0 | amount |
+| 1 | Bank Charges Expense | `amount` | 0 |
+| 2 | Bank GL Account | 0 | `amount` |
 
-For money in (credit on statement):
+**Interest Income (Money In):**
+
 | Line | Account | Debit | Credit |
 |------|---------|-------|--------|
-| 1 | Bank GL Account | amount | 0 |
-| 2 | Income Account | 0 | amount |
+| 1 | Bank GL Account | `amount` | 0 |
+| 2 | Interest Income | 0 | `amount` |
+
+### 11.3 Petty Cash
+
+#### 11.3.1 Replenishment
+
+**Trigger:** Petty cash replenishment posted  
+**Method:** `PettyCashReplenishment.post_to_accounting(user)`
+
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Petty Cash GL | `amount` | 0 |
+| 2 | Bank GL | 0 | `amount` |
 
 ---
 
-### 10.5 Petty Cash
+## 12. Journal Entries
 
-**Model:** `PettyCash`, `PettyCashReplenishment` (Lines 850-946)
-
-**Replenishment Posting:**
-
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Petty Cash GL | amount | 0 | Replenishment - {petty_cash_name} |
-| 2 | Bank GL | 0 | amount | Bank - {bank_name} |
-
----
-
-## 11. Journal Entries
-
-### 11.1 Manual Journal Entries
+### 12.1 Manual Journal Entries
 
 **Trigger:** User creates journal via Finance → Journal → New
 
-**JOURNAL ENTRY CREATED:** YES (on user submission)
+| Status | Ledger Impact |
+|--------|---------------|
+| Draft | ❌ NO |
+| Posted | ✅ YES |
 
 **Rules:**
-- Must be balanced (total_debit = total_credit)
+- Must be balanced (`total_debit == total_credit`)
 - Minimum 2 lines required
-- Can only post to leaf accounts
+- Only leaf accounts allowed
 - Period must not be locked
 - Fiscal year must not be closed
 
----
-
-### 11.2 Auto-Generated Journals
+### 12.2 Auto-Generated Journals
 
 **Source modules that create journals:**
-- `sales` - Sales Invoice posting
-- `purchase` - Vendor Bill posting
-- `payment` - Payment confirmation
-- `bank_transfer` - Bank transfer
-- `expense_claim` - Expense claim approval
-- `payroll` - Payroll processing
-- `inventory` - Stock movements
-- `fixed_asset` - Asset activation, depreciation, disposal
-- `project` - Project expense posting
-- `pdc` - PDC deposit, clearance, bounce
-- `property` - Property-related transactions
-- `vat` - VAT adjustments
-- `corporate_tax` - Tax provision posting
+
+| Source Module | Trigger | Journal Created |
+|--------------|---------|-----------------|
+| `sales` | Invoice posted | Yes |
+| `purchase` | Bill posted | Yes |
+| `payment` | Payment confirmed | Yes |
+| `bank_transfer` | Transfer confirmed | Yes |
+| `expense_claim` | Claim approved | Yes |
+| `payroll` | Payroll processed | Yes |
+| `inventory` | Stock movement posted | Yes |
+| `fixed_asset` | Asset activated/depreciated/disposed | Yes |
+| `project` | Expense posted | Yes |
+| `pdc` | PDC deposited/cleared/bounced | Yes |
+| `vat` | VAT adjustment | Yes |
+| `corporate_tax` | Tax provision posted | Yes |
+| `opening_balance` | Opening balance posted | Yes |
 
 **Identification:** `is_system_generated = True`
 
----
-
-### 11.3 Reversal Journals
+### 12.3 Reversal Journals
 
 **Trigger:** User reverses posted journal
 
 **Process:**
-1. Create new JournalEntry with `entry_type = 'reversal'`
-2. `reversal_of` points to original journal
-3. Lines have debits/credits swapped
-4. Original journal `status = 'reversed'`
+1. Create new JournalEntry:
+   - `entry_type = 'reversal'`
+   - `reversal_of = original_journal`
+   - `source_module = 'reversal'`
+2. For each original line, create reverse line:
+   - Swap `debit` and `credit`
+3. Post the reversal
+4. Set original `status = 'reversed'`
 
-**Note:** Original journal remains in system (immutable). Reversal creates offsetting entry.
+**Original journal remains immutable for audit trail.**
 
 ---
 
-## 12. Opening Balances
+## 13. Opening Balances
 
-### 12.1 System Opening Balance
+### 13.1 Opening Balance Rules
+
+**Allowed Account Types:**
+- ✅ Assets
+- ✅ Liabilities
+- ✅ Equity
+- ❌ Income (must start at zero)
+- ❌ Expense (must start at zero)
+
+**Validation (from `Account.clean()`):**
+```python
+if opening_balance != 0 and account_type in [INCOME, EXPENSE]:
+    raise ValidationError("Opening balance not allowed for Income/Expense accounts")
+```
+
+### 13.2 System Opening Balance Entry
 
 **Implementation:** Single system-generated journal entry
 
@@ -899,77 +992,127 @@ For money in (credit on statement):
 - `is_system_generated = True`
 - `reference = 'OPENING BALANCE'`
 
-**Rules:**
-- Opening balances allowed ONLY for Assets, Liabilities, Equity
-- Income & Expense accounts cannot have opening balances
-- Must be balanced (Dr = Cr)
-- Becomes locked after posting
-- Editable only if fiscal year not closed
+### 13.3 Opening Balance Edit Rules
 
-**Account Validation (from Account.clean()):**
+| Condition | Can Edit | Reason |
+|-----------|----------|--------|
+| Fiscal Year Open | ✅ YES | Normal edit allowed |
+| Fiscal Year Closed | ❌ NO | Locked for audit |
+| Account has subsequent transactions | ❌ NO | Would affect balances |
+| is_locked = True | ❌ NO | Locked journal |
+
+**Edit Process (When Allowed):**
+1. User clicks "Edit Opening Balances" button
+2. System checks:
+   - `fiscal_year.is_closed == False`
+   - No transactions exist after opening date for modified accounts
+3. If valid:
+   - Modify journal entry lines directly
+   - Recalculate totals
+   - Log changes to audit trail
+4. If invalid:
+   - Show error message
+   - Prevent edit
+
+**UI/Permission Logic:**
 ```python
-if opening_balance != 0 and account_type in [INCOME, EXPENSE]:
-    raise ValidationError("Opening balance not allowed for Income/Expense accounts")
+def can_edit_opening_balances():
+    if not system_opening_journal:
+        return False
+    if system_opening_journal.fiscal_year.is_closed:
+        return False
+    # Check for subsequent transactions
+    for line in system_opening_journal.lines.all():
+        if JournalEntryLine.objects.filter(
+            account=line.account,
+            journal_entry__date__gt=system_opening_journal.date,
+            journal_entry__status='posted'
+        ).exists():
+            return False  # Account has activity
+    return True
 ```
 
----
-
-### 12.2 Opening Balance Entry
-
-**Journal Entry Structure:**
+### 13.4 Journal Entry Structure
 
 | Line | Account Type | Debit | Credit |
 |------|-------------|-------|--------|
 | 1-N | Assets | balance | 0 |
 | N+1-M | Liabilities | 0 | balance |
 | M+1-P | Equity | 0 | balance |
-| P+1 | Retained Earnings | 0 | balancing_amount |
+| Balancing | Retained Earnings | difference | 0 (or vice versa) |
 
-**Balancing:** Difference posted to "Retained Earnings – Opening Balance"
+**Rule:** Total Debit MUST equal Total Credit
 
 ---
 
-## 13. VAT & Corporate Tax
+## 14. VAT & Corporate Tax
 
-### 13.1 VAT Return
+### 14.1 UAE VAT Rules
 
-**File:** `apps/finance/models.py` (Lines 1160-1246)
+**VAT Rate:** 5% (Standard)
 
-**Model:** `VATReturn`
+**VAT Calculation Formulas:**
 
-**UAE VAT Boxes:**
-- Box 1: Standard Rated Supplies (5%)
-- Box 2: Zero Rated Supplies
-- Box 3: Exempt Supplies
-- Box 9-10: Input VAT on Purchases
-
-**Calculation:**
+**VAT-Exclusive:**
 ```python
-output_vat = standard_rated_vat
+net_amount = quantity * unit_price
+vat_amount = net_amount * (vat_rate / 100)
+gross_amount = net_amount + vat_amount
+```
+
+**VAT-Inclusive:**
+```python
+gross_amount = quantity * unit_price
+net_amount = gross_amount / (1 + vat_rate / 100)
+vat_amount = gross_amount - net_amount
+```
+
+### 14.2 VAT Return Model
+
+**File:** `apps/finance/models.py`
+
+**UAE VAT Return Boxes:**
+
+| Box | Description | Source |
+|-----|-------------|--------|
+| 1 | Standard Rated Supplies | Sales invoices (5% VAT) |
+| 2 | Zero Rated Supplies | Sales invoices (0% VAT) |
+| 3 | Exempt Supplies | Sales invoices (exempt) |
+| 9 | Standard Rated Expenses | Bills/expenses with VAT |
+| 10 | Input VAT | VAT on bills/expenses |
+
+**Net VAT Calculation:**
+```python
+output_vat = standard_rated_vat  # From sales
+input_vat = input_vat            # From purchases
 net_vat = output_vat - input_vat + adjustments
 ```
 
-**Report derives from:**
-- Output VAT: Sum of VAT from posted sales invoices/credit notes
-- Input VAT: Sum of VAT from posted bills/expense claims
+**If `net_vat > 0`:** Amount payable to FTA  
+**If `net_vat < 0`:** Refund due from FTA
 
----
+### 14.3 Corporate Tax (UAE)
 
-### 13.2 Corporate Tax Computation
+**Legal Basis:** Federal Decree-Law No. 47 of 2022
 
-**File:** `apps/finance/models.py` (Lines 1249-1450)
+**Tax Parameters:**
+- Threshold: AED 375,000
+- Rate: 9%
 
-**Model:** `CorporateTaxComputation`
-
-**UAE Corporate Tax Law:**
-- Rate: 9% on taxable income exceeding AED 375,000
-- Threshold: AED 375,000 (Small Business Relief)
-
-**Calculation Method:**
+**Calculation Formula:**
 ```python
+# Step 1: Accounting Profit
 accounting_profit = revenue - expenses
-taxable_income = accounting_profit + non_deductible_expenses - exempt_income + other_adjustments
 
+# Step 2: Tax Adjustments
+taxable_income = (
+    accounting_profit 
+    + non_deductible_expenses  # Add back: fines, penalties, non-business
+    - exempt_income            # Deduct: qualifying dividends, exempt gains
+    + other_adjustments        # Depreciation adjustments, provisions
+)
+
+# Step 3: Tax Calculation
 if taxable_income <= 375000:
     tax_payable = 0
 else:
@@ -977,91 +1120,121 @@ else:
     tax_payable = taxable_amount_above_threshold * 0.09
 ```
 
-**Tax Provision Journal:**
+### 14.4 Corporate Tax Provision Journal
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Corporate Tax Expense | tax_payable | 0 | Tax Expense - {fiscal_year} |
-| 2 | Corporate Tax Payable | 0 | tax_payable | Tax Liability - {fiscal_year} |
+**Trigger:** Tax computation finalized  
+**Method:** `CorporateTaxComputation.post_provision(user)`
 
-**Tax Payment Journal:**
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Corporate Tax Expense | `tax_payable` | 0 |
+| 2 | Corporate Tax Payable | 0 | `tax_payable` |
 
-| Line | Account | Debit | Credit | Description |
-|------|---------|-------|--------|-------------|
-| 1 | Corporate Tax Payable | paid_amount | 0 | Clear Tax Liability |
-| 2 | Bank Account | 0 | paid_amount | Tax Payment - {reference} |
+### 14.5 Corporate Tax Payment Journal
+
+**Trigger:** Tax payment made  
+**Method:** `CorporateTaxComputation.post_payment(bank_account, payment_date)`
+
+| Line | Account | Debit | Credit |
+|------|---------|-------|--------|
+| 1 | Corporate Tax Payable | `paid_amount` | 0 |
+| 2 | Bank Account | 0 | `paid_amount` |
 
 ---
 
-## 14. Report Derivations
+## 15. Report Derivations
 
-### 14.1 Trial Balance
+### 15.1 Trial Balance
 
 **Source:** `JournalEntryLine` aggregated by Account
 
-**Calculation:**
+**Calculation Logic:**
 ```python
 for each account:
-    total_debit = Sum(journal_lines.debit) where status='posted' and date <= as_of_date
-    total_credit = Sum(journal_lines.credit)
+    # Sum all posted journal lines up to as_of_date
+    total_debit = Sum(lines.debit) WHERE status='posted' AND date <= as_of_date
+    total_credit = Sum(lines.credit)
     net_balance = total_debit - total_credit
     
-    if net_balance > 0:
-        show in Debit column
-    else:
-        show abs(net_balance) in Credit column
+    # Determine column based on account nature
+    if account.debit_increases:  # Asset, Expense
+        if net_balance >= 0:
+            display_debit = net_balance
+            display_credit = 0
+        else:
+            # ABNORMAL: Asset/Expense with credit balance
+            display_debit = net_balance  # Negative in debit column
+            display_credit = 0
+            flag_as_abnormal = True
+    else:  # Liability, Equity, Income
+        if net_balance <= 0:
+            display_debit = 0
+            display_credit = abs(net_balance)
+        else:
+            # ABNORMAL: Liability/Equity/Income with debit balance
+            display_debit = net_balance
+            display_credit = 0
+            flag_as_abnormal = True
 ```
 
-**Special Rules:**
-- Contra accounts (Accumulated Depreciation): Show credit balance under Assets
-- Cash/Bank negative balance: Warning flag
-- Total Debit MUST equal Total Credit
+**Cash/Bank Account Rule:**
+- **Normal:** Positive balance = Debit
+- **Overdraft:** Negative balance = Shows in parentheses, flagged as overdraft if `overdraft_allowed = True`
+- **Error:** Negative balance without overdraft flag = Show warning
 
----
+**Validation:**
+```
+Total Debit MUST equal Total Credit
+```
 
-### 14.2 General Ledger
+### 15.2 General Ledger
 
 **Source:** `JournalEntryLine` filtered by account and date range
 
-**Shows:**
-- Opening Balance (from prior periods)
-- Each transaction with date, reference, description, debit, credit
-- Running balance
-- Closing balance
+**Structure:**
+- Opening Balance (prior period totals)
+- Transactions (date, reference, description, debit, credit)
+- Running Balance
+- Closing Balance
 
----
+### 15.3 Cash Flow Statement (Direct Method)
 
-### 14.3 Cash Flow Statement (Direct Method)
+**Source:** `JournalEntryLine` WHERE `account.is_cash_account = True`
 
-**Source:** `JournalEntryLine` where account.is_cash_account = True
+**MUST INCLUDE:**
+- Payment transactions (received/made)
+- Bank statement entries (cleared)
+- PDC clearances (when bank clears)
+
+**MUST EXCLUDE:**
+- Non-cash entries (depreciation, provisions)
+- PDC deposits (until cleared)
+- AR/AP balances
+- Sales/Purchase ledger values
 
 **Categories:**
-- Operating Activities: Customer receipts, vendor payments, expense payments
-- Investing Activities: Fixed asset purchases/sales
-- Financing Activities: Loan receipts/payments, capital contributions
 
-**Excludes:**
-- Non-cash entries (depreciation, provisions)
-- PDC balances (until cleared)
-- AR/AP balances
+| Category | Includes |
+|----------|----------|
+| **Operating** | Cash from customers, payments to suppliers/employees/taxes |
+| **Investing** | Fixed asset purchases/sales, investments |
+| **Financing** | Capital contributions, loan receipts/payments, drawings |
 
 **Validation:**
 ```
 Opening Cash + Net Cash Change = Closing Cash
 ```
 
----
-
-### 14.4 Profit & Loss
+### 15.4 Profit & Loss
 
 **Source:** `JournalEntryLine` for Income and Expense accounts
 
 **Structure:**
 ```
-Revenue (Income accounts - credit balances)
-- Cost of Sales
+Revenue (Income accounts)
+- Cost of Sales (COGS accounts)
 = Gross Profit
-- Operating Expenses
+- Operating Expenses (Expense accounts)
 = Operating Profit
 ± Other Income/Expenses
 = Net Profit Before Tax
@@ -1069,47 +1242,61 @@ Revenue (Income accounts - credit balances)
 = Net Profit After Tax
 ```
 
----
-
-### 14.5 Balance Sheet
+### 15.5 Balance Sheet
 
 **Source:** `JournalEntryLine` for Asset, Liability, Equity accounts
 
 **Structure:**
 ```
 ASSETS
-  Current Assets (Cash, AR, Inventory, Prepaid)
-  Non-Current Assets (Fixed Assets - Accum Depreciation)
+  Current Assets
+    - Cash & Bank
+    - Trade Receivables (AR)
+    - Inventory
+    - VAT Recoverable
+    - Prepaid Expenses
+  Non-Current Assets
+    - Fixed Assets
+    - Less: Accumulated Depreciation
+    - Intangible Assets
 
 LIABILITIES
-  Current Liabilities (AP, VAT Payable, Accruals)
+  Current Liabilities
+    - Trade Payables (AP)
+    - VAT Payable
+    - Salary Payable
+    - Corporate Tax Payable
   Non-Current Liabilities
+    - Long-term Loans
 
 EQUITY
-  Capital
-  Retained Earnings (Opening + P&L)
+  - Share Capital
+  - Retained Earnings (Opening + P&L)
+  - Current Year Profit/Loss
 ```
 
-**Equation:** Assets = Liabilities + Equity
+**Equation:** `Assets = Liabilities + Equity`
 
----
-
-### 14.6 AR Aging
+### 15.6 AR Aging
 
 **Source:** `Invoice` model with payment allocation
 
 **Aging Buckets:**
-- Current (not due)
-- 1-30 days overdue
-- 31-60 days overdue
-- 61-90 days overdue
-- 90+ days overdue
+| Bucket | Condition |
+|--------|-----------|
+| Current | Not due (due_date >= today) |
+| 1-30 days | due_date between today-30 and today-1 |
+| 31-60 days | due_date between today-60 and today-31 |
+| 61-90 days | due_date between today-90 and today-61 |
+| 90+ days | due_date < today-90 |
 
-**Calculation:** Based on `due_date` vs current date and `balance` (total_amount - paid_amount)
+**Calculation:**
+```python
+outstanding = invoice.total_amount - invoice.paid_amount
+days_overdue = (today - invoice.due_date).days if today > invoice.due_date else 0
+```
 
----
-
-### 14.7 AP Aging
+### 15.7 AP Aging
 
 **Source:** `VendorBill` model with payment allocation
 
@@ -1117,61 +1304,174 @@ EQUITY
 
 ---
 
-## Appendix A: Account Mapping Reference
+## 16. Calculation Formulas
 
-| Transaction Type | Module | Default Account |
-|-----------------|--------|-----------------|
-| `sales_invoice_receivable` | Sales | 1200 |
-| `sales_invoice_revenue` | Sales | 4000 |
-| `sales_invoice_vat` | Sales | 2100 |
-| `vendor_bill_payable` | Purchase | 2000 |
-| `vendor_bill_expense` | Purchase | 5000 |
-| `vendor_bill_vat` | Purchase | 1300 |
-| `payroll_salary_expense` | Payroll | 5100 |
-| `payroll_salary_payable` | Payroll | 2300 |
-| `fixed_asset` | Assets | 1400 |
-| `accumulated_depreciation` | Assets | 1401 |
-| `depreciation_expense` | Assets | 5300 |
-| `inventory_asset` | Inventory | 1500 |
-| `inventory_cogs` | Inventory | 5100 |
-| `inventory_grn_clearing` | Inventory | 2010 |
-| `inventory_variance` | Inventory | 5200 |
-| `project_expense` | Projects | 5000 |
-| `pdc_control` | Property | (Asset) |
+### 16.1 VAT Calculations
+
+**VAT-Exclusive (Standard):**
+```
+Net Amount = Quantity × Unit Price
+VAT Amount = Net Amount × (VAT Rate / 100)
+Gross Amount = Net Amount + VAT Amount
+```
+
+**VAT-Inclusive (Back-Calculate):**
+```
+Gross Amount = Quantity × Unit Price
+Net Amount = Gross Amount / (1 + VAT Rate / 100)
+VAT Amount = Gross Amount - Net Amount
+```
+
+### 16.2 AR Balance
+
+```
+AR Balance = Σ(Invoice Total Amounts) - Σ(Payments Received) - Σ(Credit Notes)
+```
+
+### 16.3 AP Balance
+
+```
+AP Balance = Σ(Bill Total Amounts) - Σ(Payments Made) - Σ(Debit Notes)
+```
+
+### 16.4 Inventory Valuation
+
+**Current Implementation:** Weighted Average Cost
+
+```
+Average Cost = Total Inventory Value / Total Quantity
+COGS = Quantity Sold × Average Cost
+```
+
+### 16.5 Depreciation Formulas
+
+**Straight-Line:**
+```
+Annual Depreciation = (Acquisition Cost - Salvage Value) / Useful Life Years
+Monthly Depreciation = Annual Depreciation / 12
+```
+
+**Double Declining Balance:**
+```
+Depreciation Rate = (2 / Useful Life Years)
+Annual Depreciation = Book Value × Depreciation Rate
+Monthly Depreciation = Annual Depreciation / 12
+```
+
+### 16.6 Project Profitability
+
+```
+Project Profit = Total Revenue - Total Expenses
+Profit Margin % = (Project Profit / Total Revenue) × 100
+Budget Utilization % = (Total Expenses / Budget) × 100
+```
+
+### 16.7 Corporate Tax
+
+```
+Accounting Profit = Total Revenue - Total Expenses
+Taxable Income = Accounting Profit + Non-Deductible Expenses - Exempt Income
+Tax Payable = MAX(0, Taxable Income - 375,000) × 9%
+```
+
+### 16.8 Retained Earnings
+
+```
+Closing Retained Earnings = 
+    Opening Retained Earnings 
+    + Net Profit for Period 
+    - Dividends Declared
+```
 
 ---
 
-## Appendix B: Status Flow Diagrams
+## 17. Appendices
 
-### Invoice Status Flow
+### 17.1 Account Mapping Reference
+
+| Transaction Type | Module | Debit Account | Credit Account |
+|-----------------|--------|---------------|----------------|
+| `sales_invoice_receivable` | Sales | AR (1200) | - |
+| `sales_invoice_revenue` | Sales | - | Sales (4000) |
+| `sales_invoice_vat` | Sales | - | VAT Payable (2100) |
+| `vendor_bill_payable` | Purchase | - | AP (2000) |
+| `vendor_bill_expense` | Purchase | Expense (5000) | - |
+| `vendor_bill_vat` | Purchase | VAT Recoverable (1300) | - |
+| `payroll_salary_expense` | Payroll | Salary Expense (5100) | - |
+| `payroll_salary_payable` | Payroll | - | Salary Payable (2300) |
+| `fixed_asset` | Assets | Fixed Asset (1400) | - |
+| `accumulated_depreciation` | Assets | - | Accum Depr (1401) |
+| `depreciation_expense` | Assets | Depr Expense (5300) | - |
+| `inventory_asset` | Inventory | Inventory (1500) | - |
+| `inventory_cogs` | Inventory | COGS (5100) | - |
+| `inventory_grn_clearing` | Inventory | - | GRN Clearing (2010) |
+| `inventory_variance` | Inventory | Stock Variance (5200) | - |
+| `pdc_control` | Property | PDC Control (1600) | - |
+
+### 17.2 Status Flow Diagrams
+
+**Sales Invoice:**
 ```
-draft → posted → [sent] → paid
-                       → partial → paid
-                       → overdue → paid
+Draft → Posted → [Sent] → [Partial] → Paid
+                       ↓
+                   Cancelled (Reversal)
 ```
 
-### Vendor Bill Status Flow
+**Vendor Bill:**
 ```
-draft → posted → [pending] → paid
-                          → partial → paid
-                          → overdue
-```
-
-### PDC Status Flow
-```
-received → deposited → cleared
-                    → bounced → [replaced]
-                             → returned
+Draft → Posted → [Pending] → [Partial] → Paid
+                          ↓
+                       Overdue
 ```
 
-### Journal Entry Status Flow
+**PDC Cheque:**
 ```
-draft → posted → reversed
+Received → Deposited → Cleared
+                    ↓
+                 Bounced → [Replaced]
+                        → [Returned]
 ```
 
----
+**Journal Entry:**
+```
+Draft → Posted → Reversed
+```
 
-## Appendix C: Audit Trail
+**Payroll:**
+```
+Draft → Processed → Paid
+```
+
+**Fixed Asset:**
+```
+Draft → Active → [Depreciated Monthly] → Fully Depreciated
+              ↓
+           Disposed
+```
+
+### 17.3 Complete Ledger Impact Summary
+
+| Document | Draft | Approved | Posted | Paid | Cancelled |
+|----------|-------|----------|--------|------|-----------|
+| Sales Invoice | ❌ | N/A | ✅ | ❌ | ✅ Reversal |
+| Credit Note | ❌ | N/A | ✅ | N/A | ✅ Reversal |
+| Vendor Bill | ❌ | N/A | ✅ | ❌ | ✅ Reversal |
+| Expense Claim | ❌ | ✅ | N/A | ✅ | ❌ |
+| Payment Received | ❌ | N/A | N/A | N/A (Confirmed=✅) | ✅ Reversal |
+| Payment Made | ❌ | N/A | N/A | N/A (Confirmed=✅) | ✅ Reversal |
+| Payroll | ❌ | N/A | N/A | N/A (Processed=✅, Paid=✅) | ❌ |
+| Fixed Asset | ❌ | N/A | N/A | N/A (Activated=✅) | ❌ |
+| Depreciation | N/A | N/A | N/A | N/A (Run=✅) | ❌ |
+| Stock In | ❌ | N/A | ✅ | N/A | ❌ |
+| Stock Out | ❌ | N/A | ✅ | N/A | ❌ |
+| PDC Deposit | N/A | N/A | N/A | N/A (Deposited=✅) | ❌ |
+| PDC Clearance | N/A | N/A | N/A | N/A (Cleared=✅) | ❌ |
+| PDC Bounce | N/A | N/A | N/A | N/A (Bounced=✅) | ❌ |
+| Bank Transfer | ❌ | N/A | N/A | N/A (Confirmed=✅) | ❌ |
+| Manual Journal | ❌ | N/A | ✅ | N/A | Delete (Draft) / Reverse (Posted) |
+| Opening Balance | ❌ | N/A | ✅ | N/A | ❌ (Locked) |
+
+### 17.4 Audit Trail
 
 **Model:** `AuditLog` (in settings_app)
 
@@ -1179,18 +1479,27 @@ draft → posted → reversed
 - Create, Update, Delete on all finance records
 - Post, Reverse, Approve actions
 - Bank reconciliation matches
+- Opening balance edits
 
 **Captured Data:**
-- User ID
-- Timestamp
-- Action type
-- Entity type and ID
-- Changes (before/after values)
-- IP address
+| Field | Description |
+|-------|-------------|
+| `user` | User who performed action |
+| `timestamp` | Date/time of action |
+| `action` | create, update, delete, post, reverse, approve |
+| `entity_type` | Model name (Invoice, Journal, Payment, etc.) |
+| `entity_id` | Record ID |
+| `changes` | Before/after values (JSON) |
+| `ip_address` | Client IP address |
 
 ---
 
 **Document End**
 
-*This document reflects the actual implementation as of January 2026. For features marked as "Behavior not found in current implementation", refer to development team for clarification or implementation status.*
+*This document reflects the actual implementation as of January 2026. It is intended for use by auditors, developers, and finance users to understand exact ledger behavior.*
 
+**Revision History:**
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | Jan 2026 | Initial documentation |
+| 2.0 | Jan 2026 | Expanded with ledger impact matrices, calculation formulas, opening balance edit rules, cash account handling |
