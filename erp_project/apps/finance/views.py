@@ -2631,16 +2631,23 @@ class VATReturnDetailView(PermissionRequiredMixin, DetailView):
 @login_required
 def cash_flow(request):
     """
-    Cash Flow Statement - IFRS Compliant with drill-down support.
+    Cash Flow Statement - DIRECT METHOD (IFRS/UAE Compliant)
     
-    Uses is_cash_account field to identify Bank & Cash accounts.
+    CRITICAL ACCOUNTING RULES:
+    - Shows ONLY actual cash/bank movements
+    - EXCLUDES: Ledger balances, AR/AP balances, Depreciation, Provisions, PDC (until cleared)
+    - Source: Journal entries that HIT cash/bank accounts from actual transactions
     
-    Classification based on counter-party account:
-    - Operating: Revenue, Expense, AR, AP, VAT, Salaries
-    - Investing: Fixed Assets purchases/sales
-    - Financing: Capital, Loans, Drawings
+    Valid source_modules for Cash Flow:
+    - payment, sales, purchase, bank_transfer, payroll, expense_claim, pdc (only clearance)
     
-    Excludes: Accruals, Depreciation, Provisions, AR/AP-only journals
+    EXCLUDES source_modules:
+    - opening_balance, reversal, adjustment, depreciation, provision, accrual
+    
+    Classification:
+    A. OPERATING: Customer receipts, Supplier payments, Salaries, Taxes, Operating expenses
+    B. INVESTING: Fixed asset purchases/sales, Investment activity
+    C. FINANCING: Capital, Loans, Drawings, Dividends
     """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
@@ -2657,8 +2664,9 @@ def cash_flow(request):
         start_date = date(date.today().year, 1, 1)
         end_date = date.today()
     
-    # Get Cash & Bank accounts using is_cash_account flag
-    # Fallback to code-based detection if no accounts marked
+    # ========================================
+    # IDENTIFY CASH & BANK ACCOUNTS
+    # ========================================
     cash_bank_accounts = Account.objects.filter(
         is_active=True,
         is_cash_account=True
@@ -2670,10 +2678,13 @@ def cash_flow(request):
             is_active=True,
             account_type=AccountType.ASSET,
         ).filter(
-            Q(code__startswith='10') |  # Cash accounts
-            Q(code__startswith='11') |  # Bank accounts
             Q(name__icontains='bank') |
-            Q(name__icontains='cash')
+            Q(name__icontains='cash in hand') |
+            Q(name__icontains='petty cash') |
+            Q(account_category='cash_bank')
+        ).exclude(
+            Q(name__icontains='receivable') |
+            Q(name__icontains='pdc')  # Exclude PDC Receivable
         ).order_by('code')
     
     if bank_filter:
@@ -2682,67 +2693,78 @@ def cash_flow(request):
     cash_account_ids = list(cash_bank_accounts.values_list('id', flat=True))
     
     # ========================================
-    # OPENING CASH (as of start_date - 1 day)
+    # OPENING CASH BALANCE
     # ========================================
     opening_cash = Decimal('0.00')
     for acc in cash_bank_accounts:
-        # Opening balance + all transactions before start date
         acc_opening = acc.opening_balance
         pre_period = JournalEntryLine.objects.filter(
             account=acc,
             journal_entry__status='posted',
             journal_entry__date__lt=start_date
         ).aggregate(
-            total_debit=Sum('debit'),
-            total_credit=Sum('credit')
+            total_debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
         )
-        # For asset accounts: Debit increases, Credit decreases
-        acc_opening += (pre_period['total_debit'] or Decimal('0.00'))
-        acc_opening -= (pre_period['total_credit'] or Decimal('0.00'))
+        acc_opening += pre_period['total_debit'] - pre_period['total_credit']
         opening_cash += acc_opening
     
     # ========================================
-    # CLOSING CASH (as of end_date)
+    # CLOSING CASH BALANCE
     # ========================================
     closing_cash = Decimal('0.00')
     for acc in cash_bank_accounts:
-        # Opening balance + all transactions up to end date
         acc_balance = acc.opening_balance
         period_totals = JournalEntryLine.objects.filter(
             account=acc,
             journal_entry__status='posted',
             journal_entry__date__lte=end_date
         ).aggregate(
-            total_debit=Sum('debit'),
-            total_credit=Sum('credit')
+            total_debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
         )
-        acc_balance += (period_totals['total_debit'] or Decimal('0.00'))
-        acc_balance -= (period_totals['total_credit'] or Decimal('0.00'))
+        acc_balance += period_totals['total_debit'] - period_totals['total_credit']
         closing_cash += acc_balance
     
     # ========================================
-    # GET JOURNALS THAT HIT CASH ACCOUNTS
-    # (Exclude accruals, depreciation, provisions)
+    # VALID SOURCE MODULES FOR CASH FLOW
+    # (Only actual cash movements)
+    # ========================================
+    VALID_CASH_SOURCES = [
+        'payment', 'sales', 'purchase', 'bank_transfer', 'payroll', 
+        'expense_claim', 'petty_cash', 'manual', 'pdc',
+        'property', 'project', 'inventory', 'fixed_asset',
+    ]
+    
+    # Excluded sources (non-cash entries)
+    EXCLUDED_SOURCES = [
+        'opening_balance', 'reversal', 'adjustment', 'depreciation',
+        'provision', 'accrual', 'corporate_tax', 'vat', 'year_end',
+    ]
+    
+    # ========================================
+    # GET CASH MOVEMENTS (Direct Method)
     # ========================================
     
-    # Get journal IDs that have at least one line hitting a cash account
-    cash_journal_ids = JournalEntryLine.objects.filter(
-        account_id__in=cash_account_ids,
-        journal_entry__status='posted',
-        journal_entry__date__gte=start_date,
-        journal_entry__date__lte=end_date
-    ).values_list('journal_entry_id', flat=True).distinct()
+    # Get journals that:
+    # 1. Have a line hitting cash/bank account
+    # 2. Are posted
+    # 3. Are within date range
+    # 4. Are NOT from excluded sources
     
-    # Get all cash lines from these journals
-    cash_transactions = JournalEntryLine.objects.filter(
+    cash_journal_lines = JournalEntryLine.objects.filter(
         account_id__in=cash_account_ids,
-        journal_entry_id__in=cash_journal_ids,
         journal_entry__status='posted',
         journal_entry__date__gte=start_date,
         journal_entry__date__lte=end_date
+    ).exclude(
+        journal_entry__source_module__in=EXCLUDED_SOURCES
+    ).exclude(
+        # Exclude journals that are only accrual/depreciation related
+        journal_entry__entry_type__in=['adjusting', 'closing']
     ).select_related('journal_entry', 'account').order_by('journal_entry__date')
     
-    # Classify transactions based on counter-party account
+    # Process cash movements
     operating_items = []
     investing_items = []
     financing_items = []
@@ -2753,144 +2775,202 @@ def cash_flow(request):
     
     processed_journals = set()
     
-    for cash_line in cash_transactions:
+    for cash_line in cash_journal_lines:
         journal = cash_line.journal_entry
         
-        # Skip if already processed (multiple cash lines in same journal)
+        # Skip if already processed
         if journal.pk in processed_journals:
             continue
         processed_journals.add(journal.pk)
         
-        # Calculate net cash movement for this journal
+        # Calculate net cash movement (Debit = Cash In, Credit = Cash Out for asset accounts)
         journal_cash_movement = Decimal('0.00')
         for line in journal.lines.filter(account_id__in=cash_account_ids):
-            journal_cash_movement += line.debit - line.credit  # Positive = cash in
+            journal_cash_movement += line.debit - line.credit
         
-        # Find counter-party account(s) in the same journal
+        # Skip zero movements
+        if journal_cash_movement == 0:
+            continue
+        
+        # Get counter-party accounts (non-cash accounts in this journal)
         counter_lines = journal.lines.exclude(account_id__in=cash_account_ids)
         
         if not counter_lines.exists():
-            # Cash-to-cash transfer (ignore for cash flow)
+            # Cash-to-cash transfer within same accounts - skip
             continue
         
-        # Determine primary counter account for classification
+        # Determine classification based on counter account
         primary_counter = counter_lines.first()
         counter_account = primary_counter.account
         counter_type = counter_account.account_type
-        counter_code = counter_account.code
+        counter_name = counter_account.name.lower()
+        counter_category = getattr(counter_account, 'account_category', '') or ''
+        
+        # Skip non-cash entries (double-check)
+        non_cash_keywords = ['depreciation', 'amortization', 'provision', 'accrual', 'allowance']
+        if any(kw in counter_name for kw in non_cash_keywords):
+            continue
+        
+        # Skip PDC Receivable (not actual cash)
+        if 'pdc' in counter_name and 'receivable' in counter_name:
+            continue
         
         # Build item
+        # Positive = Cash In, Negative = Cash Out
         item = {
             'date': journal.date,
             'reference': journal.reference or journal.entry_number,
-            'description': journal.description or primary_counter.description,
+            'description': journal.description or primary_counter.description or counter_account.name,
             'counter_account': f"{counter_account.code} - {counter_account.name}",
             'counter_account_type': counter_type,
             'amount': journal_cash_movement,
             'journal_id': journal.pk,
             'source_module': journal.source_module,
+            'is_inflow': journal_cash_movement > 0,
         }
         
         # ========================================
-        # CLASSIFY BASED ON COUNTER ACCOUNT
+        # CLASSIFICATION LOGIC (Direct Method)
         # ========================================
         
-        # Skip non-cash journals (depreciation, provisions, accruals)
-        # These typically don't hit cash accounts anyway, but double-check
-        non_cash_keywords = ['depreciation', 'amortization', 'provision', 'accrual', 'accrued']
-        if any(kw in counter_account.name.lower() for kw in non_cash_keywords):
-            continue
+        # A. OPERATING ACTIVITIES
+        # - Customer receipts (AR clearing)
+        # - Supplier payments (AP clearing)
+        # - Salary payments
+        # - Tax payments
+        # - Operating expense payments
         
-        # OPERATING ACTIVITIES
-        if counter_type in [AccountType.INCOME, AccountType.EXPENSE]:
-            # Revenue receipts, Expense payments, Salaries
+        if counter_type == AccountType.INCOME:
+            # Direct cash sales
+            item['category'] = 'Cash received from customers'
             operating_items.append(item)
             operating_total += journal_cash_movement
-        elif counter_code.startswith('12'):
-            # AR - Customer payments
-            item['description'] = f"Customer Payment: {item['description']}"
+            
+        elif counter_type == AccountType.EXPENSE:
+            # Direct expense payments
+            expense_category = 'Cash paid for operating expenses'
+            if 'salary' in counter_name or 'wage' in counter_name or 'payroll' in counter_name:
+                expense_category = 'Cash paid to employees'
+            elif 'rent' in counter_name:
+                expense_category = 'Cash paid for rent'
+            elif 'utility' in counter_name or 'electric' in counter_name:
+                expense_category = 'Cash paid for utilities'
+            elif 'bank charge' in counter_name:
+                expense_category = 'Bank charges paid'
+            item['category'] = expense_category
             operating_items.append(item)
             operating_total += journal_cash_movement
-        elif counter_code.startswith('20') or counter_code.startswith('21'):
-            # AP - Vendor payments, VAT settlements
-            item['description'] = f"Vendor/Tax Payment: {item['description']}"
+            
+        elif 'receivable' in counter_name or 'debtor' in counter_name or counter_category == 'trade_receivables':
+            # AR clearing = Customer payment received
+            item['category'] = 'Cash received from customers'
             operating_items.append(item)
             operating_total += journal_cash_movement
-        elif counter_code.startswith('22') or counter_code.startswith('23'):
-            # Other current liabilities (Salaries payable, etc.)
+            
+        elif 'payable' in counter_name or 'creditor' in counter_name or counter_category == 'trade_payables':
+            # AP clearing = Payment to supplier
+            if 'vat' in counter_name or 'tax' in counter_name:
+                item['category'] = 'VAT/Tax paid'
+            elif 'salary' in counter_name or 'employee' in counter_name:
+                item['category'] = 'Cash paid to employees'
+            else:
+                item['category'] = 'Cash paid to suppliers'
             operating_items.append(item)
             operating_total += journal_cash_movement
-        # INVESTING ACTIVITIES
-        elif counter_code.startswith('15') or counter_code.startswith('16'):
-            # Fixed Assets - Purchase/Sale
-            item['description'] = f"Fixed Asset: {item['description']}"
+            
+        elif 'vat' in counter_name or counter_category in ['tax_payables', 'tax_receivables']:
+            # VAT payments/refunds
+            item['category'] = 'VAT paid / (received)'
+            operating_items.append(item)
+            operating_total += journal_cash_movement
+        
+        # B. INVESTING ACTIVITIES
+        # - Fixed asset purchases
+        # - Fixed asset sales
+        # - Investment purchases/sales
+        
+        elif counter_category in ['fixed_furniture', 'fixed_it', 'fixed_vehicles', 'fixed_other', 'intangible']:
+            # Fixed asset purchase
+            item['category'] = 'Purchase of fixed assets'
             investing_items.append(item)
             investing_total += journal_cash_movement
-        elif counter_code.startswith('14'):
-            # Long-term investments
+            
+        elif 'fixed asset' in counter_name or 'furniture' in counter_name or 'equipment' in counter_name or 'vehicle' in counter_name:
+            item['category'] = 'Purchase of fixed assets' if journal_cash_movement < 0 else 'Sale of fixed assets'
             investing_items.append(item)
             investing_total += journal_cash_movement
-        # FINANCING ACTIVITIES
-        elif counter_code.startswith('3'):
-            # Equity accounts - Capital, Drawings
-            item['description'] = f"Capital/Equity: {item['description']}"
+            
+        elif 'investment' in counter_name:
+            item['category'] = 'Investment activity'
+            investing_items.append(item)
+            investing_total += journal_cash_movement
+        
+        # C. FINANCING ACTIVITIES
+        # - Capital introduced
+        # - Loans received/repaid
+        # - Drawings
+        # - Dividends
+        
+        elif counter_type == AccountType.EQUITY or counter_category in ['capital', 'reserves', 'retained_earnings']:
+            if 'drawing' in counter_name:
+                item['category'] = 'Drawings'
+            elif 'dividend' in counter_name:
+                item['category'] = 'Dividends paid'
+            elif 'capital' in counter_name:
+                item['category'] = 'Capital introduced' if journal_cash_movement > 0 else 'Capital withdrawn'
+            else:
+                item['category'] = 'Financing - Equity'
             financing_items.append(item)
             financing_total += journal_cash_movement
-        elif counter_code.startswith('24') or counter_code.startswith('25'):
-            # Long-term loans
-            item['description'] = f"Loan: {item['description']}"
+            
+        elif 'loan' in counter_name or 'borrowing' in counter_name:
+            item['category'] = 'Loan received' if journal_cash_movement > 0 else 'Loan repayment'
             financing_items.append(item)
             financing_total += journal_cash_movement
+        
+        # Default to operating
         else:
-            # Default to operating
+            item['category'] = 'Other operating cash flow'
             operating_items.append(item)
             operating_total += journal_cash_movement
     
     # ========================================
-    # VALIDATION: Opening + Changes = Closing
+    # VALIDATION: Opening + Net Change = Closing
     # ========================================
     net_change = operating_total + investing_total + financing_total
     calculated_closing = opening_cash + net_change
     validation_ok = abs(calculated_closing - closing_cash) < Decimal('0.01')
     validation_difference = closing_cash - calculated_closing
     
-    # Group items by category for display
-    operating_grouped = {}
-    for item in operating_items:
-        key = item['counter_account']
-        if key not in operating_grouped:
-            operating_grouped[key] = {'account': key, 'items': [], 'total': Decimal('0.00')}
-        operating_grouped[key]['items'].append(item)
-        operating_grouped[key]['total'] += item['amount']
+    # ========================================
+    # GROUP BY CATEGORY FOR DISPLAY
+    # ========================================
+    def group_by_category(items):
+        grouped = {}
+        for item in items:
+            key = item.get('category', 'Other')
+            if key not in grouped:
+                grouped[key] = {'category': key, 'items': [], 'total': Decimal('0.00')}
+            grouped[key]['items'].append(item)
+            grouped[key]['total'] += item['amount']
+        return grouped
     
-    investing_grouped = {}
-    for item in investing_items:
-        key = item['counter_account']
-        if key not in investing_grouped:
-            investing_grouped[key] = {'account': key, 'items': [], 'total': Decimal('0.00')}
-        investing_grouped[key]['items'].append(item)
-        investing_grouped[key]['total'] += item['amount']
-    
-    financing_grouped = {}
-    for item in financing_items:
-        key = item['counter_account']
-        if key not in financing_grouped:
-            financing_grouped[key] = {'account': key, 'items': [], 'total': Decimal('0.00')}
-        financing_grouped[key]['items'].append(item)
-        financing_grouped[key]['total'] += item['amount']
+    operating_grouped = group_by_category(operating_items)
+    investing_grouped = group_by_category(investing_items)
+    financing_grouped = group_by_category(financing_items)
     
     # Prepare summary for export
     operating_summary = [
-        {'description': acc_data['account'], 'amount': acc_data['total']} 
-        for acc_data in operating_grouped.values()
+        {'description': data['category'], 'amount': data['total']} 
+        for data in operating_grouped.values()
     ]
     investing_summary = [
-        {'description': acc_data['account'], 'amount': acc_data['total']} 
-        for acc_data in investing_grouped.values()
+        {'description': data['category'], 'amount': data['total']} 
+        for data in investing_grouped.values()
     ]
     financing_summary = [
-        {'description': acc_data['account'], 'amount': acc_data['total']} 
-        for acc_data in financing_grouped.values()
+        {'description': data['category'], 'amount': data['total']} 
+        for data in financing_grouped.values()
     ]
     
     # Excel Export
@@ -2902,22 +2982,18 @@ def cash_flow(request):
     # Get all cash accounts for filter dropdown
     all_cash_bank_accounts = Account.objects.filter(
         is_active=True,
-        is_cash_account=True
+    ).filter(
+        Q(is_cash_account=True) |
+        Q(name__icontains='bank') |
+        Q(name__icontains='cash in hand') |
+        Q(account_category='cash_bank')
+    ).exclude(
+        Q(name__icontains='receivable') |
+        Q(name__icontains='pdc')
     ).order_by('code')
     
-    if not all_cash_bank_accounts.exists():
-        all_cash_bank_accounts = Account.objects.filter(
-            is_active=True,
-            account_type=AccountType.ASSET,
-        ).filter(
-            Q(code__startswith='10') |
-            Q(code__startswith='11') |
-            Q(name__icontains='bank') |
-            Q(name__icontains='cash')
-        ).order_by('code')
-    
     return render(request, 'finance/cash_flow.html', {
-        'title': 'Cash Flow Statement (IFRS)',
+        'title': 'Cash Flow Statement - Direct Method (IFRS)',
         'opening_cash': opening_cash,
         'closing_cash': closing_cash,
         'calculated_closing': calculated_closing,
@@ -2928,6 +3004,9 @@ def cash_flow(request):
         'operating_grouped': operating_grouped,
         'investing_grouped': investing_grouped,
         'financing_grouped': financing_grouped,
+        'operating_items': operating_items,
+        'investing_items': investing_items,
+        'financing_items': financing_items,
         'start_date': start_date_str,
         'end_date': end_date_str,
         'bank_filter': bank_filter,

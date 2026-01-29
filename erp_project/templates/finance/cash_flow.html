@@ -1,17 +1,25 @@
 {% extends 'base.html' %}
+{% load humanize %}
 
 {% block extra_css %}
 <style>
     .expandable { cursor: pointer; }
     .expandable:hover { background-color: #f8f9fa; }
-    .expand-icon { transition: transform 0.3s ease; }
+    .expand-icon { transition: transform 0.3s ease; display: inline-block; }
     .expand-icon.expanded { transform: rotate(90deg); }
     .detail-row { display: none; }
     .detail-row.show { display: table-row; }
     .level-2 { background-color: #f8f9fa; }
-    .level-3 { background-color: #fff; }
+    .level-3 { background-color: #fff; font-size: 0.9rem; }
     .amount-link { text-decoration: none; color: inherit; }
     .amount-link:hover { text-decoration: underline; color: var(--bs-primary); }
+    .cash-inflow { color: #198754; }
+    .cash-outflow { color: #dc3545; }
+    .category-row { background-color: #e9ecef; font-weight: 500; }
+    @media print {
+        .detail-row { display: table-row !important; }
+        .btn-group, .card-header button { display: none !important; }
+    }
 </style>
 {% endblock %}
 
@@ -19,7 +27,7 @@
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-0 fw-bold">{{ title }}</h4>
-        <small class="text-muted">{{ start_date }} to {{ end_date }}</small>
+        <small class="text-muted">Period: {{ start_date }} to {{ end_date }}</small>
     </div>
     <div class="btn-group">
         <a href="?start_date={{ start_date }}&end_date={{ end_date }}&bank={{ bank_filter }}&format=excel" class="btn btn-success">
@@ -64,55 +72,60 @@
 <!-- Validation Alert -->
 {% if not validation_ok %}
 <div class="alert alert-danger border-0 shadow-sm mb-4">
-    <i class="fas fa-exclamation-triangle me-2"></i>
-    <strong>Warning:</strong> Cash flow validation failed.
-    <ul class="mb-0 mt-2">
-        <li>Opening Cash: AED {{ opening_cash|floatformat:2 }}</li>
-        <li>+ Net Change: AED {{ net_change|floatformat:2 }}</li>
-        <li>= Calculated Closing: AED {{ calculated_closing|floatformat:2 }}</li>
-        <li>Actual Closing: AED {{ closing_cash|floatformat:2 }}</li>
-        <li><strong>Difference: AED {{ validation_difference|floatformat:2 }}</strong></li>
-    </ul>
-    <p class="mb-0 mt-2 small">This may be due to cash-to-cash transfers, accruals, or un-posted journals.</p>
+    <div class="d-flex align-items-start">
+        <i class="fas fa-exclamation-triangle me-3 fa-lg mt-1"></i>
+        <div>
+            <strong>Cash Flow Validation Warning</strong>
+            <p class="mb-2 mt-1 small">The calculated closing balance does not match the actual ledger balance.</p>
+            <table class="table table-sm table-bordered mb-2" style="max-width: 400px;">
+                <tr><td>Opening Cash Balance</td><td class="text-end">{{ opening_cash|floatformat:2|intcomma }}</td></tr>
+                <tr><td>(+) Net Cash Flow</td><td class="text-end">{{ net_change|floatformat:2|intcomma }}</td></tr>
+                <tr class="fw-bold"><td>= Calculated Closing</td><td class="text-end">{{ calculated_closing|floatformat:2|intcomma }}</td></tr>
+                <tr><td>Actual Ledger Closing</td><td class="text-end">{{ closing_cash|floatformat:2|intcomma }}</td></tr>
+                <tr class="table-danger"><td><strong>Difference</strong></td><td class="text-end"><strong>{{ validation_difference|floatformat:2|intcomma }}</strong></td></tr>
+            </table>
+            <small class="text-muted">This may be due to opening balance entries, accruals, or unclassified transactions.</small>
+        </div>
+    </div>
 </div>
 {% else %}
 <div class="alert alert-success border-0 shadow-sm mb-4">
     <i class="fas fa-check-circle me-2"></i>
-    <strong>Validated:</strong> Opening ({{ opening_cash|floatformat:2 }}) + Net Change ({{ net_change|floatformat:2 }}) = Closing ({{ closing_cash|floatformat:2 }})
+    <strong>Validated:</strong> Opening ({{ opening_cash|floatformat:2|intcomma }}) + Net Change ({{ net_change|floatformat:2|intcomma }}) = Closing ({{ closing_cash|floatformat:2|intcomma }})
 </div>
 {% endif %}
 
 <!-- Summary Cards -->
 <div class="row mb-4">
-    <div class="col-md-3">
+    <div class="col-lg-3 col-md-6 mb-3">
         <div class="card border-0 shadow-sm h-100 bg-primary text-white">
-            <div class="card-body text-center">
+            <div class="card-body text-center py-3">
                 <h6 class="mb-2"><i class="fas fa-wallet me-1"></i> Opening Cash</h6>
-                <h3 class="mb-0">AED {{ opening_cash|floatformat:2 }}</h3>
+                <h4 class="mb-0">AED {{ opening_cash|floatformat:2|intcomma }}</h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-lg-3 col-md-6 mb-3">
         <div class="card border-0 shadow-sm h-100 {% if operating_total >= 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
-            <div class="card-body text-center">
+            <div class="card-body text-center py-3">
                 <h6 class="mb-2"><i class="fas fa-cogs me-1"></i> Operating</h6>
-                <h3 class="mb-0">AED {{ operating_total|floatformat:2 }}</h3>
+                <h4 class="mb-0">AED {{ operating_total|floatformat:2|intcomma }}</h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-lg-3 col-md-6 mb-3">
         <div class="card border-0 shadow-sm h-100 {% if investing_total >= 0 %}bg-info{% else %}bg-secondary{% endif %} text-white">
-            <div class="card-body text-center">
+            <div class="card-body text-center py-3">
                 <h6 class="mb-2"><i class="fas fa-building me-1"></i> Investing</h6>
-                <h3 class="mb-0">AED {{ investing_total|floatformat:2 }}</h3>
+                <h4 class="mb-0">AED {{ investing_total|floatformat:2|intcomma }}</h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-lg-3 col-md-6 mb-3">
         <div class="card border-0 shadow-sm h-100 bg-dark text-white">
-            <div class="card-body text-center">
+            <div class="card-body text-center py-3">
                 <h6 class="mb-2"><i class="fas fa-hand-holding-usd me-1"></i> Closing Cash</h6>
-                <h3 class="mb-0">AED {{ closing_cash|floatformat:2 }}</h3>
+                <h4 class="mb-0">AED {{ closing_cash|floatformat:2|intcomma }}</h4>
             </div>
         </div>
     </div>
@@ -121,61 +134,76 @@
 <!-- Cash Flow Detail with Drill-Down -->
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-        <h6 class="mb-0 fw-bold"><i class="fas fa-water me-2 text-primary"></i>Cash Flow Statement (Drill-Down)</h6>
-        <button class="btn btn-sm btn-outline-secondary" onclick="expandAll()">
-            <i class="fas fa-expand-arrows-alt me-1"></i>Expand All
-        </button>
+        <h6 class="mb-0 fw-bold"><i class="fas fa-water me-2 text-primary"></i>Cash Flow Statement - Direct Method</h6>
+        <div>
+            <button class="btn btn-sm btn-outline-secondary me-1" onclick="expandAll()">
+                <i class="fas fa-expand-arrows-alt me-1"></i>Expand All
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="collapseAll()">
+                <i class="fas fa-compress-arrows-alt me-1"></i>Collapse All
+            </button>
+        </div>
     </div>
     <div class="card-body p-0">
         <table class="table table-hover mb-0">
             <thead class="table-light">
                 <tr>
-                    <th style="width: 50%;">Description</th>
-                    <th class="text-end" style="width: 25%;">Amount (AED)</th>
-                    <th class="text-center" style="width: 25%;">Details</th>
+                    <th style="width: 55%;">Description</th>
+                    <th class="text-end" style="width: 20%;">Inflow (AED)</th>
+                    <th class="text-end" style="width: 20%;">Outflow (AED)</th>
+                    <th class="text-center" style="width: 5%;"></th>
                 </tr>
             </thead>
             <tbody>
-                <!-- OPERATING ACTIVITIES -->
+                <!-- A. OPERATING ACTIVITIES -->
                 <tr class="table-primary expandable" onclick="toggleSection('operating')">
                     <td class="fw-bold">
                         <i class="fas fa-chevron-right expand-icon me-2" id="icon-operating"></i>
-                        <i class="fas fa-cogs me-2"></i>Cash Flows from Operating Activities
+                        <i class="fas fa-cogs me-2"></i>A. Cash Flows from Operating Activities
                     </td>
-                    <td class="text-end fw-bold {% if operating_total >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ operating_total|floatformat:2 }}
+                    <td class="text-end fw-bold cash-inflow">
+                        {% if operating_total > 0 %}{{ operating_total|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end fw-bold cash-outflow">
+                        {% if operating_total < 0 %}{{ operating_total|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <span class="badge bg-primary">{{ operating_grouped|length }} accounts</span>
+                        <span class="badge bg-primary">{{ operating_grouped|length }}</span>
                     </td>
                 </tr>
-                {% for account, data in operating_grouped.items %}
-                <tr class="detail-row level-2 operating-detail expandable" onclick="toggleAccount('operating-{{ forloop.counter }}')">
+                {% for category, data in operating_grouped.items %}
+                <tr class="detail-row level-2 operating-detail category-row expandable" onclick="toggleAccount('operating-{{ forloop.counter }}'); event.stopPropagation();">
                     <td class="ps-4">
                         <i class="fas fa-chevron-right expand-icon me-2" id="icon-operating-{{ forloop.counter }}"></i>
-                        {{ account }}
+                        {{ category }}
                     </td>
-                    <td class="text-end {% if data.total >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ data.total|floatformat:2 }}
+                    <td class="text-end {% if data.total > 0 %}cash-inflow{% endif %}">
+                        {% if data.total > 0 %}{{ data.total|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end {% if data.total < 0 %}cash-outflow{% endif %}">
+                        {% if data.total < 0 %}{{ data.total|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <span class="badge bg-secondary">{{ data.items|length }} txns</span>
+                        <span class="badge bg-secondary">{{ data.items|length }}</span>
                     </td>
                 </tr>
                 {% for item in data.items %}
                 <tr class="detail-row level-3 operating-{{ forloop.parentloop.counter }}-detail">
                     <td class="ps-5">
-                        <small class="text-muted">{{ item.date|date:"d/m/Y" }}</small>
-                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link ms-2">
+                        <small class="text-muted me-2">{{ item.date|date:"d/m/Y" }}</small>
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link">
                             {{ item.reference }}
                         </a>
-                        <br><small class="text-muted">{{ item.description|truncatechars:50 }}</small>
+                        <br><small class="text-muted">{{ item.description|truncatechars:60 }}</small>
                     </td>
-                    <td class="text-end {% if item.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ item.amount|floatformat:2 }}
+                    <td class="text-end {% if item.amount > 0 %}cash-inflow{% endif %}">
+                        {% if item.amount > 0 %}{{ item.amount|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end {% if item.amount < 0 %}cash-outflow{% endif %}">
+                        {% if item.amount < 0 %}{{ item.amount|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-outline-primary" title="View Journal">
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-link" title="View Journal">
                             <i class="fas fa-external-link-alt"></i>
                         </a>
                     </td>
@@ -183,54 +211,68 @@
                 {% endfor %}
                 {% empty %}
                 <tr class="detail-row operating-detail">
-                    <td colspan="3" class="text-center text-muted py-3">No operating activities recorded</td>
+                    <td colspan="4" class="text-center text-muted py-3">
+                        <i class="fas fa-info-circle me-2"></i>No operating cash flows recorded
+                    </td>
                 </tr>
                 {% endfor %}
-                <tr class="table-warning fw-bold">
-                    <td class="ps-4">Net Cash from Operating Activities</td>
-                    <td class="text-end">{{ operating_total|floatformat:2 }}</td>
+                <tr class="table-warning">
+                    <td class="ps-4 fw-bold">Net Cash from Operating Activities</td>
+                    <td colspan="2" class="text-end fw-bold {% if operating_total >= 0 %}cash-inflow{% else %}cash-outflow{% endif %}">
+                        {{ operating_total|floatformat:2|intcomma }}
+                    </td>
                     <td></td>
                 </tr>
                 
-                <!-- INVESTING ACTIVITIES -->
+                <!-- B. INVESTING ACTIVITIES -->
                 <tr class="table-info expandable" onclick="toggleSection('investing')">
                     <td class="fw-bold">
                         <i class="fas fa-chevron-right expand-icon me-2" id="icon-investing"></i>
-                        <i class="fas fa-building me-2"></i>Cash Flows from Investing Activities
+                        <i class="fas fa-building me-2"></i>B. Cash Flows from Investing Activities
                     </td>
-                    <td class="text-end fw-bold {% if investing_total >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ investing_total|floatformat:2 }}
+                    <td class="text-end fw-bold cash-inflow">
+                        {% if investing_total > 0 %}{{ investing_total|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end fw-bold cash-outflow">
+                        {% if investing_total < 0 %}{{ investing_total|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <span class="badge bg-info">{{ investing_grouped|length }} accounts</span>
+                        <span class="badge bg-info">{{ investing_grouped|length }}</span>
                     </td>
                 </tr>
-                {% for account, data in investing_grouped.items %}
-                <tr class="detail-row level-2 investing-detail expandable" onclick="toggleAccount('investing-{{ forloop.counter }}')">
+                {% for category, data in investing_grouped.items %}
+                <tr class="detail-row level-2 investing-detail category-row expandable" onclick="toggleAccount('investing-{{ forloop.counter }}'); event.stopPropagation();">
                     <td class="ps-4">
                         <i class="fas fa-chevron-right expand-icon me-2" id="icon-investing-{{ forloop.counter }}"></i>
-                        {{ account }}
+                        {{ category }}
                     </td>
-                    <td class="text-end {% if data.total >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ data.total|floatformat:2 }}
+                    <td class="text-end {% if data.total > 0 %}cash-inflow{% endif %}">
+                        {% if data.total > 0 %}{{ data.total|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end {% if data.total < 0 %}cash-outflow{% endif %}">
+                        {% if data.total < 0 %}{{ data.total|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <span class="badge bg-secondary">{{ data.items|length }} txns</span>
+                        <span class="badge bg-secondary">{{ data.items|length }}</span>
                     </td>
                 </tr>
                 {% for item in data.items %}
                 <tr class="detail-row level-3 investing-{{ forloop.parentloop.counter }}-detail">
                     <td class="ps-5">
-                        <small class="text-muted">{{ item.date|date:"d/m/Y" }}</small>
-                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link ms-2">
+                        <small class="text-muted me-2">{{ item.date|date:"d/m/Y" }}</small>
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link">
                             {{ item.reference }}
                         </a>
+                        <br><small class="text-muted">{{ item.description|truncatechars:60 }}</small>
                     </td>
-                    <td class="text-end {% if item.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ item.amount|floatformat:2 }}
+                    <td class="text-end {% if item.amount > 0 %}cash-inflow{% endif %}">
+                        {% if item.amount > 0 %}{{ item.amount|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end {% if item.amount < 0 %}cash-outflow{% endif %}">
+                        {% if item.amount < 0 %}{{ item.amount|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-outline-primary" title="View Journal">
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-link" title="View Journal">
                             <i class="fas fa-external-link-alt"></i>
                         </a>
                     </td>
@@ -238,54 +280,68 @@
                 {% endfor %}
                 {% empty %}
                 <tr class="detail-row investing-detail">
-                    <td colspan="3" class="text-center text-muted py-3">No investing activities recorded</td>
+                    <td colspan="4" class="text-center text-muted py-3">
+                        <i class="fas fa-info-circle me-2"></i>No investing cash flows recorded
+                    </td>
                 </tr>
                 {% endfor %}
-                <tr class="table-secondary fw-bold">
-                    <td class="ps-4">Net Cash from Investing Activities</td>
-                    <td class="text-end">{{ investing_total|floatformat:2 }}</td>
+                <tr class="table-secondary">
+                    <td class="ps-4 fw-bold">Net Cash from Investing Activities</td>
+                    <td colspan="2" class="text-end fw-bold {% if investing_total >= 0 %}cash-inflow{% else %}cash-outflow{% endif %}">
+                        {{ investing_total|floatformat:2|intcomma }}
+                    </td>
                     <td></td>
                 </tr>
                 
-                <!-- FINANCING ACTIVITIES -->
+                <!-- C. FINANCING ACTIVITIES -->
                 <tr class="table-success expandable" onclick="toggleSection('financing')">
                     <td class="fw-bold">
                         <i class="fas fa-chevron-right expand-icon me-2" id="icon-financing"></i>
-                        <i class="fas fa-university me-2"></i>Cash Flows from Financing Activities
+                        <i class="fas fa-university me-2"></i>C. Cash Flows from Financing Activities
                     </td>
-                    <td class="text-end fw-bold {% if financing_total >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ financing_total|floatformat:2 }}
+                    <td class="text-end fw-bold cash-inflow">
+                        {% if financing_total > 0 %}{{ financing_total|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end fw-bold cash-outflow">
+                        {% if financing_total < 0 %}{{ financing_total|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <span class="badge bg-success">{{ financing_grouped|length }} accounts</span>
+                        <span class="badge bg-success">{{ financing_grouped|length }}</span>
                     </td>
                 </tr>
-                {% for account, data in financing_grouped.items %}
-                <tr class="detail-row level-2 financing-detail expandable" onclick="toggleAccount('financing-{{ forloop.counter }}')">
+                {% for category, data in financing_grouped.items %}
+                <tr class="detail-row level-2 financing-detail category-row expandable" onclick="toggleAccount('financing-{{ forloop.counter }}'); event.stopPropagation();">
                     <td class="ps-4">
                         <i class="fas fa-chevron-right expand-icon me-2" id="icon-financing-{{ forloop.counter }}"></i>
-                        {{ account }}
+                        {{ category }}
                     </td>
-                    <td class="text-end {% if data.total >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ data.total|floatformat:2 }}
+                    <td class="text-end {% if data.total > 0 %}cash-inflow{% endif %}">
+                        {% if data.total > 0 %}{{ data.total|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end {% if data.total < 0 %}cash-outflow{% endif %}">
+                        {% if data.total < 0 %}{{ data.total|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <span class="badge bg-secondary">{{ data.items|length }} txns</span>
+                        <span class="badge bg-secondary">{{ data.items|length }}</span>
                     </td>
                 </tr>
                 {% for item in data.items %}
                 <tr class="detail-row level-3 financing-{{ forloop.parentloop.counter }}-detail">
                     <td class="ps-5">
-                        <small class="text-muted">{{ item.date|date:"d/m/Y" }}</small>
-                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link ms-2">
+                        <small class="text-muted me-2">{{ item.date|date:"d/m/Y" }}</small>
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="amount-link">
                             {{ item.reference }}
                         </a>
+                        <br><small class="text-muted">{{ item.description|truncatechars:60 }}</small>
                     </td>
-                    <td class="text-end {% if item.amount >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ item.amount|floatformat:2 }}
+                    <td class="text-end {% if item.amount > 0 %}cash-inflow{% endif %}">
+                        {% if item.amount > 0 %}{{ item.amount|floatformat:2|intcomma }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end {% if item.amount < 0 %}cash-outflow{% endif %}">
+                        {% if item.amount < 0 %}{{ item.amount|floatformat:2|intcomma|slice:"1:" }}{% else %}-{% endif %}
                     </td>
                     <td class="text-center">
-                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-outline-primary" title="View Journal">
+                        <a href="{% url 'finance:journal_detail' item.journal_id %}" class="btn btn-sm btn-link" title="View Journal">
                             <i class="fas fa-external-link-alt"></i>
                         </a>
                     </td>
@@ -293,29 +349,33 @@
                 {% endfor %}
                 {% empty %}
                 <tr class="detail-row financing-detail">
-                    <td colspan="3" class="text-center text-muted py-3">No financing activities recorded</td>
+                    <td colspan="4" class="text-center text-muted py-3">
+                        <i class="fas fa-info-circle me-2"></i>No financing cash flows recorded
+                    </td>
                 </tr>
                 {% endfor %}
-                <tr class="table-secondary fw-bold">
-                    <td class="ps-4">Net Cash from Financing Activities</td>
-                    <td class="text-end">{{ financing_total|floatformat:2 }}</td>
+                <tr class="table-secondary">
+                    <td class="ps-4 fw-bold">Net Cash from Financing Activities</td>
+                    <td colspan="2" class="text-end fw-bold {% if financing_total >= 0 %}cash-inflow{% else %}cash-outflow{% endif %}">
+                        {{ financing_total|floatformat:2|intcomma }}
+                    </td>
                     <td></td>
                 </tr>
                 
                 <!-- SUMMARY -->
                 <tr class="table-dark text-white">
-                    <td class="fw-bold fs-5">Net Increase/(Decrease) in Cash</td>
-                    <td class="text-end fw-bold fs-5">{{ net_change|floatformat:2 }}</td>
+                    <td class="fw-bold fs-6">Net Increase / (Decrease) in Cash</td>
+                    <td colspan="2" class="text-end fw-bold fs-6">{{ net_change|floatformat:2|intcomma }}</td>
                     <td></td>
                 </tr>
-                <tr>
-                    <td>Add: Opening Cash Balance</td>
-                    <td class="text-end">{{ opening_cash|floatformat:2 }}</td>
+                <tr class="table-light">
+                    <td>Add: Opening Cash & Bank Balance</td>
+                    <td colspan="2" class="text-end">{{ opening_cash|floatformat:2|intcomma }}</td>
                     <td></td>
                 </tr>
                 <tr class="table-dark text-white">
-                    <td class="fw-bold fs-5">Closing Cash Balance</td>
-                    <td class="text-end fw-bold fs-5">{{ closing_cash|floatformat:2 }}</td>
+                    <td class="fw-bold fs-5"><i class="fas fa-coins me-2"></i>Closing Cash & Bank Balance</td>
+                    <td colspan="2" class="text-end fw-bold fs-5">{{ closing_cash|floatformat:2|intcomma }}</td>
                     <td></td>
                 </tr>
             </tbody>
@@ -323,19 +383,84 @@
     </div>
 </div>
 
+<!-- Accounting Note -->
 <div class="alert alert-info mt-3 border-0 shadow-sm">
     <div class="d-flex">
-        <i class="fas fa-info-circle me-3 mt-1"></i>
+        <i class="fas fa-info-circle me-3 mt-1 fa-lg"></i>
         <div>
-            <strong>Cash Flow Classification:</strong>
-            <ul class="mb-0 mt-2 small">
-                <li><strong>Operating:</strong> Revenue, Expenses, AR, AP, VAT transactions</li>
-                <li><strong>Investing:</strong> Fixed Asset purchases/sales</li>
-                <li><strong>Financing:</strong> Capital, Loans, Drawings</li>
+            <strong>Cash Flow Statement - Direct Method (IFRS Compliant)</strong>
+            <p class="mb-2 mt-1 small">This statement shows ONLY actual cash and bank movements. It excludes:</p>
+            <ul class="mb-0 small">
+                <li><strong>Excluded:</strong> AR/AP balances, Depreciation, Provisions, Accruals, PDC Receivable (until cleared)</li>
+                <li><strong>Operating:</strong> Cash from customers, payments to suppliers, employees, taxes, operating expenses</li>
+                <li><strong>Investing:</strong> Cash paid for fixed assets, proceeds from asset sales, investments</li>
+                <li><strong>Financing:</strong> Capital introduced, loan receipts/payments, drawings, dividends</li>
             </ul>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleSection(section) {
+    const details = document.querySelectorAll('.' + section + '-detail');
+    const icon = document.getElementById('icon-' + section);
+    const isExpanded = icon.classList.contains('expanded');
+    
+    details.forEach(row => {
+        if (isExpanded) {
+            row.classList.remove('show');
+        } else {
+            row.classList.add('show');
+        }
+    });
+    
+    if (isExpanded) {
+        icon.classList.remove('expanded');
+    } else {
+        icon.classList.add('expanded');
+    }
+    
+    // Collapse sub-details when collapsing main section
+    if (isExpanded) {
+        const subDetails = document.querySelectorAll('[class*="' + section + '-"][class*="-detail"]');
+        subDetails.forEach(row => row.classList.remove('show'));
+        document.querySelectorAll('[id^="icon-' + section + '-"]').forEach(ic => ic.classList.remove('expanded'));
+    }
+}
+
+function toggleAccount(accountKey) {
+    event.stopPropagation();
+    const details = document.querySelectorAll('.' + accountKey + '-detail');
+    const icon = document.getElementById('icon-' + accountKey);
+    const isExpanded = icon.classList.contains('expanded');
+    
+    details.forEach(row => {
+        if (isExpanded) {
+            row.classList.remove('show');
+        } else {
+            row.classList.add('show');
+        }
+    });
+    
+    if (isExpanded) {
+        icon.classList.remove('expanded');
+    } else {
+        icon.classList.add('expanded');
+    }
+}
+
+function expandAll() {
+    document.querySelectorAll('.detail-row').forEach(row => row.classList.add('show'));
+    document.querySelectorAll('.expand-icon').forEach(icon => icon.classList.add('expanded'));
+}
+
+function collapseAll() {
+    document.querySelectorAll('.detail-row').forEach(row => row.classList.remove('show'));
+    document.querySelectorAll('.expand-icon').forEach(icon => icon.classList.remove('expanded'));
+}
+</script>
 {% endblock %}
 
 {% block extra_js %}
