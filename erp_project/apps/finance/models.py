@@ -114,6 +114,12 @@ class Account(BaseModel):
         help_text="Mark as True for Bank and Cash accounts only. Used for Cash Flow Statement."
     )
     
+    # Overdraft allowed flag - for bank accounts that can have credit (negative) balances
+    overdraft_allowed = models.BooleanField(
+        default=False,
+        help_text="Allow credit (negative) balance for this account. Only applicable to bank accounts."
+    )
+    
     # Balance tracking
     opening_balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))

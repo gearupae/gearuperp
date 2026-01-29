@@ -703,28 +703,61 @@ def trial_balance(request):
         if net_balance == 0 and not show_zero_balances:
             continue
         
-        # Determine debit or credit column
-        if net_balance > 0:
-            debit_amount = net_balance
-            credit_amount = Decimal('0.00')
-        elif net_balance < 0:
-            debit_amount = Decimal('0.00')
-            credit_amount = abs(net_balance)
+        # Check account properties
+        is_cash_or_bank = account.is_cash_account or 'cash' in account.name.lower() or 'bank' in account.name.lower()
+        is_contra = getattr(account, 'is_contra_account', False) or 'accumulated' in account.name.lower()
+        overdraft_allowed = getattr(account, 'overdraft_allowed', False) or 'overdraft' in account.name.lower()
+        
+        # Determine debit or credit column based on ACCOUNT NATURE
+        # For debit-normal accounts (Assets, Expenses): show positive = Debit, negative = Credit
+        # For credit-normal accounts (Liabilities, Equity, Income): show positive = Credit, negative = Debit
+        
+        if account.debit_increases:
+            # Asset or Expense account - normally shows Debit balance
+            if net_balance >= 0:
+                debit_amount = net_balance
+                credit_amount = Decimal('0.00')
+            else:
+                # Negative balance for debit-normal account
+                # For Cash/Bank - this is ABNORMAL unless overdraft allowed
+                if is_cash_or_bank and not overdraft_allowed:
+                    # Show as DEBIT with warning flag (negative cash/overdraft)
+                    # This prevents cash from appearing in Credit column
+                    debit_amount = net_balance  # Will be negative
+                    credit_amount = Decimal('0.00')
+                else:
+                    # Other assets with credit balance or overdraft accounts
+                    debit_amount = Decimal('0.00')
+                    credit_amount = abs(net_balance)
         else:
-            debit_amount = Decimal('0.00')
-            credit_amount = Decimal('0.00')
+            # Liability, Equity, or Income account - normally shows Credit balance
+            if net_balance <= 0:
+                debit_amount = Decimal('0.00')
+                credit_amount = abs(net_balance)
+            else:
+                # Positive balance for credit-normal account = abnormal
+                debit_amount = net_balance
+                credit_amount = Decimal('0.00')
         
         # Check for abnormal balance
-        is_contra = getattr(account, 'is_contra_account', False) or 'accumulated' in account.name.lower()
         abnormal = False
+        negative_cash_warning = False
         
         if is_contra:
+            # Contra accounts have opposite normal balance
             if debit_amount > 0:
                 abnormal = True
         elif account.debit_increases:
+            # Assets/Expenses should have debit balance
             if credit_amount > 0:
                 abnormal = True
+            # Special check for negative cash (debit_amount < 0)
+            if is_cash_or_bank and net_balance < 0:
+                negative_cash_warning = True
+                if not overdraft_allowed:
+                    abnormal = True  # Negative cash without overdraft is abnormal
         else:
+            # Liabilities/Equity/Income should have credit balance
             if debit_amount > 0:
                 abnormal = True
         
@@ -739,6 +772,10 @@ def trial_balance(request):
             'credit': credit_amount,
             'abnormal': abnormal,
             'is_contra': is_contra,
+            'is_cash_or_bank': is_cash_or_bank,
+            'negative_cash_warning': negative_cash_warning,
+            'overdraft_allowed': overdraft_allowed,
+            'net_balance': net_balance,  # Keep raw balance for reference
         }
         
         flat_data.append(account_data)

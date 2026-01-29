@@ -15,7 +15,8 @@ from .models import (
 class AccountForm(forms.ModelForm):
     class Meta:
         model = Account
-        fields = ['code', 'name', 'account_type', 'parent', 'description', 'opening_balance']
+        fields = ['code', 'name', 'account_type', 'account_category', 'parent', 'description', 
+                  'opening_balance', 'is_cash_account', 'overdraft_allowed', 'is_contra_account']
         widgets = {
             'description': forms.Textarea(attrs={'rows': 2}),
         }
@@ -23,11 +24,19 @@ class AccountForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
-            if field_name in ['account_type', 'parent']:
+            if field_name in ['account_type', 'parent', 'account_category']:
                 field.widget.attrs['class'] = 'form-select'
+            elif field_name in ['is_cash_account', 'overdraft_allowed', 'is_contra_account']:
+                field.widget.attrs['class'] = 'form-check-input'
             else:
                 field.widget.attrs['class'] = 'form-control'
         self.fields['parent'].queryset = Account.objects.filter(is_active=True)
+        self.fields['account_category'].required = False
+        
+        # Add help text for boolean fields
+        self.fields['is_cash_account'].help_text = 'Check for Bank and Cash accounts (affects Cash Flow Statement)'
+        self.fields['overdraft_allowed'].help_text = 'Allow negative balance (for bank overdraft accounts)'
+        self.fields['is_contra_account'].help_text = 'Contra accounts have opposite normal balance (e.g., Accumulated Depreciation)'
     
     def clean_code(self):
         code = self.cleaned_data['code']

@@ -92,27 +92,39 @@
                     
                     {% for item in subgroup.accounts %}
                     <!-- Account Row -->
-                    <tr {% if item.abnormal %}class="table-warning"{% endif %}>
+                    <tr {% if item.abnormal %}class="table-warning"{% elif item.negative_cash_warning %}class="table-danger"{% endif %}>
                         <td class="ps-5">
                             {{ item.code }}
-                            {% if item.abnormal %}
+                            {% if item.negative_cash_warning %}
+                                <i class="fas fa-exclamation-circle text-danger ms-1" title="Negative Cash/Bank Balance"></i>
+                            {% elif item.abnormal %}
                                 <i class="fas fa-exclamation-triangle text-warning ms-1" title="Abnormal balance"></i>
                             {% endif %}
                             {% if item.is_contra %}
                                 <span class="badge bg-info ms-1" title="Contra Account">C</span>
                             {% endif %}
+                            {% if item.is_cash_or_bank %}
+                                <span class="badge bg-success ms-1" title="Cash/Bank Account">$</span>
+                            {% endif %}
                         </td>
-                        <td class="ps-5">{{ item.name }}</td>
+                        <td class="ps-5">
+                            {{ item.name }}
+                            {% if item.negative_cash_warning and not item.overdraft_allowed %}
+                                <span class="badge bg-danger ms-1">NEGATIVE BALANCE</span>
+                            {% elif item.negative_cash_warning and item.overdraft_allowed %}
+                                <span class="badge bg-warning text-dark ms-1">OVERDRAFT</span>
+                            {% endif %}
+                        </td>
                         <td class="text-end">
-                            {% if item.debit %}
+                            {% if item.debit and item.debit != 0 %}
                             <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ as_of_date }}" 
-                               class="text-decoration-none">
-                                {{ item.debit|floatformat:2|intcomma }}
+                               class="text-decoration-none {% if item.debit < 0 %}text-danger fw-bold{% endif %}">
+                                {% if item.debit < 0 %}({{ item.debit|floatformat:2|intcomma|slice:"1:" }}){% else %}{{ item.debit|floatformat:2|intcomma }}{% endif %}
                             </a>
                             {% else %}-{% endif %}
                         </td>
                         <td class="text-end">
-                            {% if item.credit %}
+                            {% if item.credit and item.credit != 0 %}
                             <a href="{% url 'finance:general_ledger' %}?account={{ item.account.pk }}&end_date={{ as_of_date }}" 
                                class="text-decoration-none">
                                 {{ item.credit|floatformat:2|intcomma }}
@@ -178,8 +190,10 @@
         <small class="text-muted">
             <i class="fas fa-info-circle me-1"></i>
             <strong>Legend:</strong>
+            <span class="badge bg-danger ms-2"><i class="fas fa-exclamation-circle"></i></span> Negative Cash/Bank |
             <span class="badge bg-warning text-dark ms-2"><i class="fas fa-exclamation-triangle"></i></span> Abnormal Balance |
             <span class="badge bg-info ms-2">C</span> Contra Account |
+            <span class="badge bg-success ms-2">$</span> Cash/Bank Account |
             Click on amounts to drill down to General Ledger
         </small>
     </div>
