@@ -1046,8 +1046,8 @@ def tenant_ledger_report(request, tenant_id):
     # Get all journal entries for tenant AR account
     journal_entries = []
     if tenant.ar_account:
-        from apps.finance.models import JournalLine
-        journal_entries = JournalLine.objects.filter(
+        from apps.finance.models import JournalEntryLine
+        journal_entries = JournalEntryLine.objects.filter(
             account=tenant.ar_account,
             journal_entry__status='posted'
         ).select_related('journal_entry').order_by('journal_entry__date')
