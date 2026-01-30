@@ -10,9 +10,9 @@
         <button class="btn btn-outline-dark" onclick="window.print()">
             <i class="fas fa-print me-2"></i>Print
         </button>
-        <button class="btn btn-outline-success" onclick="exportToExcel()">
-            <i class="fas fa-file-excel me-2"></i>Export
-        </button>
+        <a href="?start_date={{ start_date }}&end_date={{ end_date }}&format=excel" class="btn btn-success">
+            <i class="fas fa-file-excel me-2"></i>Export Excel
+        </a>
     </div>
 </div>
 
@@ -174,16 +174,9 @@
 $(document).ready(function() {
     $('#vatAuditTable').DataTable({
         "order": [[0, "asc"]],
-        "pageLength": 50,
-        "dom": 'Bfrtip',
-        "buttons": ['copy', 'csv', 'excel', 'pdf']
+        "pageLength": 50
     });
 });
-
-function exportToExcel() {
-    // Trigger DataTables export
-    $('#vatAuditTable').DataTable().button('.buttons-excel').trigger();
-}
 </script>
 {% endblock %}
 

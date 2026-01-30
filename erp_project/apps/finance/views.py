@@ -5462,6 +5462,12 @@ def vat_audit_report(request):
             'net': total_debit - total_credit,
         }
     
+    # Excel Export
+    export_format = request.GET.get('format', '')
+    if export_format == 'excel':
+        from .excel_exports import export_vat_audit
+        return export_vat_audit(start_date, end_date, all_transactions, box_totals)
+    
     return render(request, 'finance/vat_audit_report.html', {
         'title': 'VAT Audit Report',
         'start_date': start_date,

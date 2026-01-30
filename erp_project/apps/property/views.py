@@ -13,7 +13,7 @@ from django.db.models import Sum, Count, Q, F
 from django.db import transaction
 from django.utils import timezone
 from django.core.paginator import Paginator
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 import json
 
@@ -332,12 +332,20 @@ class PDCListView(LoginRequiredMixin, ListView):
         date_to = self.request.GET.get('date_to', '')
         
         if search:
-            queryset = queryset.filter(
+            # Try to search by amount if search is numeric
+            search_filter = (
                 Q(pdc_number__icontains=search) |
                 Q(cheque_number__icontains=search) |
                 Q(tenant__name__icontains=search) |
                 Q(bank_name__icontains=search)
             )
+            try:
+                # If search is a number, also search by amount
+                amount_search = Decimal(search.replace(',', ''))
+                search_filter = search_filter | Q(amount=amount_search)
+            except (ValueError, InvalidOperation):
+                pass
+            queryset = queryset.filter(search_filter)
         if status:
             queryset = queryset.filter(status=status)
         if tenant_id:

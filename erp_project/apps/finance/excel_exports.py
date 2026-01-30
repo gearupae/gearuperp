@@ -903,9 +903,9 @@ def export_corporate_tax(data):
         ws.cell(row=row, column=2, value=format_currency(computation.taxable_income))
         row += 1
         
-        ws.cell(row=row, column=1, value='Final Tax Liability')
+        ws.cell(row=row, column=1, value='Final Tax Payable')
         ws.cell(row=row, column=1).font = Font(bold=True, size=12)
-        ws.cell(row=row, column=2, value=format_currency(computation.tax_liability))
+        ws.cell(row=row, column=2, value=format_currency(computation.tax_payable))
         ws.cell(row=row, column=2).font = Font(bold=True, size=12)
         row += 1
         
@@ -916,6 +916,84 @@ def export_corporate_tax(data):
     
     fiscal_year = data.get('fiscal_year', 'unknown').replace(' ', '_')
     response = create_excel_response(f'corporate_tax_{fiscal_year}.xlsx')
+    wb.save(response)
+    return response
+
+
+# ============ VAT AUDIT REPORT EXPORT ============
+
+def export_vat_audit(start_date, end_date, transactions, box_totals):
+    """Export VAT Audit Report to Excel."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'VAT Audit Details'
+    
+    # Title
+    style_title_row(ws, 1, f'UAE VAT Audit Report', 8)
+    ws.cell(row=2, column=1, value=f'Period: {start_date} to {end_date}')
+    ws.cell(row=3, column=1, value=f'Generated: {date.today().isoformat()}')
+    
+    # Box Summary
+    row = 5
+    ws.cell(row=row, column=1, value='VAT BOX SUMMARY')
+    ws.cell(row=row, column=1).font = Font(bold=True, size=12)
+    row += 1
+    
+    # Header for summary
+    summary_headers = ['Box', 'Description', 'Transactions', 'Net Amount']
+    for col, header in enumerate(summary_headers, 1):
+        ws.cell(row=row, column=col, value=header)
+        ws.cell(row=row, column=col).font = Font(bold=True)
+        ws.cell(row=row, column=col).fill = PatternFill(start_color='DDDDDD', fill_type='solid')
+    row += 1
+    
+    box_descriptions = {
+        'box1a': 'Standard Rated Supplies (Emirates)',
+        'box3': 'Zero-rated Supplies',
+        'box4': 'Exempt Supplies',
+        'box6': 'Standard Rated Expenses',
+        'box9': 'Output VAT Due',
+        'box10': 'Input VAT Recoverable',
+    }
+    
+    for box_key, description in box_descriptions.items():
+        box_data = box_totals.get(box_key, {'count': 0, 'net': 0})
+        ws.cell(row=row, column=1, value=box_key.upper())
+        ws.cell(row=row, column=2, value=description)
+        ws.cell(row=row, column=3, value=box_data.get('count', 0))
+        ws.cell(row=row, column=4, value=format_currency(box_data.get('net', 0)))
+        row += 1
+    
+    row += 2
+    
+    # Transaction Details
+    ws.cell(row=row, column=1, value='TRANSACTION DETAILS')
+    ws.cell(row=row, column=1).font = Font(bold=True, size=12)
+    row += 1
+    
+    # Headers
+    headers = ['Date', 'Entry #', 'Reference', 'Description', 'Account', 'Debit', 'Credit', 'VAT Box']
+    for col, header in enumerate(headers, 1):
+        ws.cell(row=row, column=col, value=header)
+        ws.cell(row=row, column=col).font = Font(bold=True)
+        ws.cell(row=row, column=col).fill = PatternFill(start_color='DDDDDD', fill_type='solid')
+    row += 1
+    
+    # Data rows
+    for txn in transactions:
+        ws.cell(row=row, column=1, value=txn['date'].strftime('%d/%m/%Y') if hasattr(txn['date'], 'strftime') else str(txn['date']))
+        ws.cell(row=row, column=2, value=txn.get('entry_number', ''))
+        ws.cell(row=row, column=3, value=txn.get('reference', '') or '')
+        ws.cell(row=row, column=4, value=(txn.get('description', '') or '')[:50])
+        ws.cell(row=row, column=5, value=txn['account'].code if hasattr(txn.get('account'), 'code') else str(txn.get('account', '')))
+        ws.cell(row=row, column=6, value=format_currency(txn.get('debit', 0)) if txn.get('debit', 0) > 0 else '')
+        ws.cell(row=row, column=7, value=format_currency(txn.get('credit', 0)) if txn.get('credit', 0) > 0 else '')
+        ws.cell(row=row, column=8, value=txn.get('vat_box', ''))
+        row += 1
+    
+    auto_width_columns(ws)
+    
+    response = create_excel_response(f'vat_audit_{start_date}_to_{end_date}.xlsx')
     wb.save(response)
     return response
 
