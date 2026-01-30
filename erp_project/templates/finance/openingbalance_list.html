@@ -16,19 +16,19 @@
 
 {% if system_opening_journal %}
 <!-- System Opening Balance Banner -->
-{% if system_opening_journal.fiscal_year.is_closed %}
+{% if is_fy_closed %}
 <div class="alert alert-warning mb-4">
     <i class="fas fa-lock me-2"></i>
     <strong>Opening balances are locked.</strong>
-    The fiscal year is closed. Opening balances cannot be edited. Contact your administrator if corrections are needed.
+    Fiscal Year {% if fiscal_year %}{{ fiscal_year.name }}{% endif %} is closed. Opening balances cannot be edited. Contact your administrator if corrections are needed.
 </div>
 {% else %}
 <div class="alert alert-info mb-4">
     <div class="d-flex justify-content-between align-items-center">
         <div>
             <i class="fas fa-info-circle me-2"></i>
-            <strong>Opening balances can be edited</strong> before the fiscal year is closed.
-            <span class="small text-muted d-block mt-1">Accounts with existing transactions cannot be modified.</span>
+            <strong>Opening balances can be edited</strong> – Fiscal Year {% if fiscal_year %}{{ fiscal_year.name }}{% endif %} is OPEN.
+            <span class="small text-muted d-block mt-1">Accounts with existing transactions cannot have their account changed, but amounts can be modified.</span>
         </div>
         <a href="{% url 'finance:system_opening_balance_edit' %}" class="btn btn-primary">
             <i class="fas fa-edit me-2"></i>Edit Opening Balances
@@ -82,17 +82,18 @@
     <div class="card-header bg-dark text-white">
         <div class="d-flex justify-content-between align-items-center">
             <div>
-                {% if system_opening_journal.fiscal_year.is_closed %}
+                {% if is_fy_closed %}
                 <i class="fas fa-lock me-2"></i>
                 {% else %}
                 <i class="fas fa-edit me-2"></i>
                 {% endif %}
                 <strong>System Opening Balance Entry</strong>
+                {% if fiscal_year %}<small class="ms-2 opacity-75">{{ fiscal_year.name }}</small>{% endif %}
             </div>
             <div>
                 <span class="badge bg-success">{{ system_opening_journal.entry_number }}</span>
                 <span class="badge bg-info ms-2">POSTED</span>
-                {% if system_opening_journal.fiscal_year.is_closed %}
+                {% if is_fy_closed %}
                 <span class="badge bg-warning text-dark ms-2">LOCKED</span>
                 {% else %}
                 <span class="badge bg-primary ms-2">EDITABLE</span>

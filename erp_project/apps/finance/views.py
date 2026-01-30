@@ -4710,6 +4710,34 @@ class OpeningBalanceListView(PermissionRequiredMixin, ListView):
         
         context['system_opening_journal'] = system_opening_journal
         
+        # Determine if opening balances are locked (fiscal year closed)
+        # Default: editable (not locked)
+        is_fy_closed = False
+        fiscal_year = None
+        
+        if system_opening_journal:
+            fiscal_year = system_opening_journal.fiscal_year
+            
+            # If fiscal_year is not linked, find it based on journal date
+            if not fiscal_year:
+                fiscal_year = FiscalYear.objects.filter(
+                    start_date__lte=system_opening_journal.date,
+                    end_date__gte=system_opening_journal.date,
+                    is_active=True
+                ).first()
+                
+                # Link it to the journal for future reference
+                if fiscal_year:
+                    system_opening_journal.fiscal_year = fiscal_year
+                    system_opening_journal.save(update_fields=['fiscal_year'])
+            
+            # Only locked if fiscal year is explicitly closed
+            if fiscal_year:
+                is_fy_closed = fiscal_year.is_closed
+        
+        context['is_fy_closed'] = is_fy_closed
+        context['fiscal_year'] = fiscal_year
+        
         if system_opening_journal:
             # Get opening balance lines grouped by account type
             lines = system_opening_journal.lines.all().select_related('account')
@@ -4893,6 +4921,11 @@ def system_opening_balance_edit(request):
     - Restricted AFTER fiscal year is closed
     - If account has other transactions, cannot change the account
     - All changes are logged in audit trail
+    
+    LOCK LOGIC (CORRECT):
+    - ALLOW edit if fiscal_year.is_closed == False
+    - DENY edit ONLY if fiscal_year.is_closed == True
+    - If fiscal_year is None, determine by journal date
     """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
         messages.error(request, 'Permission denied.')
@@ -4908,11 +4941,30 @@ def system_opening_balance_edit(request):
         messages.error(request, 'No system opening balance entry found.')
         return redirect('finance:openingbalance_list')
     
-    # Check if fiscal year is closed
+    # Determine fiscal year
     fiscal_year = journal.fiscal_year
+    
+    # If fiscal_year is not linked, find and link it based on journal date
+    if not fiscal_year:
+        # Find fiscal year that contains the journal date
+        fiscal_year = FiscalYear.objects.filter(
+            start_date__lte=journal.date,
+            end_date__gte=journal.date,
+            is_active=True
+        ).first()
+        
+        # If found, link it to the journal
+        if fiscal_year:
+            journal.fiscal_year = fiscal_year
+            journal.save(update_fields=['fiscal_year'])
+    
+    # Check if fiscal year is closed - ONLY deny if explicitly closed
     if fiscal_year and fiscal_year.is_closed:
         messages.error(request, f'Cannot edit opening balances - Fiscal Year {fiscal_year.name} is closed.')
         return redirect('finance:openingbalance_list')
+    
+    # If no fiscal year at all (shouldn't happen in production), allow editing
+    # This is a fallback - opening balances should always be linked to a fiscal year
     
     # Get lines with editability check
     lines_data = []
