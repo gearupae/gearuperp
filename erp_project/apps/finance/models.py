@@ -120,6 +120,13 @@ class Account(BaseModel):
         help_text="Allow credit (negative) balance for this account. Only applicable to bank accounts."
     )
     
+    # Fixed Deposit flag - IFRS Cash Flow compliance
+    # Fixed Deposits are NOT cash equivalents unless maturity <= 3 months
+    is_fixed_deposit = models.BooleanField(
+        default=False,
+        help_text="Mark as True for Fixed Deposit accounts. These are EXCLUDED from Cash Flow Statement opening/closing balance."
+    )
+    
     # Balance tracking
     opening_balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))

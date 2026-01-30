@@ -95,6 +95,74 @@
 </div>
 {% endif %}
 
+<!-- Cash Balance Breakdown (IFRS Compliant) -->
+{% if opening_cash_detail or closing_cash_detail %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-2 border-bottom-0">
+        <a class="text-decoration-none d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#cashBreakdown" role="button" aria-expanded="false">
+            <span class="small fw-bold text-muted">
+                <i class="fas fa-coins me-1"></i> Cash & Bank Account Breakdown (IFRS Compliant)
+            </span>
+            <i class="fas fa-chevron-down text-muted small"></i>
+        </a>
+    </div>
+    <div class="collapse" id="cashBreakdown">
+        <div class="card-body pt-0">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="small fw-bold text-muted mb-2">Opening Balances (as at {{ start_date }})</h6>
+                    <table class="table table-sm table-bordered small mb-0">
+                        <thead class="table-light">
+                            <tr><th>Account</th><th class="text-end" style="width: 120px;">Balance</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for detail in opening_cash_detail %}
+                            <tr>
+                                <td>{{ detail.account }}</td>
+                                <td class="text-end">{{ detail.balance|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-muted text-center">No accounts</td></tr>
+                            {% endfor %}
+                            <tr class="fw-bold table-primary">
+                                <td>Total Opening Cash</td>
+                                <td class="text-end">{{ opening_cash|floatformat:2|intcomma }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="small fw-bold text-muted mb-2">Closing Balances (as at {{ end_date }})</h6>
+                    <table class="table table-sm table-bordered small mb-0">
+                        <thead class="table-light">
+                            <tr><th>Account</th><th class="text-end" style="width: 120px;">Balance</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for detail in closing_cash_detail %}
+                            <tr>
+                                <td>{{ detail.account }}</td>
+                                <td class="text-end">{{ detail.balance|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="2" class="text-muted text-center">No accounts</td></tr>
+                            {% endfor %}
+                            <tr class="fw-bold table-primary">
+                                <td>Total Closing Cash</td>
+                                <td class="text-end">{{ closing_cash|floatformat:2|intcomma }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="mt-2 small text-muted">
+                <i class="fas fa-info-circle me-1"></i>
+                <strong>Note:</strong> Cash Flow Statement includes only Cash in Hand and Bank accounts. Fixed Deposits, PDC Receivable, and other non-liquid assets are excluded per IFRS guidelines.
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Summary Cards -->
 <div class="row mb-4">
     <div class="col-lg-3 col-md-6 mb-3">

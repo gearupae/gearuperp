@@ -688,6 +688,8 @@ def trial_balance(request):
     
     for account in accounts:
         # Calculate net balance
+        # CRITICAL: Include Account.opening_balance in addition to journal entries
+        # This ensures opening balances are reflected even if opening journal doesn't exist
         totals = JournalEntryLine.objects.filter(
             account=account,
             journal_entry__status='posted',
@@ -697,7 +699,13 @@ def trial_balance(request):
             total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
         )
         
-        net_balance = totals['total_debit'] - totals['total_credit']
+        # Start with account's opening balance
+        # Opening balance is stored as a positive value for debit-normal accounts
+        # and negative for credit-normal accounts (or use account's debit_increases property)
+        account_opening = account.opening_balance or Decimal('0.00')
+        
+        # Add journal movements to opening balance
+        net_balance = account_opening + (totals['total_debit'] - totals['total_credit'])
         
         # Skip zero balance accounts unless requested
         if net_balance == 0 and not show_zero_balances:
@@ -898,7 +906,10 @@ def trial_balance_with_movements(request):
     total_closing_credit = Decimal('0.00')
     
     for account in accounts:
-        # Opening Balance: Sum of all posted journal lines BEFORE start_date
+        # Account's static opening balance (from Account model)
+        account_opening = account.opening_balance or Decimal('0.00')
+        
+        # Opening Balance: Account opening + Sum of all posted journal lines BEFORE start_date
         opening_lines = JournalEntryLine.objects.filter(
             account=account,
             journal_entry__status='posted',
@@ -909,7 +920,8 @@ def trial_balance_with_movements(request):
         )
         opening_debit = opening_lines['debit']
         opening_credit = opening_lines['credit']
-        opening_balance = opening_debit - opening_credit
+        # CRITICAL: Include account opening balance in opening calculation
+        opening_balance = account_opening + (opening_debit - opening_credit)
         
         # Period Movement: Sum of all posted journal lines BETWEEN start_date and end_date
         period_lines = JournalEntryLine.objects.filter(
@@ -1287,7 +1299,28 @@ def general_ledger(request):
     
     if account_id:
         selected_account = get_object_or_404(Account, pk=account_id)
-        running_balance = selected_account.opening_balance
+        
+        # Calculate opening balance as of start_date
+        # = Account opening balance + all posted journals before start_date
+        base_opening = selected_account.opening_balance or Decimal('0.00')
+        
+        # Get all movements before the start date
+        pre_period = JournalEntryLine.objects.filter(
+            account=selected_account,
+            journal_entry__status='posted',
+            journal_entry__date__lt=start_date
+        ).aggregate(
+            total_debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
+        )
+        
+        # Calculate opening balance at start_date
+        if selected_account.debit_increases:
+            running_balance = base_opening + (pre_period['total_debit'] - pre_period['total_credit'])
+        else:
+            running_balance = base_opening + (pre_period['total_credit'] - pre_period['total_debit'])
+        
+        opening_balance = running_balance  # Store for display
         
         lines = JournalEntryLine.objects.filter(
             account=selected_account,
@@ -1344,12 +1377,15 @@ def general_ledger(request):
         from .excel_exports import export_general_ledger
         return export_general_ledger(transactions, selected_account.name, start_date, end_date)
     
+    # Opening balance for context (calculated at start_date, not just account opening)
+    context_opening_balance = opening_balance if account_id and 'opening_balance' in locals() else Decimal('0.00')
+    
     return render(request, 'finance/general_ledger.html', {
         'title': 'General Ledger',
         'accounts': accounts,
         'selected_account': selected_account,
         'transactions': transactions,
-        'opening_balance': selected_account.opening_balance if selected_account else Decimal('0.00'),
+        'opening_balance': context_opening_balance,
         'closing_balance': running_balance,
         'start_date': start_date,
         'end_date': end_date,
@@ -2703,10 +2739,13 @@ def cash_flow(request):
     
     # ========================================
     # IDENTIFY CASH & BANK ACCOUNTS
+    # CRITICAL: Exclude Fixed Deposits (IFRS Compliance)
+    # Fixed Deposits are NOT cash equivalents unless maturity <= 3 months
     # ========================================
     cash_bank_accounts = Account.objects.filter(
         is_active=True,
-        is_cash_account=True
+        is_cash_account=True,
+        is_fixed_deposit=False  # EXCLUDE Fixed Deposits
     ).order_by('code')
     
     # Fallback if no accounts marked as cash accounts
@@ -2714,6 +2753,7 @@ def cash_flow(request):
         cash_bank_accounts = Account.objects.filter(
             is_active=True,
             account_type=AccountType.ASSET,
+            is_fixed_deposit=False  # EXCLUDE Fixed Deposits
         ).filter(
             Q(name__icontains='bank') |
             Q(name__icontains='cash in hand') |
@@ -2721,7 +2761,9 @@ def cash_flow(request):
             Q(account_category='cash_bank')
         ).exclude(
             Q(name__icontains='receivable') |
-            Q(name__icontains='pdc')  # Exclude PDC Receivable
+            Q(name__icontains='pdc') |  # Exclude PDC Receivable
+            Q(name__icontains='fixed deposit') |  # Exclude FD by name
+            Q(name__icontains='term deposit')  # Exclude term deposits
         ).order_by('code')
     
     if bank_filter:
@@ -2731,10 +2773,18 @@ def cash_flow(request):
     
     # ========================================
     # OPENING CASH BALANCE
+    # CRITICAL: Only Cash + Bank accounts, EXCLUDE Fixed Deposits
     # ========================================
     opening_cash = Decimal('0.00')
+    opening_cash_detail = []  # For validation
     for acc in cash_bank_accounts:
-        acc_opening = acc.opening_balance
+        # Skip Fixed Deposits (already filtered, but double-check)
+        if getattr(acc, 'is_fixed_deposit', False):
+            continue
+        if 'fixed deposit' in acc.name.lower() or 'term deposit' in acc.name.lower():
+            continue
+            
+        acc_opening = acc.opening_balance or Decimal('0.00')
         pre_period = JournalEntryLine.objects.filter(
             account=acc,
             journal_entry__status='posted',
@@ -2745,13 +2795,22 @@ def cash_flow(request):
         )
         acc_opening += pre_period['total_debit'] - pre_period['total_credit']
         opening_cash += acc_opening
+        opening_cash_detail.append({'account': acc.name, 'balance': acc_opening})
     
     # ========================================
     # CLOSING CASH BALANCE
+    # CRITICAL: Only Cash + Bank accounts, EXCLUDE Fixed Deposits
     # ========================================
     closing_cash = Decimal('0.00')
+    closing_cash_detail = []  # For reconciliation validation
     for acc in cash_bank_accounts:
-        acc_balance = acc.opening_balance
+        # Skip Fixed Deposits (already filtered, but double-check)
+        if getattr(acc, 'is_fixed_deposit', False):
+            continue
+        if 'fixed deposit' in acc.name.lower() or 'term deposit' in acc.name.lower():
+            continue
+            
+        acc_balance = acc.opening_balance or Decimal('0.00')
         period_totals = JournalEntryLine.objects.filter(
             account=acc,
             journal_entry__status='posted',
@@ -2762,6 +2821,7 @@ def cash_flow(request):
         )
         acc_balance += period_totals['total_debit'] - period_totals['total_credit']
         closing_cash += acc_balance
+        closing_cash_detail.append({'account': acc.name, 'balance': acc_balance})
     
     # ========================================
     # VALID SOURCE MODULES FOR CASH FLOW
@@ -3016,7 +3076,7 @@ def cash_flow(request):
         from .excel_exports import export_cash_flow
         return export_cash_flow(operating_summary, investing_summary, financing_summary, start_date_str, end_date_str)
     
-    # Get all cash accounts for filter dropdown
+    # Get all cash accounts for filter dropdown (exclude Fixed Deposits)
     all_cash_bank_accounts = Account.objects.filter(
         is_active=True,
     ).filter(
@@ -3026,7 +3086,10 @@ def cash_flow(request):
         Q(account_category='cash_bank')
     ).exclude(
         Q(name__icontains='receivable') |
-        Q(name__icontains='pdc')
+        Q(name__icontains='pdc') |
+        Q(is_fixed_deposit=True) |  # Exclude Fixed Deposits
+        Q(name__icontains='fixed deposit') |
+        Q(name__icontains='term deposit')
     ).order_by('code')
     
     return render(request, 'finance/cash_flow.html', {
@@ -3050,6 +3113,9 @@ def cash_flow(request):
         'cash_bank_accounts': all_cash_bank_accounts,
         'validation_ok': validation_ok,
         'validation_difference': validation_difference,
+        # Audit details for reconciliation
+        'opening_cash_detail': opening_cash_detail,
+        'closing_cash_detail': closing_cash_detail,
     })
 
 
