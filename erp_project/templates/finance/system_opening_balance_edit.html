@@ -11,7 +11,7 @@
         background-color: #f8f9fa;
     }
     .has-transactions {
-        background-color: #fff3cd !important;
+        background-color: #e8f4f8 !important; /* Light blue - informational */
     }
     .account-info {
         display: flex;
@@ -47,10 +47,11 @@
 <!-- Instructions -->
 <div class="alert alert-info mb-4">
     <i class="fas fa-info-circle me-2"></i>
-    <strong>Editing Rules:</strong>
+    <strong>Opening Balances are Editable</strong> – Fiscal Year is OPEN.
     <ul class="mb-0 mt-2 small">
-        <li>Opening balances can be edited <strong>before the fiscal year is closed</strong></li>
-        <li>Accounts with existing transactions (highlighted in yellow) <strong>cannot be edited or deleted</strong></li>
+        <li>Opening balances can be edited <strong>until the fiscal year is closed</strong></li>
+        <li>Accounts with subsequent transactions (highlighted in yellow) <strong>are still editable</strong></li>
+        <li>Edits will <strong>automatically recalculate</strong> all downstream account balances</li>
         <li>Total Debits must equal Total Credits for the entry to be balanced</li>
         <li>All changes are logged in the audit trail</li>
     </ul>
@@ -136,8 +137,8 @@
                             <div class="account-info">
                                 <span>{{ line.account.name }}</span>
                                 {% if line.has_transactions %}
-                                <span class="badge bg-warning text-dark transaction-warning" title="Account has transactions">
-                                    <i class="fas fa-lock"></i> Has Transactions
+                                <span class="badge bg-info text-white transaction-warning" title="Account has subsequent transactions - balances will be recalculated">
+                                    <i class="fas fa-sync-alt"></i> Has Transactions
                                 </span>
                                 {% endif %}
                             </div>
@@ -163,16 +164,11 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            {% if line.editable %}
                             <button type="button" class="btn btn-sm btn-outline-danger delete-line" 
-                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}">
+                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}"
+                                    {% if line.has_transactions %}title="Warning: Account has transactions - delete will recalculate balances"{% endif %}>
                                 <i class="fas fa-trash"></i>
                             </button>
-                            {% else %}
-                            <span class="text-muted" title="Cannot delete - has transactions">
-                                <i class="fas fa-lock"></i>
-                            </span>
-                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -207,8 +203,8 @@
                             <div class="account-info">
                                 <span>{{ line.account.name }}</span>
                                 {% if line.has_transactions %}
-                                <span class="badge bg-warning text-dark transaction-warning">
-                                    <i class="fas fa-lock"></i> Has Transactions
+                                <span class="badge bg-info text-white transaction-warning" title="Account has subsequent transactions - balances will be recalculated">
+                                    <i class="fas fa-sync-alt"></i> Has Transactions
                                 </span>
                                 {% endif %}
                             </div>
@@ -234,14 +230,11 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            {% if line.editable %}
                             <button type="button" class="btn btn-sm btn-outline-danger delete-line" 
-                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}">
+                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}"
+                                    {% if line.has_transactions %}title="Warning: Account has transactions - delete will recalculate balances"{% endif %}>
                                 <i class="fas fa-trash"></i>
                             </button>
-                            {% else %}
-                            <span class="text-muted"><i class="fas fa-lock"></i></span>
-                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -276,8 +269,8 @@
                             <div class="account-info">
                                 <span>{{ line.account.name }}</span>
                                 {% if line.has_transactions %}
-                                <span class="badge bg-warning text-dark transaction-warning">
-                                    <i class="fas fa-lock"></i> Has Transactions
+                                <span class="badge bg-info text-white transaction-warning" title="Account has subsequent transactions - balances will be recalculated">
+                                    <i class="fas fa-sync-alt"></i> Has Transactions
                                 </span>
                                 {% endif %}
                             </div>
@@ -303,14 +296,11 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            {% if line.editable %}
                             <button type="button" class="btn btn-sm btn-outline-danger delete-line" 
-                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}">
+                                    data-line-id="{{ line.id }}" data-account="{{ line.account.code }}"
+                                    {% if line.has_transactions %}title="Warning: Account has transactions - delete will recalculate balances"{% endif %}>
                                 <i class="fas fa-trash"></i>
                             </button>
-                            {% else %}
-                            <span class="text-muted"><i class="fas fa-lock"></i></span>
-                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -338,7 +328,7 @@
             <div>
                 <span class="text-muted small">
                     <i class="fas fa-info-circle me-1"></i>
-                    Yellow rows indicate accounts with existing transactions and cannot be edited.
+                    Yellow rows indicate accounts with subsequent transactions. Edits will recalculate all downstream balances.
                 </span>
             </div>
             <div>
@@ -346,7 +336,7 @@
                     <i class="fas fa-times me-1"></i>Cancel
                 </a>
                 <button type="submit" class="btn btn-primary" id="saveBtn">
-                    <i class="fas fa-save me-1"></i>Save Changes
+                    <i class="fas fa-save me-1"></i>Save & Recalculate
                 </button>
             </div>
         </div>

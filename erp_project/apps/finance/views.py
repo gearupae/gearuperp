@@ -4966,10 +4966,12 @@ def system_opening_balance_edit(request):
     # If no fiscal year at all (shouldn't happen in production), allow editing
     # This is a fallback - opening balances should always be linked to a fiscal year
     
-    # Get lines with editability check
+    # Get lines - ALL lines are editable when fiscal year is OPEN
+    # Presence of subsequent transactions does NOT block opening balance edits
+    # (This is standard accounting behavior - opening balances are the foundation)
     lines_data = []
     for line in journal.lines.all().select_related('account'):
-        # Check if this account has other transactions besides opening balance
+        # Check if this account has other transactions (for informational purposes only)
         other_transactions = JournalEntryLine.objects.filter(
             account=line.account,
             journal_entry__status='posted'
@@ -4983,8 +4985,8 @@ def system_opening_balance_edit(request):
             'description': line.description,
             'debit': line.debit,
             'credit': line.credit,
-            'has_transactions': other_transactions,
-            'editable': not other_transactions,  # Can edit if no other transactions
+            'has_transactions': other_transactions,  # Informational only
+            'editable': True,  # ALWAYS editable when FY is open
         })
     
     if request.method == 'POST':
@@ -5011,13 +5013,9 @@ def system_opening_balance_edit(request):
                     new_debit = Decimal('0.00')
                     new_credit = Decimal('0.00')
                 
-                # Track changes
+                # Track changes - opening balances are ALWAYS editable when FY is open
+                # Presence of subsequent transactions does NOT block edits
                 if line.debit != new_debit or line.credit != new_credit:
-                    if line_data['has_transactions']:
-                        # Cannot edit account with transactions
-                        messages.warning(request, f'Cannot edit {line.account.code} - account has transactions.')
-                        continue
-                    
                     # Log the change
                     change_record = {
                         'account': line.account.code,
@@ -5026,6 +5024,7 @@ def system_opening_balance_edit(request):
                         'old_credit': float(line.credit),
                         'new_debit': float(new_debit),
                         'new_credit': float(new_credit),
+                        'has_subsequent_transactions': line_data['has_transactions'],
                     }
                     changes_made.append(change_record)
                     
@@ -5047,8 +5046,38 @@ def system_opening_balance_edit(request):
             journal.total_credit = total_credit
             journal.save(update_fields=['total_debit', 'total_credit'])
             
-            # Log audit
+            # RECALCULATE ACCOUNT BALANCES
+            # Opening balance changes affect all subsequent balances
             if changes_made:
+                recalculated_accounts = []
+                for change in changes_made:
+                    account_code = change['account']
+                    try:
+                        account = Account.objects.get(code=account_code)
+                        # Recalculate the account's current balance
+                        # Balance = Opening Balance (from this journal) + All subsequent transactions
+                        account_lines = JournalEntryLine.objects.filter(
+                            account=account,
+                            journal_entry__status='posted'
+                        ).aggregate(
+                            total_debit=Coalesce(Sum('debit'), Decimal('0.00')),
+                            total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
+                        )
+                        
+                        # Calculate new balance based on account type
+                        if account.debit_increases:
+                            new_balance = account_lines['total_debit'] - account_lines['total_credit']
+                        else:
+                            new_balance = account_lines['total_credit'] - account_lines['total_debit']
+                        
+                        # Update account balance
+                        account.balance = new_balance
+                        account.save(update_fields=['balance'])
+                        recalculated_accounts.append(account_code)
+                    except Account.DoesNotExist:
+                        pass
+                
+                # Log audit with recalculation info
                 log_finance_audit(
                     user=request.user,
                     action='update',
@@ -5060,9 +5089,15 @@ def system_opening_balance_edit(request):
                         'changes': changes_made,
                         'total_debit': float(total_debit),
                         'total_credit': float(total_credit),
+                        'recalculated_accounts': recalculated_accounts,
+                        'note': 'Downstream balances recalculated automatically',
                     }
                 )
-                messages.success(request, f'Opening balances updated successfully. {len(changes_made)} line(s) changed.')
+                messages.success(
+                    request, 
+                    f'Opening balances updated successfully. {len(changes_made)} line(s) changed. '
+                    f'Account balances recalculated.'
+                )
             else:
                 messages.info(request, 'No changes were made.')
             
@@ -5182,7 +5217,13 @@ def system_opening_balance_add_line(request):
 
 @login_required
 def system_opening_balance_delete_line(request, line_id):
-    """Delete a line from system opening balance."""
+    """Delete a line from system opening balance.
+    
+    ACCOUNTING RULES:
+    - Allow delete when fiscal year is OPEN
+    - Block delete ONLY when fiscal year is CLOSED
+    - Recalculate account balances after deletion
+    """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
         return JsonResponse({'success': False, 'error': 'Permission denied'})
     
@@ -5192,23 +5233,21 @@ def system_opening_balance_delete_line(request, line_id):
     try:
         line = JournalEntryLine.objects.select_related('journal_entry', 'account').get(pk=line_id)
         journal = line.journal_entry
+        account = line.account
         
         # Check if it's the opening balance journal
         if journal.entry_type != 'opening' or not journal.is_system_generated:
             return JsonResponse({'success': False, 'error': 'Not an opening balance entry'})
         
-        # Check fiscal year
+        # Check fiscal year - ONLY block if closed
         if journal.fiscal_year and journal.fiscal_year.is_closed:
             return JsonResponse({'success': False, 'error': 'Fiscal year is closed'})
         
-        # Check if account has other transactions
+        # Check if account has other transactions (informational for audit)
         has_transactions = JournalEntryLine.objects.filter(
-            account=line.account,
+            account=account,
             journal_entry__status='posted'
         ).exclude(journal_entry=journal).exists()
-        
-        if has_transactions:
-            return JsonResponse({'success': False, 'error': 'Cannot delete - account has transactions'})
         
         # Log before deletion
         from apps.core.audit import log_finance_audit
@@ -5220,15 +5259,34 @@ def system_opening_balance_delete_line(request, line_id):
             request=request,
             details={
                 'journal_number': journal.entry_number,
-                'account': line.account.code,
-                'account_name': line.account.name,
+                'account': account.code,
+                'account_name': account.name,
                 'debit': float(line.debit),
                 'credit': float(line.credit),
+                'had_transactions': has_transactions,
+                'note': 'Opening balance line deleted - balances recalculated' if has_transactions else 'Opening balance line deleted',
             }
         )
         
         # Delete the line
         line.delete()
+        
+        # Recalculate account balance
+        account_lines = JournalEntryLine.objects.filter(
+            account=account,
+            journal_entry__status='posted'
+        ).aggregate(
+            total_debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
+        )
+        
+        if account.debit_increases:
+            new_balance = account_lines['total_debit'] - account_lines['total_credit']
+        else:
+            new_balance = account_lines['total_credit'] - account_lines['total_debit']
+        
+        account.balance = new_balance
+        account.save(update_fields=['balance'])
         
         # Update journal totals
         journal.calculate_totals()
