@@ -19,7 +19,7 @@ from decimal import Decimal
 User = get_user_model()
 
 from .models import (
-    Account, AccountType, FiscalYear, AccountingPeriod, JournalEntry, JournalEntryLine, 
+    Account, AccountType, AccountCategory, FiscalYear, AccountingPeriod, JournalEntry, JournalEntryLine, 
     TaxCode, Payment, BankAccount, ExpenseClaim, ExpenseItem, VATReturn, CorporateTaxComputation,
     Budget, BudgetLine, BankTransfer, BankReconciliation, BankStatement, BankStatementLine,
     ReconciliationItem, OpeningBalanceEntry, OpeningBalanceLine, WriteOff, ExchangeRate,
