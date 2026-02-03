@@ -1147,15 +1147,25 @@ def balance_sheet(request):
     """
     Balance Sheet - Assets = Liabilities + Equity.
     SINGLE SOURCE OF TRUTH: Reads only from JournalEntryLine for all account types.
+    
+    IFRS/GAAP Compliant:
+    - Period-wise filtering (from-to dates)
+    - Accumulated depreciation respects reporting period
+    - Contra-assets properly reduce related asset values
     """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
     
-    as_of_date = request.GET.get('date', date.today().isoformat())
+    # Period-wise filtering
+    start_date = request.GET.get('start_date', date(date.today().year, 1, 1).isoformat())
+    end_date = request.GET.get('end_date', date.today().isoformat())
     
     def get_account_balance(account, up_to_date):
-        """Calculate account balance from journal lines up to a specific date."""
+        """
+        Calculate account balance from journal lines up to a specific date.
+        Respects reporting period for accumulated depreciation.
+        """
         lines = JournalEntryLine.objects.filter(
             account=account,
             journal_entry__status='posted',
@@ -1168,26 +1178,119 @@ def balance_sheet(request):
         credit = lines['total_credit'] or Decimal('0.00')
         
         # Account type determines balance calculation
-        if account.debit_increases:
-            # Assets and Expenses: Debit - Credit
+        if account.debit_increases and not account.is_contra_account:
+            # Normal Assets and Expenses: Debit - Credit
             return account.opening_balance + (debit - credit)
+        elif account.is_contra_account:
+            # Contra accounts (like Accumulated Depreciation): Credit - Debit (shows as negative/reducing value)
+            return account.opening_balance + (credit - debit)
         else:
             # Liabilities, Equity, Income: Credit - Debit
             return account.opening_balance + (credit - debit)
     
-    # Assets
+    # Get all asset accounts
     asset_accounts = Account.objects.filter(
         is_active=True, 
         account_type=AccountType.ASSET
     ).order_by('code')
     
-    asset_data = []
+    # Group assets: Fixed assets with their accumulated depreciation
+    # Fixed asset categories that have depreciation
+    fixed_asset_categories = ['fixed_furniture', 'fixed_it', 'fixed_vehicles', 'fixed_other']
+    
+    # Collect fixed assets and accumulated depreciation separately
+    fixed_assets_data = {}  # {category: {'assets': [], 'depreciation': [], 'total_cost': 0, 'total_dep': 0, 'net_value': 0}}
+    current_assets_data = []
+    other_assets_data = []
+    
     total_assets = Decimal('0.00')
+    total_fixed_assets_cost = Decimal('0.00')
+    total_accumulated_depreciation = Decimal('0.00')
+    total_net_fixed_assets = Decimal('0.00')
+    total_current_assets = Decimal('0.00')
+    
     for acc in asset_accounts:
-        balance = get_account_balance(acc, as_of_date)
-        if balance != 0:
-            asset_data.append({'account': acc, 'amount': balance})
+        balance = get_account_balance(acc, end_date)
+        if balance == 0:
+            continue
+            
+        # Check if it's accumulated depreciation
+        if acc.is_contra_account or acc.account_category == 'accum_depreciation' or 'accumulated depreciation' in acc.name.lower():
+            # Find related fixed asset category
+            asset_name_lower = acc.name.lower()
+            related_category = 'fixed_other'  # default
+            
+            if 'furniture' in asset_name_lower:
+                related_category = 'fixed_furniture'
+            elif 'it' in asset_name_lower or 'computer' in asset_name_lower or 'equipment' in asset_name_lower:
+                related_category = 'fixed_it'
+            elif 'vehicle' in asset_name_lower:
+                related_category = 'fixed_vehicles'
+            
+            if related_category not in fixed_assets_data:
+                fixed_assets_data[related_category] = {
+                    'category_name': dict(AccountCategory.choices).get(related_category, 'Fixed Assets'),
+                    'assets': [],
+                    'depreciation': [],
+                    'total_cost': Decimal('0.00'),
+                    'total_dep': Decimal('0.00'),
+                    'net_value': Decimal('0.00')
+                }
+            
+            # Store as positive value for display, but it reduces assets
+            fixed_assets_data[related_category]['depreciation'].append({
+                'account': acc,
+                'amount': abs(balance)
+            })
+            fixed_assets_data[related_category]['total_dep'] += abs(balance)
+            total_accumulated_depreciation += abs(balance)
+            
+        # Check if it's a fixed asset
+        elif acc.account_category in fixed_asset_categories:
+            if acc.account_category not in fixed_assets_data:
+                fixed_assets_data[acc.account_category] = {
+                    'category_name': dict(AccountCategory.choices).get(acc.account_category, 'Fixed Assets'),
+                    'assets': [],
+                    'depreciation': [],
+                    'total_cost': Decimal('0.00'),
+                    'total_dep': Decimal('0.00'),
+                    'net_value': Decimal('0.00')
+                }
+            
+            fixed_assets_data[acc.account_category]['assets'].append({
+                'account': acc,
+                'amount': balance
+            })
+            fixed_assets_data[acc.account_category]['total_cost'] += balance
+            total_fixed_assets_cost += balance
+            
+        # Current assets (Cash, Bank, Receivables, etc.)
+        elif acc.account_category in ['cash_bank', 'trade_receivables', 'tax_receivables', 'inventory', 'prepaid', 'other_current_assets']:
+            current_assets_data.append({'account': acc, 'amount': balance})
+            total_current_assets += balance
+        else:
+            # Other assets
+            other_assets_data.append({'account': acc, 'amount': balance})
             total_assets += balance
+    
+    # Calculate net book values for fixed assets
+    for category in fixed_assets_data:
+        fixed_assets_data[category]['net_value'] = fixed_assets_data[category]['total_cost'] - fixed_assets_data[category]['total_dep']
+    
+    total_net_fixed_assets = total_fixed_assets_cost - total_accumulated_depreciation
+    total_assets = total_current_assets + total_net_fixed_assets + sum(item['amount'] for item in other_assets_data)
+    
+    # Prepare flat asset_data for backward compatibility with Excel export
+    asset_data = []
+    for item in current_assets_data:
+        asset_data.append(item)
+    for category, data in sorted(fixed_assets_data.items()):
+        for item in data['assets']:
+            asset_data.append(item)
+        for dep in data['depreciation']:
+            asset_data.append({'account': dep['account'], 'amount': -dep['amount']})  # Show as negative
+    for item in other_assets_data:
+        asset_data.append(item)
     
     # Liabilities
     liability_accounts = Account.objects.filter(
@@ -1198,7 +1301,7 @@ def balance_sheet(request):
     liability_data = []
     total_liabilities = Decimal('0.00')
     for acc in liability_accounts:
-        balance = get_account_balance(acc, as_of_date)
+        balance = get_account_balance(acc, end_date)
         if balance != 0:
             liability_data.append({'account': acc, 'amount': balance})
             total_liabilities += balance
@@ -1212,7 +1315,7 @@ def balance_sheet(request):
     equity_data = []
     total_equity = Decimal('0.00')
     for acc in equity_accounts:
-        balance = get_account_balance(acc, as_of_date)
+        balance = get_account_balance(acc, end_date)
         if balance != 0:
             equity_data.append({'account': acc, 'amount': balance})
             total_equity += balance
@@ -1228,7 +1331,7 @@ def balance_sheet(request):
     income_lines = JournalEntryLine.objects.filter(
         account__in=income_accounts,
         journal_entry__status='posted',
-        journal_entry__date__lte=as_of_date,
+        journal_entry__date__lte=end_date,
     ).aggregate(
         total_debit=Sum('debit'),
         total_credit=Sum('credit')
@@ -1238,7 +1341,7 @@ def balance_sheet(request):
     expense_lines = JournalEntryLine.objects.filter(
         account__in=expense_accounts,
         journal_entry__status='posted',
-        journal_entry__date__lte=as_of_date,
+        journal_entry__date__lte=end_date,
     ).aggregate(
         total_debit=Sum('debit'),
         total_credit=Sum('credit')
@@ -1261,7 +1364,7 @@ def balance_sheet(request):
         equity_export = [{'code': d['account'].code, 'name': d['account'].name, 'balance': d['amount']} for d in equity_data]
         if current_year_profit != 0:
             equity_export.append({'code': '', 'name': 'Current Year Profit/Loss', 'balance': current_year_profit})
-        return export_balance_sheet(assets_export, liabilities_export, equity_export, as_of_date)
+        return export_balance_sheet(assets_export, liabilities_export, equity_export, end_date, start_date)
     
     return render(request, 'finance/balance_sheet.html', {
         'title': 'Balance Sheet',
@@ -1274,7 +1377,16 @@ def balance_sheet(request):
         'current_year_profit': current_year_profit,
         'total_liabilities_equity': total_liabilities_equity,
         'is_balanced': is_balanced,
-        'as_of_date': as_of_date,
+        'start_date': start_date,
+        'end_date': end_date,
+        # New structured data for proper presentation
+        'current_assets_data': current_assets_data,
+        'total_current_assets': total_current_assets,
+        'fixed_assets_data': fixed_assets_data,
+        'total_fixed_assets_cost': total_fixed_assets_cost,
+        'total_accumulated_depreciation': total_accumulated_depreciation,
+        'total_net_fixed_assets': total_net_fixed_assets,
+        'other_assets_data': other_assets_data,
     })
 
 

@@ -104,8 +104,17 @@ class Item(BaseModel):
     unit = models.CharField(max_length=20, default='pcs')  # pcs, kg, m, etc.
     minimum_stock = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     
-    # VAT
-    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('5.00'))  # UAE VAT
+    # Tax Code - source of truth for VAT (SAP/Oracle Standard)
+    tax_code = models.ForeignKey(
+        'finance.TaxCode',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='inventory_items',
+        help_text='Tax Code determines VAT rate. No selection = Out of Scope (0%)'
+    )
+    # Computed VAT rate from tax_code (read-only, for display/reporting)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
     
     class Meta:
         ordering = ['name']

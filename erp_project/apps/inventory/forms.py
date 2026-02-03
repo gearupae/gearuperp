@@ -41,24 +41,40 @@ class WarehouseForm(forms.ModelForm):
 
 
 class ItemForm(forms.ModelForm):
+    """
+    Form for Inventory Items.
+    Tax Code determines VAT rate - No Tax Code = 0% VAT (Out of Scope)
+    """
     class Meta:
         model = Item
         fields = [
             'name', 'description', 'category', 'item_type', 'status',
-            'purchase_price', 'selling_price', 'unit', 'minimum_stock', 'vat_rate'
+            'purchase_price', 'selling_price', 'unit', 'minimum_stock', 'tax_code'
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 2}),
         }
     
     def __init__(self, *args, **kwargs):
+        from apps.finance.models import TaxCode
         super().__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
-            if field_name in ['category', 'item_type', 'status']:
+            if field_name in ['category', 'item_type', 'status', 'tax_code']:
                 field.widget.attrs['class'] = 'form-select'
             else:
                 field.widget.attrs['class'] = 'form-control'
         self.fields['category'].queryset = Category.objects.filter(is_active=True)
+        
+        # Tax Code queryset and default
+        self.fields['tax_code'].queryset = TaxCode.objects.filter(is_active=True)
+        self.fields['tax_code'].required = False
+        self.fields['tax_code'].empty_label = "-- No Tax (Out of Scope) --"
+        
+        # Pre-select default tax code if creating new item
+        if not self.instance.pk:
+            default_tax_code = TaxCode.objects.filter(is_active=True, is_default=True).first()
+            if default_tax_code:
+                self.fields['tax_code'].initial = default_tax_code
 
 
 class StockAdjustmentForm(forms.Form):

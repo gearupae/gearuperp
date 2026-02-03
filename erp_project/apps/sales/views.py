@@ -82,9 +82,13 @@ class QuotationCreateView(CreatePermissionMixin, CreateView):
     module_name = 'sales'
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = 'Create Quotation'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = QuotationItemFormSet(self.request.POST)
@@ -126,9 +130,13 @@ class QuotationUpdateView(UpdatePermissionMixin, UpdateView):
     module_name = 'sales'
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = f'Edit Quotation: {self.object.quotation_number}'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = QuotationItemFormSet(self.request.POST, instance=self.object)
@@ -402,9 +410,13 @@ class InvoiceCreateView(CreatePermissionMixin, CreateView):
     module_name = 'sales'
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = 'Create Invoice'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = InvoiceItemFormSet(self.request.POST)
@@ -460,9 +472,13 @@ class InvoiceUpdateView(UpdatePermissionMixin, UpdateView):
         return super().get(request, *args, **kwargs)
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = f'Edit Invoice: {self.object.invoice_number}'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = InvoiceItemFormSet(self.request.POST, instance=self.object)

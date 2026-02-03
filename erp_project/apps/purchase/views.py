@@ -353,9 +353,13 @@ class PurchaseOrderCreateView(CreatePermissionMixin, CreateView):
     module_name = 'purchase'
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = 'Create Purchase Order'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = PurchaseOrderItemFormSet(self.request.POST)
@@ -396,9 +400,13 @@ class PurchaseOrderUpdateView(UpdatePermissionMixin, UpdateView):
     module_name = 'purchase'
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = f'Edit PO: {self.object.po_number}'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = PurchaseOrderItemFormSet(self.request.POST, instance=self.object)
@@ -506,9 +514,13 @@ class VendorBillCreateView(CreatePermissionMixin, CreateView):
     module_name = 'purchase'
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = 'Create Vendor Bill'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = VendorBillItemFormSet(self.request.POST)
@@ -564,9 +576,13 @@ class VendorBillUpdateView(UpdatePermissionMixin, UpdateView):
         return super().get(request, *args, **kwargs)
     
     def get_context_data(self, **kwargs):
+        from apps.finance.models import TaxCode
         context = super().get_context_data(**kwargs)
         context['title'] = f'Edit Bill: {self.object.bill_number}'
         context['today'] = date.today().isoformat()
+        # Tax Codes for VAT selection (SAP/Oracle Standard)
+        context['tax_codes'] = TaxCode.objects.filter(is_active=True).order_by('code')
+        context['default_tax_code'] = TaxCode.objects.filter(is_active=True, is_default=True).first()
         if 'items_formset' not in kwargs:
             if self.request.POST:
                 context['items_formset'] = VendorBillItemFormSet(self.request.POST, instance=self.object)

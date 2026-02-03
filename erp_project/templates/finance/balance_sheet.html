@@ -5,10 +5,10 @@
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
         <h4 class="mb-1 fw-bold">{{ title }}</h4>
-        <p class="text-muted mb-0">As of {{ as_of_date }}</p>
+        <p class="text-muted mb-0">Period: {{ start_date }} to {{ end_date }}</p>
     </div>
     <div>
-        <a href="?date={{ as_of_date }}&format=excel" class="btn btn-success me-2">
+        <a href="?start_date={{ start_date }}&end_date={{ end_date }}&format=excel" class="btn btn-success me-2">
             <i class="fas fa-file-excel me-1"></i>Excel
         </a>
         <button class="btn btn-outline-secondary" onclick="window.print()">
@@ -17,15 +17,19 @@
     </div>
 </div>
 
-<!-- Date Filter -->
+<!-- Period Filter -->
 <div class="card mb-4 border-0 shadow-sm">
     <div class="card-body py-3">
         <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label fw-medium">As of Date</label>
-                <input type="date" name="date" class="form-control" value="{{ as_of_date }}">
+            <div class="col-md-3">
+                <label class="form-label fw-medium">From Date</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
             </div>
-            <div class="col-md-8">
+            <div class="col-md-3">
+                <label class="form-label fw-medium">To Date</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-6">
                 <button type="submit" class="btn btn-primary"><i class="fas fa-sync me-1"></i>Update</button>
             </div>
         </form>
@@ -59,14 +63,88 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for item in asset_data %}
+                            <!-- Current Assets -->
+                            {% if current_assets_data %}
+                            <tr class="table-light">
+                                <td colspan="2" class="fw-bold text-primary">Current Assets</td>
+                            </tr>
+                            {% for item in current_assets_data %}
                             <tr>
-                                <td>{{ item.account.code }} - {{ item.account.name }}</td>
+                                <td class="ps-4">{{ item.account.code }} - {{ item.account.name }}</td>
                                 <td class="text-end">{{ item.amount|floatformat:2|intcomma }}</td>
                             </tr>
-                            {% empty %}
-                            <tr><td colspan="2" class="text-center text-muted py-3">No assets recorded</td></tr>
                             {% endfor %}
+                            <tr class="border-bottom">
+                                <td class="fw-medium ps-4">Total Current Assets</td>
+                                <td class="text-end fw-medium">{{ total_current_assets|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% endif %}
+                            
+                            <!-- Fixed Assets (Property, Plant & Equipment) -->
+                            {% if fixed_assets_data %}
+                            <tr class="table-light">
+                                <td colspan="2" class="fw-bold text-primary">Property, Plant & Equipment</td>
+                            </tr>
+                            {% for category, data in fixed_assets_data.items %}
+                            <!-- Asset Category -->
+                            <tr class="table-secondary">
+                                <td colspan="2" class="fw-semibold">{{ data.category_name }}</td>
+                            </tr>
+                            
+                            <!-- Asset Cost -->
+                            {% for asset in data.assets %}
+                            <tr>
+                                <td class="ps-4">{{ asset.account.code }} - {{ asset.account.name }}</td>
+                                <td class="text-end">{{ asset.amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% endfor %}
+                            
+                            <!-- Accumulated Depreciation -->
+                            {% for dep in data.depreciation %}
+                            <tr class="text-danger">
+                                <td class="ps-4 fst-italic">Less: {{ dep.account.name }}</td>
+                                <td class="text-end">({{ dep.amount|floatformat:2|intcomma }})</td>
+                            </tr>
+                            {% endfor %}
+                            
+                            <!-- Net Book Value for Category -->
+                            <tr class="border-bottom">
+                                <td class="ps-4 fw-medium">Net Book Value - {{ data.category_name }}</td>
+                                <td class="text-end fw-medium">{{ data.net_value|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% endfor %}
+                            
+                            <!-- Total Fixed Assets Summary -->
+                            <tr class="table-info">
+                                <td class="fw-bold ps-4">Total Fixed Assets (Cost)</td>
+                                <td class="text-end fw-bold">{{ total_fixed_assets_cost|floatformat:2|intcomma }}</td>
+                            </tr>
+                            <tr class="text-danger">
+                                <td class="fw-bold ps-4 fst-italic">Less: Total Accumulated Depreciation</td>
+                                <td class="text-end fw-bold">({{ total_accumulated_depreciation|floatformat:2|intcomma }})</td>
+                            </tr>
+                            <tr class="border-bottom">
+                                <td class="fw-bold ps-4">Total Net Fixed Assets</td>
+                                <td class="text-end fw-bold text-success">{{ total_net_fixed_assets|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% endif %}
+                            
+                            <!-- Other Assets -->
+                            {% if other_assets_data %}
+                            <tr class="table-light">
+                                <td colspan="2" class="fw-bold text-primary">Other Assets</td>
+                            </tr>
+                            {% for item in other_assets_data %}
+                            <tr>
+                                <td class="ps-4">{{ item.account.code }} - {{ item.account.name }}</td>
+                                <td class="text-end">{{ item.amount|floatformat:2|intcomma }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endif %}
+                            
+                            {% if not current_assets_data and not fixed_assets_data and not other_assets_data %}
+                            <tr><td colspan="2" class="text-center text-muted py-3">No assets recorded</td></tr>
+                            {% endif %}
                         </tbody>
                         <tfoot class="table-primary fw-bold">
                             <tr>
@@ -127,7 +205,9 @@
                             {% endfor %}
                             <tr>
                                 <td class="ps-4">Current Year Profit/(Loss)</td>
-                                <td class="text-end">{{ current_year_profit|floatformat:2|intcomma }}</td>
+                                <td class="text-end {% if current_year_profit < 0 %}text-danger{% else %}text-success{% endif %}">
+                                    {{ current_year_profit|floatformat:2|intcomma }}
+                                </td>
                             </tr>
                             <tr class="border-bottom">
                                 <td class="fw-medium ps-4">Total Equity</td>
@@ -146,6 +226,11 @@
         </div>
     </div>
 </div>
+
+<!-- Accounting Note -->
+<div class="alert alert-info mt-3">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Note:</strong> Accumulated depreciation is shown as a contra-asset, reducing the related fixed asset values. 
+    Only depreciation posted on or before {{ end_date }} is included in this report.
+</div>
 {% endblock %}
-
-

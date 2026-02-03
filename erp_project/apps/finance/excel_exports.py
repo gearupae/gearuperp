@@ -334,14 +334,18 @@ def export_profit_loss(revenue_accounts, expense_accounts, start_date, end_date,
 
 # ============ BALANCE SHEET EXPORT ============
 
-def export_balance_sheet(assets, liabilities, equity, as_of_date, company_name=''):
+def export_balance_sheet(assets, liabilities, equity, end_date, start_date=None, company_name=''):
     """Export Balance Sheet to Excel."""
     wb = Workbook()
     ws = wb.active
     ws.title = 'Balance Sheet'
     
-    # Title
-    style_title_row(ws, 1, f'Balance Sheet as of {as_of_date}', 3)
+    # Title - show period if start_date provided
+    if start_date:
+        title = f'Balance Sheet ({start_date} to {end_date})'
+    else:
+        title = f'Balance Sheet as of {end_date}'
+    style_title_row(ws, 1, title, 3)
     if company_name:
         ws.cell(row=2, column=1, value=company_name)
     

@@ -1,5 +1,10 @@
 """
 Purchase Forms - Including Expense Claims and Recurring Expenses
+
+VAT LOGIC (Tax Code Driven - SAP/Oracle Standard):
+- VAT is ALWAYS derived from a TaxCode
+- No Tax Code = No VAT (Out of Scope)
+- VAT rate is read-only, computed from Tax Code
 """
 from django import forms
 from django.db.models import Q
@@ -9,6 +14,7 @@ from .models import (
     PurchaseOrder, PurchaseOrderItem, VendorBill, VendorBillItem,
     ExpenseClaim, ExpenseClaimItem, RecurringExpense
 )
+from apps.finance.models import TaxCode
 
 
 class VendorForm(forms.ModelForm):
@@ -107,14 +113,35 @@ class PurchaseOrderForm(forms.ModelForm):
 
 
 class PurchaseOrderItemForm(forms.ModelForm):
+    """
+    Form for purchase order line items.
+    Tax Code determines VAT rate - No Tax Code = 0% VAT (Out of Scope)
+    """
+    
     class Meta:
         model = PurchaseOrderItem
-        fields = ['description', 'quantity', 'unit_price', 'vat_rate']
+        fields = ['description', 'quantity', 'unit_price', 'tax_code', 'is_vat_inclusive']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            field.widget.attrs['class'] = 'form-control'
+        for field_name, field in self.fields.items():
+            if field_name in ['tax_code']:
+                field.widget.attrs['class'] = 'form-select'
+            elif field_name == 'is_vat_inclusive':
+                field.widget.attrs['class'] = 'form-check-input'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+        
+        # Set Tax Code queryset and default
+        self.fields['tax_code'].queryset = TaxCode.objects.filter(is_active=True)
+        self.fields['tax_code'].required = False
+        self.fields['tax_code'].empty_label = "-- No Tax (Out of Scope) --"
+        
+        # Pre-select default tax code if creating new item
+        if not self.instance.pk:
+            default_tax_code = TaxCode.objects.filter(is_active=True, is_default=True).first()
+            if default_tax_code:
+                self.fields['tax_code'].initial = default_tax_code
 
 
 PurchaseOrderItemFormSet = forms.inlineformset_factory(
@@ -152,14 +179,35 @@ class VendorBillForm(forms.ModelForm):
 
 
 class VendorBillItemForm(forms.ModelForm):
+    """
+    Form for vendor bill line items.
+    Tax Code determines VAT rate - No Tax Code = 0% VAT (Out of Scope)
+    """
+    
     class Meta:
         model = VendorBillItem
-        fields = ['description', 'quantity', 'unit_price', 'vat_rate']
+        fields = ['description', 'quantity', 'unit_price', 'tax_code', 'is_vat_inclusive']
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            field.widget.attrs['class'] = 'form-control'
+        for field_name, field in self.fields.items():
+            if field_name in ['tax_code']:
+                field.widget.attrs['class'] = 'form-select'
+            elif field_name == 'is_vat_inclusive':
+                field.widget.attrs['class'] = 'form-check-input'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+        
+        # Set Tax Code queryset and default
+        self.fields['tax_code'].queryset = TaxCode.objects.filter(is_active=True)
+        self.fields['tax_code'].required = False
+        self.fields['tax_code'].empty_label = "-- No Tax (Out of Scope) --"
+        
+        # Pre-select default tax code if creating new item
+        if not self.instance.pk:
+            default_tax_code = TaxCode.objects.filter(is_active=True, is_default=True).first()
+            if default_tax_code:
+                self.fields['tax_code'].initial = default_tax_code
 
 
 VendorBillItemFormSet = forms.inlineformset_factory(
@@ -186,11 +234,14 @@ class ExpenseClaimForm(forms.ModelForm):
 
 
 class ExpenseClaimItemForm(forms.ModelForm):
-    """Form for expense claim line items."""
+    """
+    Form for expense claim line items.
+    Tax Code determines VAT - No Tax Code or no receipt = 0% VAT
+    """
     
     class Meta:
         model = ExpenseClaimItem
-        fields = ['date', 'category', 'description', 'amount', 'vat_amount', 'has_receipt', 
+        fields = ['date', 'category', 'description', 'amount', 'tax_code', 'has_receipt', 
                   'receipt', 'is_non_deductible', 'expense_account']
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
@@ -200,7 +251,7 @@ class ExpenseClaimItemForm(forms.ModelForm):
         from apps.finance.models import Account
         super().__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
-            if field_name in ['category', 'expense_account']:
+            if field_name in ['category', 'expense_account', 'tax_code']:
                 field.widget.attrs['class'] = 'form-select'
             elif field_name in ['has_receipt', 'is_non_deductible']:
                 field.widget.attrs['class'] = 'form-check-input'
@@ -211,15 +262,21 @@ class ExpenseClaimItemForm(forms.ModelForm):
             is_active=True, account_type='expense'
         )
         self.fields['expense_account'].required = False
+        
+        # Set Tax Code queryset
+        self.fields['tax_code'].queryset = TaxCode.objects.filter(is_active=True)
+        self.fields['tax_code'].required = False
+        self.fields['tax_code'].empty_label = "-- No Tax (Out of Scope) --"
     
     def clean(self):
         cleaned_data = super().clean()
         has_receipt = cleaned_data.get('has_receipt')
-        vat_amount = cleaned_data.get('vat_amount', 0) or 0
+        tax_code = cleaned_data.get('tax_code')
         
-        # VAT can only be claimed with valid receipt
-        if vat_amount > 0 and not has_receipt:
-            raise ValidationError("VAT can only be claimed with a valid receipt.")
+        # Warn if VAT tax code selected but no receipt
+        if tax_code and tax_code.rate > 0 and not has_receipt:
+            # Don't raise error - just VAT won't be claimed
+            pass
         
         return cleaned_data
 

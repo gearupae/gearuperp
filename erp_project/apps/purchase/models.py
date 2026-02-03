@@ -1,6 +1,11 @@
 """
 Purchase Models - Vendors, Purchase Requests, Purchase Orders, Vendor Bills
 All bill postings create journal entries in accounting as single source of truth.
+
+VAT LOGIC (Tax Code Driven - SAP/Oracle Standard):
+- VAT is ALWAYS derived from a TaxCode (no hard-coded percentages)
+- No Tax Code = No VAT (Out of Scope)
+- Tax Code classification preserved for VAT reporting: Standard, Zero Rated, Exempt, Out of Scope
 """
 from django.db import models
 from django.conf import settings
@@ -168,6 +173,11 @@ class PurchaseOrderItem(models.Model):
     """
     Line items for purchase orders.
     Supports both VAT-exclusive and VAT-inclusive pricing.
+    
+    VAT LOGIC (Tax Code Driven):
+    - tax_code FK is the source of truth for VAT
+    - vat_rate is computed from tax_code.rate (read-only, for display)
+    - No tax_code = Out of Scope (0% VAT)
     """
     purchase_order = models.ForeignKey(
         PurchaseOrder,
@@ -177,7 +187,19 @@ class PurchaseOrderItem(models.Model):
     description = models.CharField(max_length=500)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
     unit_price = models.DecimalField(max_digits=15, decimal_places=2)
-    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('5.00'))
+    
+    # Tax Code - source of truth for VAT (SAP/Oracle Standard)
+    tax_code = models.ForeignKey(
+        'finance.TaxCode',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='purchase_order_items',
+        help_text='Tax Code determines VAT rate. No selection = Out of Scope (0%)'
+    )
+    
+    # Computed VAT rate from tax_code (read-only, for display/reporting)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
     is_vat_inclusive = models.BooleanField(default=False, help_text='If true, unit_price includes VAT')
     
     # Calculated
@@ -188,6 +210,12 @@ class PurchaseOrderItem(models.Model):
         ordering = ['id']
     
     def save(self, *args, **kwargs):
+        # Derive VAT rate from Tax Code (No Tax Code = 0%)
+        if self.tax_code:
+            self.vat_rate = self.tax_code.rate
+        else:
+            self.vat_rate = Decimal('0.00')
+        
         gross = self.quantity * self.unit_price
         
         if self.is_vat_inclusive and self.vat_rate > 0:
@@ -372,6 +400,11 @@ class VendorBillItem(models.Model):
     """
     Line items for vendor bills.
     Supports both VAT-exclusive and VAT-inclusive pricing.
+    
+    VAT LOGIC (Tax Code Driven):
+    - tax_code FK is the source of truth for VAT
+    - vat_rate is computed from tax_code.rate (read-only, for display)
+    - No tax_code = Out of Scope (0% VAT)
     """
     bill = models.ForeignKey(
         VendorBill,
@@ -381,7 +414,19 @@ class VendorBillItem(models.Model):
     description = models.CharField(max_length=500)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
     unit_price = models.DecimalField(max_digits=15, decimal_places=2)
-    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('5.00'))
+    
+    # Tax Code - source of truth for VAT (SAP/Oracle Standard)
+    tax_code = models.ForeignKey(
+        'finance.TaxCode',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='vendor_bill_items',
+        help_text='Tax Code determines VAT rate. No selection = Out of Scope (0%)'
+    )
+    
+    # Computed VAT rate from tax_code (read-only, for display/reporting)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
     is_vat_inclusive = models.BooleanField(default=False, help_text='If true, unit_price includes VAT')
     
     # Calculated
@@ -392,6 +437,12 @@ class VendorBillItem(models.Model):
         ordering = ['id']
     
     def save(self, *args, **kwargs):
+        # Derive VAT rate from Tax Code (No Tax Code = 0%)
+        if self.tax_code:
+            self.vat_rate = self.tax_code.rate
+        else:
+            self.vat_rate = Decimal('0.00')
+        
         gross = self.quantity * self.unit_price
         
         if self.is_vat_inclusive and self.vat_rate > 0:
@@ -569,7 +620,14 @@ class PurchaseCreditNote(BaseModel):
 
 
 class PurchaseCreditNoteItem(models.Model):
-    """Line items for purchase credit notes."""
+    """
+    Line items for purchase credit notes.
+    
+    VAT LOGIC (Tax Code Driven):
+    - tax_code FK is the source of truth for VAT
+    - vat_rate is computed from tax_code.rate (read-only, for display)
+    - No tax_code = Out of Scope (0% VAT)
+    """
     credit_note = models.ForeignKey(
         PurchaseCreditNote,
         on_delete=models.CASCADE,
@@ -578,7 +636,19 @@ class PurchaseCreditNoteItem(models.Model):
     description = models.CharField(max_length=500)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('1.00'))
     unit_price = models.DecimalField(max_digits=15, decimal_places=2)
-    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('5.00'))
+    
+    # Tax Code - source of truth for VAT (SAP/Oracle Standard)
+    tax_code = models.ForeignKey(
+        'finance.TaxCode',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='purchase_credit_note_items',
+        help_text='Tax Code determines VAT rate. No selection = Out of Scope (0%)'
+    )
+    
+    # Computed VAT rate from tax_code (read-only, for display/reporting)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
     
     # Calculated
     total = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
@@ -588,6 +658,12 @@ class PurchaseCreditNoteItem(models.Model):
         ordering = ['id']
     
     def save(self, *args, **kwargs):
+        # Derive VAT rate from Tax Code (No Tax Code = 0%)
+        if self.tax_code:
+            self.vat_rate = self.tax_code.rate
+        else:
+            self.vat_rate = Decimal('0.00')
+        
         self.total = self.quantity * self.unit_price
         self.vat_amount = self.total * (self.vat_rate / 100)
         super().save(*args, **kwargs)
@@ -864,6 +940,11 @@ class ExpenseClaim(BaseModel):
 class ExpenseClaimItem(models.Model):
     """
     Individual expense items within a claim.
+    
+    VAT LOGIC (Tax Code Driven):
+    - tax_code FK is the source of truth for VAT
+    - VAT only claimed if has_receipt = True
+    - No tax_code = Out of Scope (0% VAT)
     """
     CATEGORY_CHOICES = [
         ('travel', 'Travel'),
@@ -884,6 +965,18 @@ class ExpenseClaimItem(models.Model):
     category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
     description = models.CharField(max_length=500)
     amount = models.DecimalField(max_digits=15, decimal_places=2)
+    
+    # Tax Code - source of truth for VAT (SAP/Oracle Standard)
+    tax_code = models.ForeignKey(
+        'finance.TaxCode',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='expense_claim_items',
+        help_text='Tax Code determines VAT rate. No selection = Out of Scope (0%)'
+    )
+    
+    # Computed VAT amount from tax_code (only if has_receipt)
     vat_amount = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     has_receipt = models.BooleanField(default=False)
     receipt = models.FileField(upload_to='expense_receipts/', blank=True, null=True)
@@ -903,6 +996,14 @@ class ExpenseClaimItem(models.Model):
     
     def __str__(self):
         return f"{self.category} - {self.amount}"
+    
+    def save(self, *args, **kwargs):
+        # Derive VAT amount from Tax Code (No Tax Code or no receipt = 0%)
+        if self.tax_code and self.has_receipt:
+            self.vat_amount = (self.amount * (self.tax_code.rate / 100)).quantize(Decimal('0.01'))
+        else:
+            self.vat_amount = Decimal('0.00')
+        super().save(*args, **kwargs)
 
 
 # ============ RECURRING EXPENSES ============
@@ -1078,18 +1179,13 @@ class RecurringExpense(BaseModel):
             notes=f"Auto-generated from Recurring Expense: {self.name}",
         )
         
-        # Calculate VAT rate
-        vat_rate = Decimal('0.00')
-        if self.amount > 0 and self.vat_amount > 0:
-            vat_rate = (self.vat_amount / self.amount) * 100
-        
-        # Create bill item
+        # Create bill item with Tax Code
         VendorBillItem.objects.create(
             bill=vendor_bill,
             description=f"{self.name} - {self.next_run_date.strftime('%B %Y')}",
             quantity=Decimal('1.00'),
             unit_price=self.amount,
-            vat_rate=vat_rate,
+            tax_code=self.tax_code,  # Tax Code determines VAT
         )
         
         # Calculate bill totals
