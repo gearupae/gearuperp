@@ -26,19 +26,53 @@
         <div class="row g-3">
             <div class="col-md-2">
                 <label class="form-label">Code <span class="text-danger">*</span></label>
-                <input type="text" name="code" class="form-control" required>
+                <input type="text" name="code" class="form-control" placeholder="e.g. VAT5" required>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Name <span class="text-danger">*</span></label>
-                <input type="text" name="name" class="form-control" required>
+                <input type="text" name="name" class="form-control" placeholder="e.g. VAT 5% Standard" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tax Type <span class="text-danger">*</span></label>
+                <select name="tax_type" class="form-select" required>
+                    <option value="standard">Standard Rated (5%)</option>
+                    <option value="zero">Zero Rated</option>
+                    <option value="exempt">Exempt</option>
+                    <option value="out_of_scope">Out of Scope</option>
+                </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Rate % <span class="text-danger">*</span></label>
                 <input type="number" name="rate" class="form-control" step="0.01" value="5.00" required>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Description</label>
-                <input type="text" name="description" class="form-control">
+                <input type="text" name="description" class="form-control" placeholder="Optional description">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Sales VAT Account</label>
+                <select name="sales_account" class="form-select">
+                    <option value="">-- Select VAT Payable Account --</option>
+                    {% for acc in form.fields.sales_account.queryset %}
+                    <option value="{{ acc.pk }}">{{ acc.code }} - {{ acc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Purchase VAT Account</label>
+                <select name="purchase_account" class="form-select">
+                    <option value="">-- Select VAT Recoverable Account --</option>
+                    {% for acc in form.fields.purchase_account.queryset %}
+                    <option value="{{ acc.pk }}">{{ acc.code }} - {{ acc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="form-check mt-2">
+                    <input type="checkbox" name="is_default" class="form-check-input" id="isDefault">
+                    <label class="form-check-label" for="isDefault">Set as Default</label>
+                </div>
             </div>
         </div>
         <div class="mt-3">
