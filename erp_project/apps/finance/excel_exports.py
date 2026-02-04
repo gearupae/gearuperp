@@ -419,7 +419,7 @@ def export_balance_sheet(assets, liabilities, equity, end_date, start_date=None,
     
     auto_width_columns(ws)
     
-    response = create_excel_response(f'balance_sheet_{as_of_date}.xlsx')
+    response = create_excel_response(f'balance_sheet_{end_date}.xlsx')
     wb.save(response)
     return response
 

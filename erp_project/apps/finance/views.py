@@ -12,7 +12,7 @@ from django.db.models import Q, Sum, F
 from django.db.models.functions import Coalesce
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 
