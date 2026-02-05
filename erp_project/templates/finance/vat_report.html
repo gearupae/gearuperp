@@ -36,6 +36,43 @@
     </div>
 </div>
 
+<!-- Data Source Indicator -->
+{% if is_submitted_data %}
+<div class="alert alert-success d-flex align-items-center mb-4" role="alert">
+    <i class="fas fa-check-circle me-3 fs-4"></i>
+    <div>
+        <h6 class="alert-heading mb-1">
+            {% if is_period_locked %}
+            <i class="fas fa-lock me-1"></i>Filed with FTA
+            {% else %}
+            <i class="fas fa-file-invoice me-1"></i>VAT Return Posted
+            {% endif %}
+        </h6>
+        <p class="mb-0">
+            Showing data from VAT Return <strong>{{ submitted_vat_return.return_number }}</strong>
+            ({{ submitted_vat_return.period_start|date:"d/m/Y" }} - {{ submitted_vat_return.period_end|date:"d/m/Y" }})
+            <span class="badge {% if submitted_vat_return.status == 'submitted' or submitted_vat_return.status == 'accepted' %}bg-success{% else %}bg-primary{% endif %} ms-2">
+                {{ submitted_vat_return.get_status_display }}
+            </span>
+            {% if submitted_vat_return.journal_entry %}
+            | Journal: <a href="{% url 'finance:journal_detail' pk=submitted_vat_return.journal_entry.pk %}">{{ submitted_vat_return.journal_entry.entry_number }}</a>
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning d-flex align-items-center mb-4" role="alert">
+    <i class="fas fa-exclamation-triangle me-3 fs-4"></i>
+    <div>
+        <h6 class="alert-heading mb-1"><i class="fas fa-calculator me-1"></i>Draft / Preview Mode</h6>
+        <p class="mb-0">
+            No submitted VAT Return found for this period. Values are calculated from transactions.
+            <a href="{% url 'finance:vatreturn_create' %}" class="alert-link">Create VAT Return</a> to finalize.
+        </p>
+    </div>
+</div>
+{% endif %}
+
 <!-- Current Period Summary -->
 <div class="card mb-4">
     <div class="card-header">
@@ -46,35 +83,46 @@
             <div class="col-md-4">
                 <div class="border rounded p-3 h-100">
                     <h6 class="text-muted mb-2">Total Sales (Taxable)</h6>
-                    <h4 class="mb-0">AED {{ current_sales|floatformat:2|intcomma }}</h4>
+                    <h4 class="mb-0">AED {{ total_sales|floatformat:2|intcomma }}</h4>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="border rounded p-3 h-100">
                     <h6 class="text-muted mb-2">Output VAT (5%)</h6>
-                    <h4 class="mb-0 text-danger">AED {{ current_output_vat|floatformat:2|intcomma }}</h4>
+                    <h4 class="mb-0 text-danger">AED {{ total_output_vat|floatformat:2|intcomma }}</h4>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="border rounded p-3 h-100">
                     <h6 class="text-muted mb-2">Total Purchases</h6>
-                    <h4 class="mb-0">AED {{ current_purchases|floatformat:2|intcomma }}</h4>
+                    <h4 class="mb-0">AED {{ total_purchases|floatformat:2|intcomma }}</h4>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="border rounded p-3 h-100">
                     <h6 class="text-muted mb-2">Input VAT (Recoverable)</h6>
-                    <h4 class="mb-0 text-success">AED {{ current_input_vat|floatformat:2|intcomma }}</h4>
+                    <h4 class="mb-0 text-success">AED {{ total_input_vat|floatformat:2|intcomma }}</h4>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="border rounded p-3 h-100 {% if is_refund %}bg-success-subtle{% else %}bg-danger-subtle{% endif %}">
                     <h6 class="text-muted mb-2">Net VAT {% if is_refund %}(Refund){% else %}(Payable){% endif %}</h6>
                     <h4 class="mb-0 {% if is_refund %}text-success{% else %}text-danger{% endif %}">
-                        AED {{ current_net_vat|floatformat:2|intcomma }}
+                        AED {{ net_vat|floatformat:2|intcomma }}
                     </h4>
                 </div>
             </div>
+            {% if adjustments and adjustments != 0 %}
+            <div class="col-md-4">
+                <div class="border rounded p-3 h-100 bg-info-subtle">
+                    <h6 class="text-muted mb-2">Adjustments</h6>
+                    <h4 class="mb-0 text-info">AED {{ adjustments|floatformat:2|intcomma }}</h4>
+                    {% if adjustment_reason %}
+                    <small class="text-muted">{{ adjustment_reason }}</small>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

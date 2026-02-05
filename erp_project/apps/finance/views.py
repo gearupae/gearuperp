@@ -1508,126 +1508,221 @@ def general_ledger(request):
 def vat_report(request):
     """
     UAE VAT Return Report (FTA format).
-    SINGLE SOURCE OF TRUTH: VAT calculated ONLY from JournalEntryLine (VAT accounts).
+    
+    DATA SOURCE LOGIC (UAE FTA Compliant):
+    1. If a VAT Return exists for the period AND status is 'posted', 'submitted', or 'accepted':
+       → Use values from the VATReturn record (SOURCE OF TRUTH)
+       → This ensures consistency with VAT Return History
+    2. If no submitted VAT Return exists:
+       → Calculate from transactions (draft/preview mode)
     """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
     
     # Get date range
-    start_date = request.GET.get('start_date', date(date.today().year, (date.today().month - 1) // 3 * 3 + 1, 1).isoformat())
-    end_date = request.GET.get('end_date', date.today().isoformat())
+    start_date_str = request.GET.get('start_date', date(date.today().year, (date.today().month - 1) // 3 * 3 + 1, 1).isoformat())
+    end_date_str = request.GET.get('end_date', date.today().isoformat())
     
-    # Get VAT returns
+    try:
+        start_date = date.fromisoformat(start_date_str)
+        end_date = date.fromisoformat(end_date_str)
+    except ValueError:
+        start_date = date(date.today().year, 1, 1)
+        end_date = date.today()
+    
+    # Get all VAT returns for history display
     vat_returns = VATReturn.objects.filter(is_active=True).order_by('-period_start')
     
-    # Get VAT Payable account (Output VAT - typically 2100)
-    vat_payable_account = Account.objects.filter(
-        code__startswith='21', account_type=AccountType.LIABILITY, is_active=True
+    # ========================================
+    # CHECK FOR SUBMITTED VAT RETURN FOR THIS PERIOD
+    # ========================================
+    # Look for VAT Return that covers or overlaps the selected period
+    submitted_vat_return = VATReturn.objects.filter(
+        is_active=True,
+        status__in=['posted', 'submitted', 'accepted'],  # Final statuses
+        period_start__lte=end_date,
+        period_end__gte=start_date,
     ).first()
     
-    # Get VAT Recoverable account (Input VAT - typically 1300)
-    vat_recoverable_account = Account.objects.filter(
-        code__startswith='13', account_type=AccountType.ASSET, is_active=True
-    ).first()
+    # Flag to indicate if we're showing submitted data or calculated data
+    is_submitted_data = submitted_vat_return is not None
+    is_period_locked = is_submitted_data and submitted_vat_return.status in ['submitted', 'accepted']
     
-    # Get Sales accounts (Income - typically 4xxx)
-    sales_accounts = Account.objects.filter(
-        account_type=AccountType.INCOME, is_active=True
-    )
+    if is_submitted_data:
+        # ========================================
+        # USE SUBMITTED VAT RETURN AS SOURCE OF TRUTH
+        # ========================================
+        # Box 1: Standard Rated Supplies
+        standard_rated_supplies = submitted_vat_return.standard_rated_supplies
+        standard_rated_vat = submitted_vat_return.standard_rated_vat
+        
+        # Box 2: Zero Rated Supplies
+        zero_rated_supplies = submitted_vat_return.zero_rated_supplies
+        
+        # Box 3: Exempt Supplies
+        exempt_supplies = submitted_vat_return.exempt_supplies
+        
+        # Box 9: Standard Rated Expenses
+        standard_rated_expenses = submitted_vat_return.standard_rated_expenses
+        
+        # Box 10: Input VAT (Recoverable)
+        current_input_vat = submitted_vat_return.input_vat
+        
+        # Totals
+        current_sales = submitted_vat_return.total_sales
+        current_output_vat = submitted_vat_return.output_vat
+        current_purchases = submitted_vat_return.total_purchases
+        
+        # Net VAT (payable/refundable)
+        current_net_vat = submitted_vat_return.net_vat
+        
+        # Adjustments
+        adjustments = submitted_vat_return.adjustments
+        adjustment_reason = submitted_vat_return.adjustment_reason
+        
+    else:
+        # ========================================
+        # CALCULATE FROM TRANSACTIONS (DRAFT/PREVIEW MODE)
+        # ========================================
+        
+        # Get VAT Payable account (Output VAT - typically 2100)
+        vat_payable_account = Account.objects.filter(
+            code__startswith='21', account_type=AccountType.LIABILITY, is_active=True
+        ).first()
+        
+        # Get VAT Recoverable account (Input VAT - typically 1300)
+        vat_recoverable_account = Account.objects.filter(
+            code__startswith='13', account_type=AccountType.ASSET, is_active=True
+        ).first()
+        
+        # Get Sales accounts (Income - typically 4xxx)
+        sales_accounts = Account.objects.filter(
+            account_type=AccountType.INCOME, is_active=True
+        )
+        
+        # Get Expense accounts (Expense - typically 5xxx)
+        expense_accounts = Account.objects.filter(
+            account_type=AccountType.EXPENSE, is_active=True
+        )
+        
+        # Calculate Output VAT from VAT Payable journal lines
+        output_vat_lines = JournalEntryLine.objects.filter(
+            account=vat_payable_account,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        ).exclude(
+            # Exclude VAT Return settlement entries (already counted in submitted returns)
+            journal_entry__source_module='vat'
+        ) if vat_payable_account else JournalEntryLine.objects.none()
+        
+        current_output_vat = output_vat_lines.aggregate(
+            total=Sum('credit')
+        )['total'] or Decimal('0.00')
+        
+        # Calculate Input VAT from VAT Recoverable journal lines
+        input_vat_lines = JournalEntryLine.objects.filter(
+            account=vat_recoverable_account,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        ).exclude(
+            journal_entry__source_module='vat'
+        ) if vat_recoverable_account else JournalEntryLine.objects.none()
+        
+        current_input_vat = input_vat_lines.aggregate(
+            total=Sum('debit')
+        )['total'] or Decimal('0.00')
+        
+        # Calculate Sales from Income account journal lines (Credits = Sales)
+        sales_lines = JournalEntryLine.objects.filter(
+            account__in=sales_accounts,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        )
+        
+        current_sales = sales_lines.aggregate(
+            total=Sum('credit')
+        )['total'] or Decimal('0.00')
+        
+        # Calculate Purchases from Expense account journal lines (Debits = Expenses)
+        expense_lines = JournalEntryLine.objects.filter(
+            account__in=expense_accounts,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        )
+        
+        current_purchases = expense_lines.aggregate(
+            total=Sum('debit')
+        )['total'] or Decimal('0.00')
+        
+        # Standard Rated = Amounts where VAT was charged (5%)
+        # Simplified: assumes all sales/purchases are standard rated
+        standard_rated_supplies = current_sales
+        standard_rated_vat = current_output_vat
+        standard_rated_expenses = current_purchases
+        
+        # Zero rated and Exempt (not yet calculated from transactions)
+        zero_rated_supplies = Decimal('0.00')
+        exempt_supplies = Decimal('0.00')
+        
+        # Net VAT
+        current_net_vat = current_output_vat - current_input_vat
+        
+        # No adjustments in draft mode
+        adjustments = Decimal('0.00')
+        adjustment_reason = ''
     
-    # Get Expense accounts (Expense - typically 5xxx)
-    expense_accounts = Account.objects.filter(
-        account_type=AccountType.EXPENSE, is_active=True
-    )
-    
-    # Calculate Output VAT from VAT Payable journal lines
-    output_vat_lines = JournalEntryLine.objects.filter(
-        account=vat_payable_account,
-        journal_entry__status='posted',
-        journal_entry__date__gte=start_date,
-        journal_entry__date__lte=end_date,
-    ) if vat_payable_account else JournalEntryLine.objects.none()
-    
-    current_output_vat = output_vat_lines.aggregate(
-        total=Sum('credit')
-    )['total'] or Decimal('0.00')
-    
-    # Calculate Input VAT from VAT Recoverable journal lines
-    input_vat_lines = JournalEntryLine.objects.filter(
-        account=vat_recoverable_account,
-        journal_entry__status='posted',
-        journal_entry__date__gte=start_date,
-        journal_entry__date__lte=end_date,
-    ) if vat_recoverable_account else JournalEntryLine.objects.none()
-    
-    current_input_vat = input_vat_lines.aggregate(
-        total=Sum('debit')
-    )['total'] or Decimal('0.00')
-    
-    # Calculate Sales from Income account journal lines (Credits = Sales)
-    sales_lines = JournalEntryLine.objects.filter(
-        account__in=sales_accounts,
-        journal_entry__status='posted',
-        journal_entry__date__gte=start_date,
-        journal_entry__date__lte=end_date,
-    )
-    
-    current_sales = sales_lines.aggregate(
-        total=Sum('credit')
-    )['total'] or Decimal('0.00')
-    
-    # Calculate Purchases from Expense account journal lines (Debits = Expenses)
-    expense_lines = JournalEntryLine.objects.filter(
-        account__in=expense_accounts,
-        journal_entry__status='posted',
-        journal_entry__date__gte=start_date,
-        journal_entry__date__lte=end_date,
-    )
-    
-    current_purchases = expense_lines.aggregate(
-        total=Sum('debit')
-    )['total'] or Decimal('0.00')
-    
-    # Standard Rated = Amounts where VAT was charged (5%)
-    # This is a simplified calculation - assumes all sales/purchases are standard rated
-    standard_rated_supplies = current_sales
-    standard_rated_vat = current_output_vat
-    
-    standard_rated_expenses = current_purchases
-    
-    # Net VAT
-    current_net_vat = current_output_vat - current_input_vat
-    
-    # Excel Export
+    # ========================================
+    # EXCEL EXPORT
+    # ========================================
     export_format = request.GET.get('format', '')
     if export_format == 'excel':
         from .excel_exports import export_vat_report
         vat_data = {
-            'standard_sales': current_sales,
+            'standard_sales': standard_rated_supplies,
             'output_vat': current_output_vat,
-            'zero_rated_sales': Decimal('0.00'),
-            'exempt_sales': Decimal('0.00'),
-            'standard_purchases': current_purchases,
+            'zero_rated_sales': zero_rated_supplies,
+            'exempt_sales': exempt_supplies,
+            'standard_purchases': standard_rated_expenses,
             'input_vat': current_input_vat,
+            'net_vat': current_net_vat,
+            'adjustments': adjustments if is_submitted_data else Decimal('0.00'),
+            'is_submitted': is_submitted_data,
+            'vat_return_number': submitted_vat_return.return_number if is_submitted_data else None,
+            'vat_return_status': submitted_vat_return.status if is_submitted_data else 'draft',
         }
-        return export_vat_report(vat_data, start_date, end_date)
+        return export_vat_report(vat_data, start_date_str, end_date_str)
     
     return render(request, 'finance/vat_report.html', {
         'title': 'VAT Report (FTA)',
         'vat_returns': vat_returns,
         
-        # Box 1: Standard Rated Supplies
+        # Data source indicator
+        'is_submitted_data': is_submitted_data,
+        'is_period_locked': is_period_locked,
+        'submitted_vat_return': submitted_vat_return,
+        
+        # Box 1: Standard Rated Supplies (5%)
         'standard_rated_supplies': standard_rated_supplies,
         'standard_rated_vat': standard_rated_vat,
         
-        # Box 2-4: Zero rated, Exempt, Out of scope (not yet implemented)
-        'zero_rated_supplies': Decimal('0.00'),
-        'exempt_supplies': Decimal('0.00'),
+        # Box 2: Zero Rated Supplies (0%)
+        'zero_rated_supplies': zero_rated_supplies,
+        
+        # Box 3: Exempt Supplies
+        'exempt_supplies': exempt_supplies,
+        
+        # Box 4: Out of scope (not applicable for UAE)
         'out_of_scope': Decimal('0.00'),
         
-        # Box 6-7: Standard Rated Expenses
+        # Box 9: Standard Rated Expenses
         'standard_rated_expenses': standard_rated_expenses,
+        
+        # Box 10: Input VAT (Recoverable)
         'input_vat': current_input_vat,
         
         # Totals
@@ -1636,13 +1731,17 @@ def vat_report(request):
         'total_purchases': current_purchases,
         'total_input_vat': current_input_vat,
         
-        # Box 10: Net VAT
+        # Net VAT (Box 11)
         'net_vat': current_net_vat,
         'is_refund': current_net_vat < 0,
         
+        # Adjustments
+        'adjustments': adjustments if is_submitted_data else Decimal('0.00'),
+        'adjustment_reason': adjustment_reason if is_submitted_data else '',
+        
         # Date range
-        'start_date': start_date,
-        'end_date': end_date,
+        'start_date': start_date_str,
+        'end_date': end_date_str,
     })
 
 
