@@ -115,10 +115,22 @@
             {{ existing_computation.get_status_display }}
         </span>
     </div>
+    
+    <!-- Consistency Check: Compare stored values with current GL values -->
+    {% if existing_computation.revenue != current_revenue or existing_computation.expenses != current_expenses %}
+    <div class="alert alert-warning mb-0 border-0 rounded-0">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <strong>Note:</strong> GL values have changed since this computation was created.
+        Current GL Revenue: AED {{ current_revenue|floatformat:2|intcomma }} | 
+        Current GL Expenses: AED {{ current_expenses|floatformat:2|intcomma }}
+        <br><small class="text-muted">Consider creating a new computation if significant changes occurred.</small>
+    </div>
+    {% endif %}
+    
     <div class="card-body">
         <div class="row">
             <div class="col-md-6">
-                <h6 class="fw-bold text-muted mb-3">Step 1: Accounting Profit</h6>
+                <h6 class="fw-bold text-muted mb-3">Step 1: Accounting Profit (From GL at Computation Date)</h6>
                 <table class="table table-sm">
                     <tr>
                         <td>Total Revenue</td>
@@ -397,23 +409,38 @@
                     
                     <div class="row mb-4">
                         <div class="col-12">
-                            <h6 class="fw-bold text-primary">Step 1: Accounting Profit (From GL)</h6>
+                            <h6 class="fw-bold text-primary">Step 1: Accounting Profit (From General Ledger)</h6>
+                            <p class="text-muted small mb-3">
+                                <i class="fas fa-lock me-1"></i>
+                                These values are calculated from posted journal entries. They cannot be edited to ensure consistency.
+                            </p>
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label class="form-label">Total Revenue</label>
                             <div class="input-group">
                                 <span class="input-group-text">AED</span>
-                                <input type="number" name="revenue" class="form-control" step="0.01" 
-                                       value="{{ current_revenue }}" required>
+                                <input type="text" class="form-control bg-light fw-bold text-success" 
+                                       value="{{ current_revenue|floatformat:2|intcomma }}" readonly disabled>
                             </div>
+                            <small class="text-muted">From Income accounts</small>
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label class="form-label">Total Expenses</label>
                             <div class="input-group">
                                 <span class="input-group-text">AED</span>
-                                <input type="number" name="expenses" class="form-control" step="0.01" 
-                                       value="{{ current_expenses }}" required>
+                                <input type="text" class="form-control bg-light fw-bold text-danger" 
+                                       value="{{ current_expenses|floatformat:2|intcomma }}" readonly disabled>
                             </div>
+                            <small class="text-muted">From Expense accounts</small>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Accounting Profit</label>
+                            <div class="input-group">
+                                <span class="input-group-text">AED</span>
+                                <input type="text" class="form-control bg-light fw-bold {% if accounting_profit >= 0 %}text-success{% else %}text-danger{% endif %}" 
+                                       value="{{ accounting_profit|floatformat:2|intcomma }}" readonly disabled>
+                            </div>
+                            <small class="text-muted">Revenue - Expenses</small>
                         </div>
                     </div>
                     

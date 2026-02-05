@@ -1875,6 +1875,10 @@ def corporate_tax_report(request):
 def corporate_tax_create(request):
     """
     Create Corporate Tax Computation with adjustments.
+    
+    IMPORTANT: Revenue/Expenses/Accounting Profit are ALWAYS derived from GL.
+    User can only enter adjustments (non-deductible, exempt income, etc.)
+    This ensures consistency between GL and Tax Computation.
     """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'create')):
         messages.error(request, 'Permission denied.')
@@ -1890,27 +1894,61 @@ def corporate_tax_create(request):
             messages.error(request, f'Tax computation already exists for {fiscal_year.name}.')
             return redirect('finance:corporate_tax_report')
         
-        # Get values from form
+        # ========================================
+        # CALCULATE REVENUE/EXPENSES FROM GL (SINGLE SOURCE OF TRUTH)
+        # ========================================
+        start_date = fiscal_year.start_date
+        end_date = fiscal_year.end_date
+        
+        income_accounts = Account.objects.filter(is_active=True, account_type=AccountType.INCOME)
+        expense_accounts = Account.objects.filter(is_active=True, account_type=AccountType.EXPENSE)
+        
+        # Revenue from journal lines (Credits to Income accounts)
+        income_lines = JournalEntryLine.objects.filter(
+            account__in=income_accounts,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        ).aggregate(
+            total_debit=Sum('debit'),
+            total_credit=Sum('credit')
+        )
+        gl_revenue = (income_lines['total_credit'] or Decimal('0.00')) - (income_lines['total_debit'] or Decimal('0.00'))
+        
+        # Expenses from journal lines (Debits to Expense accounts)
+        expense_lines = JournalEntryLine.objects.filter(
+            account__in=expense_accounts,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        ).aggregate(
+            total_debit=Sum('debit'),
+            total_credit=Sum('credit')
+        )
+        gl_expenses = (expense_lines['total_debit'] or Decimal('0.00')) - (expense_lines['total_credit'] or Decimal('0.00'))
+        
+        # ========================================
+        # GET ADJUSTMENTS FROM FORM (User Input)
+        # ========================================
         try:
-            revenue = Decimal(request.POST.get('revenue', '0'))
-            expenses = Decimal(request.POST.get('expenses', '0'))
-            non_deductible = Decimal(request.POST.get('non_deductible_expenses', '0'))
-            exempt_income = Decimal(request.POST.get('exempt_income', '0'))
-            other_adjustments = Decimal(request.POST.get('other_adjustments', '0'))
+            non_deductible = Decimal(request.POST.get('non_deductible_expenses', '0') or '0')
+            exempt_income = Decimal(request.POST.get('exempt_income', '0') or '0')
+            other_adjustments = Decimal(request.POST.get('other_adjustments', '0') or '0')
             notes = request.POST.get('notes', '')
         except:
-            messages.error(request, 'Invalid amounts.')
+            messages.error(request, 'Invalid adjustment amounts.')
             return redirect('finance:corporate_tax_report')
         
-        # Create computation
+        # Create computation with GL-derived values
         computation = CorporateTaxComputation.objects.create(
             fiscal_year=fiscal_year,
-            revenue=revenue,
-            expenses=expenses,
+            revenue=gl_revenue,  # From GL - NOT user input
+            expenses=gl_expenses,  # From GL - NOT user input
             non_deductible_expenses=non_deductible,
             exempt_income=exempt_income,
             other_adjustments=other_adjustments,
             notes=notes,
+            created_by=request.user,
         )
         computation.calculate()
         
