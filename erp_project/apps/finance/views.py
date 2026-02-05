@@ -1827,10 +1827,42 @@ def corporate_tax_report(request):
     
     # Get existing computation for selected fiscal year
     existing_computation = None
+    # Computed values for display (always use current GL values)
+    computation_revenue = current_revenue
+    computation_expenses = current_expenses
+    computation_accounting_profit = accounting_profit
+    computation_non_deductible = Decimal('0.00')
+    computation_exempt_income = Decimal('0.00')
+    computation_other_adjustments = Decimal('0.00')
+    computation_taxable_income = Decimal('0.00')
+    computation_taxable_above_threshold = Decimal('0.00')
+    computation_tax_payable = Decimal('0.00')
+    
     if selected_fiscal_year:
         existing_computation = CorporateTaxComputation.objects.filter(
             fiscal_year=selected_fiscal_year, is_active=True
         ).first()
+        
+        if existing_computation:
+            # ========================================
+            # RECALCULATE USING CURRENT GL VALUES + STORED ADJUSTMENTS
+            # This ensures consistency between GL Summary and Tax Computation
+            # ========================================
+            computation_non_deductible = existing_computation.non_deductible_expenses
+            computation_exempt_income = existing_computation.exempt_income
+            computation_other_adjustments = existing_computation.other_adjustments
+            
+            # Taxable Income = GL Accounting Profit + Adjustments
+            total_adjustments = computation_non_deductible - computation_exempt_income + computation_other_adjustments
+            computation_taxable_income = accounting_profit + total_adjustments
+            
+            # Apply threshold
+            if computation_taxable_income > tax_threshold:
+                computation_taxable_above_threshold = computation_taxable_income - tax_threshold
+                computation_tax_payable = (computation_taxable_above_threshold * tax_rate / 100).quantize(Decimal('0.01'))
+            else:
+                computation_taxable_above_threshold = Decimal('0.00')
+                computation_tax_payable = Decimal('0.00')
     
     # Excel Export
     export_format = request.GET.get('format', '')
@@ -1857,6 +1889,7 @@ def corporate_tax_report(request):
         'selected_fiscal_year': selected_fiscal_year,
         'tax_computations': tax_computations,
         'existing_computation': existing_computation,
+        # GL-derived values (SINGLE SOURCE OF TRUTH)
         'current_revenue': current_revenue,
         'current_expenses': current_expenses,
         'accounting_profit': accounting_profit,
@@ -1864,6 +1897,17 @@ def corporate_tax_report(request):
         'tax_rate': tax_rate,
         'taxable_amount': taxable_amount,
         'tax_payable_estimate': tax_payable_estimate,
+        # Computed values for Tax Computation section (GL + Adjustments)
+        'comp_revenue': computation_revenue,
+        'comp_expenses': computation_expenses,
+        'comp_accounting_profit': computation_accounting_profit,
+        'comp_non_deductible': computation_non_deductible,
+        'comp_exempt_income': computation_exempt_income,
+        'comp_other_adjustments': computation_other_adjustments,
+        'comp_taxable_income': computation_taxable_income,
+        'comp_taxable_above_threshold': computation_taxable_above_threshold,
+        'comp_tax_payable': computation_tax_payable,
+        # Date range
         'start_date': start_date,
         'end_date': end_date,
         'can_create': request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'create'),

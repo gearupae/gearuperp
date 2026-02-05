@@ -116,33 +116,31 @@
         </span>
     </div>
     
-    <!-- Consistency Check: Compare stored values with current GL values -->
-    {% if existing_computation.revenue != current_revenue or existing_computation.expenses != current_expenses %}
-    <div class="alert alert-warning mb-0 border-0 rounded-0">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Note:</strong> GL values have changed since this computation was created.
-        Current GL Revenue: AED {{ current_revenue|floatformat:2|intcomma }} | 
-        Current GL Expenses: AED {{ current_expenses|floatformat:2|intcomma }}
-        <br><small class="text-muted">Consider creating a new computation if significant changes occurred.</small>
+    <!-- Data Source Info -->
+    <div class="alert alert-info mb-0 border-0 rounded-0 py-2">
+        <i class="fas fa-database me-2"></i>
+        <strong>Data Source:</strong> All figures below are calculated from current General Ledger entries.
+        Adjustments are from the saved computation.
     </div>
-    {% endif %}
     
     <div class="card-body">
         <div class="row">
             <div class="col-md-6">
-                <h6 class="fw-bold text-muted mb-3">Step 1: Accounting Profit (From GL at Computation Date)</h6>
+                <h6 class="fw-bold text-muted mb-3">Step 1: Accounting Profit (From General Ledger)</h6>
                 <table class="table table-sm">
                     <tr>
                         <td>Total Revenue</td>
-                        <td class="text-end">AED {{ existing_computation.revenue|floatformat:2|intcomma }}</td>
+                        <td class="text-end">AED {{ comp_revenue|floatformat:2|intcomma }}</td>
                     </tr>
                     <tr>
                         <td>Less: Total Expenses</td>
-                        <td class="text-end">(AED {{ existing_computation.expenses|floatformat:2|intcomma }})</td>
+                        <td class="text-end">(AED {{ comp_expenses|floatformat:2|intcomma }})</td>
                     </tr>
                     <tr class="table-light fw-bold">
                         <td>Accounting Profit</td>
-                        <td class="text-end">AED {{ existing_computation.accounting_profit|floatformat:2|intcomma }}</td>
+                        <td class="text-end {% if comp_accounting_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            AED {{ comp_accounting_profit|floatformat:2|intcomma }}
+                        </td>
                     </tr>
                 </table>
                 
@@ -150,15 +148,15 @@
                 <table class="table table-sm">
                     <tr>
                         <td>Add: Non-deductible Expenses</td>
-                        <td class="text-end text-danger">+ AED {{ existing_computation.non_deductible_expenses|floatformat:2|intcomma }}</td>
+                        <td class="text-end text-danger">+ AED {{ comp_non_deductible|floatformat:2|intcomma }}</td>
                     </tr>
                     <tr>
                         <td>Less: Exempt Income</td>
-                        <td class="text-end text-success">- AED {{ existing_computation.exempt_income|floatformat:2|intcomma }}</td>
+                        <td class="text-end text-success">- AED {{ comp_exempt_income|floatformat:2|intcomma }}</td>
                     </tr>
                     <tr>
                         <td>Other Adjustments</td>
-                        <td class="text-end">AED {{ existing_computation.other_adjustments|floatformat:2|intcomma }}</td>
+                        <td class="text-end">AED {{ comp_other_adjustments|floatformat:2|intcomma }}</td>
                     </tr>
                 </table>
             </div>
@@ -167,15 +165,21 @@
                 <table class="table table-sm">
                     <tr class="table-light fw-bold">
                         <td>Taxable Income</td>
-                        <td class="text-end">AED {{ existing_computation.taxable_income|floatformat:2|intcomma }}</td>
+                        <td class="text-end">AED {{ comp_taxable_income|floatformat:2|intcomma }}</td>
                     </tr>
                     <tr>
                         <td>Tax Threshold</td>
-                        <td class="text-end">AED {{ existing_computation.tax_threshold|floatformat:2|intcomma }}</td>
+                        <td class="text-end">AED {{ tax_threshold|floatformat:2|intcomma }}</td>
                     </tr>
                     <tr>
                         <td>Amount Above Threshold</td>
-                        <td class="text-end">AED {{ existing_computation.taxable_amount_above_threshold|floatformat:2|intcomma }}</td>
+                        <td class="text-end">
+                            {% if comp_taxable_above_threshold > 0 %}
+                            AED {{ comp_taxable_above_threshold|floatformat:2|intcomma }}
+                            {% else %}
+                            <span class="text-muted">Below Threshold</span>
+                            {% endif %}
+                        </td>
                     </tr>
                 </table>
                 
@@ -183,11 +187,11 @@
                 <table class="table table-sm">
                     <tr>
                         <td>Tax Rate</td>
-                        <td class="text-end">{{ existing_computation.tax_rate }}%</td>
+                        <td class="text-end">{{ tax_rate }}%</td>
                     </tr>
-                    <tr class="table-warning fw-bold fs-5">
+                    <tr class="table-{% if comp_tax_payable > 0 %}warning{% else %}success{% endif %} fw-bold fs-5">
                         <td>Tax Payable</td>
-                        <td class="text-end">AED {{ existing_computation.tax_payable|floatformat:2|intcomma }}</td>
+                        <td class="text-end">AED {{ comp_tax_payable|floatformat:2|intcomma }}</td>
                     </tr>
                 </table>
                 
