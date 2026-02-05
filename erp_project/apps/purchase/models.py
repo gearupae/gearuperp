@@ -326,10 +326,10 @@ class VendorBill(BaseModel):
                 account_type=AccountType.LIABILITY, is_active=True, code__startswith='20'
             ).first()
             if not ap_account:
-            raise ValidationError(
-                "Accounts Payable account not configured. "
-                "Please set up Account Mapping in Finance → Account Mapping."
-            )
+                raise ValidationError(
+                    "Accounts Payable account not configured. "
+                    "Please set up Account Mapping in Finance → Account Mapping."
+                )
         
         expense_account = AccountMapping.get_account_or_default('vendor_bill_expense', '5000')
         if not expense_account:
@@ -337,10 +337,10 @@ class VendorBill(BaseModel):
                 account_type=AccountType.EXPENSE, is_active=True
             ).first()
             if not expense_account:
-            raise ValidationError(
-                "Expense account not configured. "
-                "Please set up Account Mapping in Finance → Account Mapping."
-            )
+                raise ValidationError(
+                    "Expense account not configured. "
+                    "Please set up Account Mapping in Finance → Account Mapping."
+                )
         
         vat_recoverable_account = AccountMapping.get_account_or_default('vendor_bill_vat', '1300')
         if not vat_recoverable_account:
