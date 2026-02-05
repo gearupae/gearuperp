@@ -746,7 +746,8 @@ def export_bank_ledger(transactions, bank_name, start_date, end_date):
 
 def export_cash_flow(operating, investing, financing, start_date, end_date, 
                      opening_balance=Decimal('0.00'), closing_balance=Decimal('0.00'),
-                     opening_detail=None, closing_detail=None, company_name=''):
+                     opening_detail=None, closing_detail=None, company_name='',
+                     excluded_adjustments=Decimal('0.00')):
     """
     Export Cash Flow Statement to Excel - IFRS/GAAP Compliant.
     
@@ -900,12 +901,36 @@ def export_cash_flow(operating, investing, financing, start_date, end_date,
     row += 2
     
     # ========================================
-    # NET CHANGE IN CASH
+    # ADJUSTMENTS (Reversals, corrections excluded from activities)
+    # ========================================
+    if excluded_adjustments != Decimal('0.00'):
+        ws.cell(row=row, column=1, value='ADJUSTMENTS (Reversals/Corrections)')
+        ws.cell(row=row, column=1).font = section_font
+        row += 1
+        
+        ws.cell(row=row, column=1, value='  Accounting adjustments affecting cash')
+        ws.cell(row=row, column=2, value=float(excluded_adjustments))
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        row += 1
+        
+        ws.cell(row=row, column=1, value='Net Adjustments')
+        ws.cell(row=row, column=1).font = total_font
+        ws.cell(row=row, column=2, value=float(excluded_adjustments))
+        ws.cell(row=row, column=2).number_format = '#,##0.00'
+        ws.cell(row=row, column=2).font = total_font
+        for col in range(1, 3):
+            ws.cell(row=row, column=col).fill = total_fill
+        row += 2
+    
+    # ========================================
+    # NET CHANGE IN CASH (including adjustments)
     # ========================================
     net_change = total_operating + total_investing + total_financing
+    total_net_change = net_change + excluded_adjustments  # Include adjustments for reconciliation
+    
     ws.cell(row=row, column=1, value='NET INCREASE (DECREASE) IN CASH')
     ws.cell(row=row, column=1).font = Font(bold=True, size=12)
-    ws.cell(row=row, column=2, value=float(net_change))
+    ws.cell(row=row, column=2, value=float(total_net_change))
     ws.cell(row=row, column=2).number_format = '#,##0.00'
     ws.cell(row=row, column=2).font = Font(bold=True, size=12)
     row += 2
@@ -929,7 +954,7 @@ def export_cash_flow(operating, investing, financing, start_date, end_date,
     ws.cell(row=row, column=1).font = section_font
     row += 1
     
-    expected_closing = opening_balance + net_change
+    expected_closing = opening_balance + total_net_change
     ws.cell(row=row, column=1, value=f'  Beginning Balance + Net Change')
     ws.cell(row=row, column=2, value=float(expected_closing))
     ws.cell(row=row, column=2).number_format = '#,##0.00'

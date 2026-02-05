@@ -3181,10 +3181,40 @@ def cash_flow(request):
             operating_total += journal_cash_movement
     
     # ========================================
-    # VALIDATION: Opening + Net Change = Closing
+    # CALCULATE EXCLUDED ADJUSTMENTS
+    # (Reversals, corrections that hit cash but are NOT activities)
+    # ========================================
+    excluded_adjustment_lines = JournalEntryLine.objects.filter(
+        account_id__in=cash_account_ids,
+        journal_entry__status='posted',
+        journal_entry__date__gte=start_date,
+        journal_entry__date__lte=end_date
+    ).filter(
+        Q(journal_entry__source_module__in=EXCLUDED_SOURCES) |
+        Q(journal_entry__entry_type__in=['adjusting', 'closing'])
+    ).exclude(
+        # Don't count opening balance entries (they're part of opening balance, not period activity)
+        journal_entry__entry_type='opening'
+    ).exclude(
+        journal_entry__reference__icontains='OPENING BALANCE'
+    ).exclude(
+        journal_entry__reference__istartswith='OB-'
+    ).select_related('journal_entry', 'account')
+    
+    excluded_adjustments = Decimal('0.00')
+    excluded_journals_processed = set()
+    for line in excluded_adjustment_lines:
+        j = line.journal_entry
+        if j.pk not in excluded_journals_processed:
+            excluded_journals_processed.add(j.pk)
+            for cash_line in j.lines.filter(account_id__in=cash_account_ids):
+                excluded_adjustments += cash_line.debit - cash_line.credit
+    
+    # ========================================
+    # VALIDATION: Opening + Net Change + Adjustments = Closing
     # ========================================
     net_change = operating_total + investing_total + financing_total
-    calculated_closing = opening_cash + net_change
+    calculated_closing = opening_cash + net_change + excluded_adjustments
     validation_ok = abs(calculated_closing - closing_cash) < Decimal('0.01')
     validation_difference = closing_cash - calculated_closing
     
@@ -3232,7 +3262,8 @@ def cash_flow(request):
             opening_balance=opening_cash,
             closing_balance=closing_cash,
             opening_detail=opening_cash_detail,
-            closing_detail=closing_cash_detail
+            closing_detail=closing_cash_detail,
+            excluded_adjustments=excluded_adjustments
         )
     
     # Get all cash accounts for filter dropdown (exclude Fixed Deposits)
