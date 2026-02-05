@@ -1782,9 +1782,56 @@ def corporate_tax_report(request):
         'fiscal_year', 'journal_entry', 'payment_journal_entry'
     ).order_by('-fiscal_year__start_date')
     
-    # Calculate current year tax from Journal Lines (SINGLE SOURCE OF TRUTH)
+    # Get account classifications once
     income_accounts = Account.objects.filter(is_active=True, account_type=AccountType.INCOME)
     expense_accounts = Account.objects.filter(is_active=True, account_type=AccountType.EXPENSE)
+    
+    # ========================================
+    # AUTO-UPDATE DRAFT COMPUTATIONS FROM GL
+    # This ensures History always matches Computation
+    # Only draft/final computations are updated (not filed/paid - those are locked snapshots)
+    # ========================================
+    for comp in tax_computations:
+        if comp.status not in ['filed', 'paid']:  # Can update draft/final
+            fy_start = comp.fiscal_year.start_date
+            fy_end = comp.fiscal_year.end_date
+            
+            # Calculate from GL
+            fy_income = JournalEntryLine.objects.filter(
+                account__in=income_accounts,
+                journal_entry__status='posted',
+                journal_entry__date__gte=fy_start,
+                journal_entry__date__lte=fy_end,
+            ).aggregate(
+                total_debit=Sum('debit'),
+                total_credit=Sum('credit')
+            )
+            fy_revenue = (fy_income['total_credit'] or Decimal('0.00')) - (fy_income['total_debit'] or Decimal('0.00'))
+            
+            fy_expense = JournalEntryLine.objects.filter(
+                account__in=expense_accounts,
+                journal_entry__status='posted',
+                journal_entry__date__gte=fy_start,
+                journal_entry__date__lte=fy_end,
+            ).aggregate(
+                total_debit=Sum('debit'),
+                total_credit=Sum('credit')
+            )
+            fy_expenses = (fy_expense['total_debit'] or Decimal('0.00')) - (fy_expense['total_credit'] or Decimal('0.00'))
+            
+            # Update if values changed
+            if comp.revenue != fy_revenue or comp.expenses != fy_expenses:
+                comp.revenue = fy_revenue
+                comp.expenses = fy_expenses
+                comp.save(update_fields=['revenue', 'expenses'])
+                comp.calculate()  # Recalculate derived values
+    
+    # Refresh the queryset to get updated values
+    tax_computations = CorporateTaxComputation.objects.filter(is_active=True).select_related(
+        'fiscal_year', 'journal_entry', 'payment_journal_entry'
+    ).order_by('-fiscal_year__start_date')
+    
+    # Calculate current year tax from Journal Lines (SINGLE SOURCE OF TRUTH)
     
     # Revenue from journal lines (Credits to Income accounts)
     income_lines = JournalEntryLine.objects.filter(
