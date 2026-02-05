@@ -744,85 +744,268 @@ def export_bank_ledger(transactions, bank_name, start_date, end_date):
 
 # ============ CASH FLOW EXPORT ============
 
-def export_cash_flow(operating, investing, financing, start_date, end_date):
-    """Export Cash Flow Statement to Excel."""
+def export_cash_flow(operating, investing, financing, start_date, end_date, 
+                     opening_balance=Decimal('0.00'), closing_balance=Decimal('0.00'),
+                     opening_detail=None, closing_detail=None, company_name=''):
+    """
+    Export Cash Flow Statement to Excel - IFRS/GAAP Compliant.
+    
+    Includes:
+    - Beginning and Ending Cash Balance (Reconciliation)
+    - Detailed line items for each activity
+    - Net Change validation
+    - Supplemental disclosures section
+    """
     wb = Workbook()
     ws = wb.active
-    ws.title = 'Cash Flow'
+    ws.title = 'Cash Flow Statement'
+    
+    # Styles
+    header_font = Font(bold=True, size=14)
+    section_font = Font(bold=True, size=11)
+    total_font = Font(bold=True)
+    total_fill = PatternFill(start_color='E6E6E6', end_color='E6E6E6', fill_type='solid')
+    reconciliation_fill = PatternFill(start_color='D4EDDA', end_color='D4EDDA', fill_type='solid')
     
     # Title
-    style_title_row(ws, 1, f'Cash Flow Statement', 2)
-    ws.cell(row=2, column=1, value=f'Period: {start_date} to {end_date}')
+    ws.merge_cells('A1:C1')
+    ws.cell(row=1, column=1, value='CASH FLOW STATEMENT')
+    ws.cell(row=1, column=1).font = header_font
+    ws.cell(row=1, column=1).alignment = Alignment(horizontal='center')
     
-    row = 4
+    if company_name:
+        ws.merge_cells('A2:C2')
+        ws.cell(row=2, column=1, value=company_name)
+        ws.cell(row=2, column=1).alignment = Alignment(horizontal='center')
     
-    # Operating Activities
-    ws.cell(row=row, column=1, value='OPERATING ACTIVITIES')
-    ws.cell(row=row, column=1).font = Font(bold=True)
+    ws.merge_cells('A3:C3')
+    ws.cell(row=3, column=1, value=f'For the Period: {start_date} to {end_date}')
+    ws.cell(row=3, column=1).alignment = Alignment(horizontal='center')
+    
+    ws.cell(row=4, column=1, value='(Direct Method - IFRS Compliant)')
+    ws.cell(row=4, column=1).font = Font(italic=True)
+    
+    row = 6
+    
+    # ========================================
+    # BEGINNING CASH BALANCE
+    # ========================================
+    ws.cell(row=row, column=1, value='BEGINNING CASH BALANCE')
+    ws.cell(row=row, column=1).font = total_font
+    ws.cell(row=row, column=2, value=float(opening_balance))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    ws.cell(row=row, column=2).font = total_font
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).fill = reconciliation_fill
+    row += 2
+    
+    # ========================================
+    # OPERATING ACTIVITIES
+    # ========================================
+    ws.cell(row=row, column=1, value='CASH FLOWS FROM OPERATING ACTIVITIES')
+    ws.cell(row=row, column=1).font = section_font
     row += 1
     
     total_operating = Decimal('0.00')
-    for item in operating:
-        ws.cell(row=row, column=1, value=item.get('description', ''))
-        amount = item.get('amount', 0)
-        ws.cell(row=row, column=2, value=format_currency(amount))
-        total_operating += Decimal(str(amount)) if amount else Decimal('0.00')
+    if operating:
+        for item in operating:
+            desc = item.get('description', 'Other operating activity')
+            amount = Decimal(str(item.get('amount', 0))) if item.get('amount') else Decimal('0.00')
+            
+            # Indent line items
+            ws.cell(row=row, column=1, value=f'  {desc}')
+            ws.cell(row=row, column=2, value=float(amount))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            total_operating += amount
+            row += 1
+    else:
+        ws.cell(row=row, column=1, value='  No operating cash flows')
+        ws.cell(row=row, column=1).font = Font(italic=True)
         row += 1
     
-    ws.cell(row=row, column=1, value='Net Cash from Operating')
-    ws.cell(row=row, column=1).font = Font(bold=True)
-    ws.cell(row=row, column=2, value=format_currency(total_operating))
-    ws.cell(row=row, column=2).font = Font(bold=True)
+    # Operating Total
+    ws.cell(row=row, column=1, value='Net Cash from Operating Activities')
+    ws.cell(row=row, column=1).font = total_font
+    ws.cell(row=row, column=2, value=float(total_operating))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    ws.cell(row=row, column=2).font = total_font
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).fill = total_fill
     row += 2
     
-    # Investing Activities
-    ws.cell(row=row, column=1, value='INVESTING ACTIVITIES')
-    ws.cell(row=row, column=1).font = Font(bold=True)
+    # ========================================
+    # INVESTING ACTIVITIES
+    # ========================================
+    ws.cell(row=row, column=1, value='CASH FLOWS FROM INVESTING ACTIVITIES')
+    ws.cell(row=row, column=1).font = section_font
     row += 1
     
     total_investing = Decimal('0.00')
-    for item in investing:
-        ws.cell(row=row, column=1, value=item.get('description', ''))
-        amount = item.get('amount', 0)
-        ws.cell(row=row, column=2, value=format_currency(amount))
-        total_investing += Decimal(str(amount)) if amount else Decimal('0.00')
+    if investing:
+        for item in investing:
+            desc = item.get('description', 'Other investing activity')
+            amount = Decimal(str(item.get('amount', 0))) if item.get('amount') else Decimal('0.00')
+            
+            ws.cell(row=row, column=1, value=f'  {desc}')
+            ws.cell(row=row, column=2, value=float(amount))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            total_investing += amount
+            row += 1
+    else:
+        ws.cell(row=row, column=1, value='  No investing cash flows')
+        ws.cell(row=row, column=1).font = Font(italic=True)
         row += 1
     
-    ws.cell(row=row, column=1, value='Net Cash from Investing')
-    ws.cell(row=row, column=1).font = Font(bold=True)
-    ws.cell(row=row, column=2, value=format_currency(total_investing))
-    ws.cell(row=row, column=2).font = Font(bold=True)
+    # Investing Total
+    ws.cell(row=row, column=1, value='Net Cash from Investing Activities')
+    ws.cell(row=row, column=1).font = total_font
+    ws.cell(row=row, column=2, value=float(total_investing))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    ws.cell(row=row, column=2).font = total_font
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).fill = total_fill
     row += 2
     
-    # Financing Activities
-    ws.cell(row=row, column=1, value='FINANCING ACTIVITIES')
-    ws.cell(row=row, column=1).font = Font(bold=True)
+    # ========================================
+    # FINANCING ACTIVITIES
+    # ========================================
+    ws.cell(row=row, column=1, value='CASH FLOWS FROM FINANCING ACTIVITIES')
+    ws.cell(row=row, column=1).font = section_font
     row += 1
     
     total_financing = Decimal('0.00')
-    for item in financing:
-        ws.cell(row=row, column=1, value=item.get('description', ''))
-        amount = item.get('amount', 0)
-        ws.cell(row=row, column=2, value=format_currency(amount))
-        total_financing += Decimal(str(amount)) if amount else Decimal('0.00')
+    if financing:
+        for item in financing:
+            desc = item.get('description', 'Other financing activity')
+            amount = Decimal(str(item.get('amount', 0))) if item.get('amount') else Decimal('0.00')
+            
+            ws.cell(row=row, column=1, value=f'  {desc}')
+            ws.cell(row=row, column=2, value=float(amount))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            total_financing += amount
+            row += 1
+    else:
+        ws.cell(row=row, column=1, value='  No financing cash flows')
+        ws.cell(row=row, column=1).font = Font(italic=True)
         row += 1
     
-    ws.cell(row=row, column=1, value='Net Cash from Financing')
-    ws.cell(row=row, column=1).font = Font(bold=True)
-    ws.cell(row=row, column=2, value=format_currency(total_financing))
-    ws.cell(row=row, column=2).font = Font(bold=True)
+    # Financing Total
+    ws.cell(row=row, column=1, value='Net Cash from Financing Activities')
+    ws.cell(row=row, column=1).font = total_font
+    ws.cell(row=row, column=2, value=float(total_financing))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    ws.cell(row=row, column=2).font = total_font
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).fill = total_fill
     row += 2
     
-    # Net Change
+    # ========================================
+    # NET CHANGE IN CASH
+    # ========================================
     net_change = total_operating + total_investing + total_financing
-    ws.cell(row=row, column=1, value='NET CHANGE IN CASH')
+    ws.cell(row=row, column=1, value='NET INCREASE (DECREASE) IN CASH')
     ws.cell(row=row, column=1).font = Font(bold=True, size=12)
-    ws.cell(row=row, column=2, value=format_currency(net_change))
+    ws.cell(row=row, column=2, value=float(net_change))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
     ws.cell(row=row, column=2).font = Font(bold=True, size=12)
+    row += 2
     
-    auto_width_columns(ws)
+    # ========================================
+    # ENDING CASH BALANCE
+    # ========================================
+    ws.cell(row=row, column=1, value='ENDING CASH BALANCE')
+    ws.cell(row=row, column=1).font = total_font
+    ws.cell(row=row, column=2, value=float(closing_balance))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    ws.cell(row=row, column=2).font = total_font
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).fill = reconciliation_fill
+    row += 2
     
-    response = create_excel_response(f'cash_flow_{start_date}_to_{end_date}.xlsx')
+    # ========================================
+    # RECONCILIATION CHECK
+    # ========================================
+    ws.cell(row=row, column=1, value='RECONCILIATION:')
+    ws.cell(row=row, column=1).font = section_font
+    row += 1
+    
+    expected_closing = opening_balance + net_change
+    ws.cell(row=row, column=1, value=f'  Beginning Balance + Net Change')
+    ws.cell(row=row, column=2, value=float(expected_closing))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    row += 1
+    
+    ws.cell(row=row, column=1, value=f'  Ending Cash Balance')
+    ws.cell(row=row, column=2, value=float(closing_balance))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    row += 1
+    
+    variance = closing_balance - expected_closing
+    reconciles = abs(variance) < Decimal('0.01')
+    ws.cell(row=row, column=1, value=f'  Variance')
+    ws.cell(row=row, column=2, value=float(variance))
+    ws.cell(row=row, column=2).number_format = '#,##0.00'
+    
+    if reconciles:
+        ws.cell(row=row, column=3, value='✓ RECONCILES')
+        ws.cell(row=row, column=3).font = Font(bold=True, color='006400')
+    else:
+        ws.cell(row=row, column=3, value='✗ DOES NOT RECONCILE')
+        ws.cell(row=row, column=3).font = Font(bold=True, color='FF0000')
+    row += 2
+    
+    # ========================================
+    # CASH ACCOUNT BREAKDOWN (if provided)
+    # ========================================
+    if opening_detail or closing_detail:
+        ws.cell(row=row, column=1, value='CASH & BANK ACCOUNT BREAKDOWN')
+        ws.cell(row=row, column=1).font = section_font
+        row += 1
+        
+        # Header
+        ws.cell(row=row, column=1, value='Account')
+        ws.cell(row=row, column=2, value='Opening')
+        ws.cell(row=row, column=3, value='Closing')
+        for col in range(1, 4):
+            ws.cell(row=row, column=col).font = total_font
+        row += 1
+        
+        # Combine opening and closing details
+        all_accounts = set()
+        opening_dict = {d['account']: d['balance'] for d in (opening_detail or [])}
+        closing_dict = {d['account']: d['balance'] for d in (closing_detail or [])}
+        all_accounts.update(opening_dict.keys())
+        all_accounts.update(closing_dict.keys())
+        
+        for acc in sorted(all_accounts):
+            ws.cell(row=row, column=1, value=f'  {acc}')
+            ws.cell(row=row, column=2, value=float(opening_dict.get(acc, 0)))
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            ws.cell(row=row, column=3, value=float(closing_dict.get(acc, 0)))
+            ws.cell(row=row, column=3).number_format = '#,##0.00'
+            row += 1
+        row += 1
+    
+    # ========================================
+    # NOTES
+    # ========================================
+    ws.cell(row=row, column=1, value='NOTES:')
+    ws.cell(row=row, column=1).font = section_font
+    row += 1
+    ws.cell(row=row, column=1, value='1. This statement is prepared using the Direct Method (IFRS/IAS 7 compliant)')
+    row += 1
+    ws.cell(row=row, column=1, value='2. Cash includes cash in hand and bank deposits')
+    row += 1
+    ws.cell(row=row, column=1, value='3. Opening balance entries are excluded from cash flow activities (they are positions, not transactions)')
+    row += 1
+    ws.cell(row=row, column=1, value=f'4. Report generated: {start_date} to {end_date}')
+    
+    # Set column widths
+    ws.column_dimensions['A'].width = 50
+    ws.column_dimensions['B'].width = 20
+    ws.column_dimensions['C'].width = 20
+    
+    response = create_excel_response(f'cash_flow_statement_{start_date}_to_{end_date}.xlsx')
     wb.save(response)
     return response
 

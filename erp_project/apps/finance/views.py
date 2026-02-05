@@ -3219,7 +3219,17 @@ def cash_flow(request):
     export_format = request.GET.get('format', '')
     if export_format == 'excel':
         from .excel_exports import export_cash_flow
-        return export_cash_flow(operating_summary, investing_summary, financing_summary, start_date_str, end_date_str)
+        return export_cash_flow(
+            operating=operating_summary, 
+            investing=investing_summary, 
+            financing=financing_summary, 
+            start_date=start_date_str, 
+            end_date=end_date_str,
+            opening_balance=opening_cash,
+            closing_balance=closing_cash,
+            opening_detail=opening_cash_detail,
+            closing_detail=closing_cash_detail
+        )
     
     # Get all cash accounts for filter dropdown (exclude Fixed Deposits)
     all_cash_bank_accounts = Account.objects.filter(
