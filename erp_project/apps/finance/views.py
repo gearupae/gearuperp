@@ -331,8 +331,8 @@ def journal_reverse(request, pk):
         return redirect('finance:journal_list')
     
     if not entry.is_reversible:
-    if entry.status != 'posted':
-        messages.error(request, 'Only posted entries can be reversed.')
+        if entry.status != 'posted':
+            messages.error(request, 'Only posted entries can be reversed.')
         elif entry.period and entry.period.is_locked:
             messages.error(request, f'Cannot reverse - accounting period {entry.period.name} is locked.')
         elif entry.fiscal_year and entry.fiscal_year.is_closed:
@@ -733,11 +733,11 @@ def trial_balance(request):
                     # This prevents cash from appearing in Credit column
                     debit_amount = net_balance  # Will be negative
                     credit_amount = Decimal('0.00')
-        else:
+                else:
                     # Other assets with credit balance or overdraft accounts
                     debit_amount = Decimal('0.00')
                     credit_amount = abs(net_balance)
-            else:
+        else:
             # Liability, Equity, or Income account - normally shows Credit balance
             if net_balance <= 0:
                 debit_amount = Decimal('0.00')
@@ -3033,9 +3033,18 @@ def cash_flow(request):
     # ========================================
     # OPENING CASH BALANCE
     # CRITICAL: Only Cash + Bank accounts, EXCLUDE Fixed Deposits
+    # 
+    # IMPORTANT: Opening balance includes:
+    # 1. Account's opening_balance field
+    # 2. All transactions BEFORE start_date
+    # 3. Opening balance entries dated ON start_date (these are positions, not activities)
     # ========================================
     opening_cash = Decimal('0.00')
     opening_cash_detail = []  # For validation
+    
+    # Opening balance entry identifiers (source modules that represent opening positions)
+    OPENING_BALANCE_SOURCES = ['opening_balance', 'system_opening', 'system']
+    
     for acc in cash_bank_accounts:
         # Skip Fixed Deposits (already filtered, but double-check)
         if getattr(acc, 'is_fixed_deposit', False):
@@ -3044,6 +3053,8 @@ def cash_flow(request):
             continue
             
         acc_opening = acc.opening_balance or Decimal('0.00')
+        
+        # Add all transactions BEFORE start_date
         pre_period = JournalEntryLine.objects.filter(
             account=acc,
             journal_entry__status='posted',
@@ -3053,6 +3064,24 @@ def cash_flow(request):
             total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
         )
         acc_opening += pre_period['total_debit'] - pre_period['total_credit']
+        
+        # CRITICAL FIX: Also include opening balance entries dated ON start_date
+        # These are opening positions, NOT cash flow activities
+        opening_entries_on_start = JournalEntryLine.objects.filter(
+            account=acc,
+            journal_entry__status='posted',
+            journal_entry__date=start_date
+        ).filter(
+            Q(journal_entry__source_module__in=OPENING_BALANCE_SOURCES) |
+            Q(journal_entry__entry_type='opening') |
+            Q(journal_entry__reference__icontains='OPENING BALANCE') |
+            Q(journal_entry__reference__istartswith='OB-')
+        ).aggregate(
+            total_debit=Coalesce(Sum('debit'), Decimal('0.00')),
+            total_credit=Coalesce(Sum('credit'), Decimal('0.00'))
+        )
+        acc_opening += opening_entries_on_start['total_debit'] - opening_entries_on_start['total_credit']
+        
         opening_cash += acc_opening
         opening_cash_detail.append({'account': acc.name, 'balance': acc_opening})
     
@@ -3330,6 +3359,8 @@ def cash_flow(request):
     # ========================================
     # CALCULATE EXCLUDED ADJUSTMENTS
     # (Reversals, corrections that hit cash but are NOT activities)
+    # 
+    # IMPORTANT: Exclude opening balance entries as they're included in opening_cash
     # ========================================
     excluded_adjustment_lines = JournalEntryLine.objects.filter(
         account_id__in=cash_account_ids,
@@ -3343,19 +3374,32 @@ def cash_flow(request):
         # Don't count opening balance entries (they're part of opening balance, not period activity)
         journal_entry__entry_type='opening'
     ).exclude(
+        journal_entry__source_module__in=OPENING_BALANCE_SOURCES
+    ).exclude(
         journal_entry__reference__icontains='OPENING BALANCE'
     ).exclude(
         journal_entry__reference__istartswith='OB-'
     ).select_related('journal_entry', 'account')
     
     excluded_adjustments = Decimal('0.00')
+    excluded_adjustment_details = []  # For transparency in reporting
     excluded_journals_processed = set()
     for line in excluded_adjustment_lines:
         j = line.journal_entry
         if j.pk not in excluded_journals_processed:
             excluded_journals_processed.add(j.pk)
+            journal_adjustment = Decimal('0.00')
             for cash_line in j.lines.filter(account_id__in=cash_account_ids):
-                excluded_adjustments += cash_line.debit - cash_line.credit
+                journal_adjustment += cash_line.debit - cash_line.credit
+            if journal_adjustment != Decimal('0.00'):
+                excluded_adjustments += journal_adjustment
+                excluded_adjustment_details.append({
+                    'reference': j.reference,
+                    'description': j.description,
+                    'date': j.date,
+                    'amount': journal_adjustment,
+                    'source_module': j.source_module,
+                })
     
     # ========================================
     # VALIDATION: Opening + Net Change + Adjustments = Closing
@@ -3453,6 +3497,8 @@ def cash_flow(request):
         # Audit details for reconciliation
         'opening_cash_detail': opening_cash_detail,
         'closing_cash_detail': closing_cash_detail,
+        'excluded_adjustments': excluded_adjustments,
+        'excluded_adjustment_details': excluded_adjustment_details,
     })
 
 
@@ -3474,7 +3520,7 @@ def ar_aging(request):
         except ValueError:
             today = date.today()
     else:
-    today = date.today()
+        today = date.today()
     
     # Get AR account (typically 1200 or similar)
     ar_account = Account.objects.filter(
@@ -3625,7 +3671,7 @@ def ap_aging(request):
         except ValueError:
             today = date.today()
     else:
-    today = date.today()
+        today = date.today()
     
     # Get AP account (typically 2000 or similar)
     ap_account = Account.objects.filter(
@@ -3917,11 +3963,11 @@ def payment_post(request, pk):
     # Fallback to hardcoded codes for backward compatibility
     ar_account = AccountMapping.get_account_or_default('customer_receipt_ar_clear', '1200')
     if not ar_account:
-    ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
+        ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
     
     ap_account = AccountMapping.get_account_or_default('vendor_payment_ap_clear', '2000')
     if not ap_account:
-    ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
+        ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
     
     bank_account = payment.bank_account.gl_account
     
@@ -3940,7 +3986,7 @@ def payment_post(request, pk):
                 description=f"Payment from {payment.party_name}",
                 credit=payment.amount,
             )
-    else:
+        else:
             messages.warning(request, 'Accounts Receivable account not configured in Account Mapping.')
     else:
         # Debit AP (clears payable), Credit Bank

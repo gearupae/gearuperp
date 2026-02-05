@@ -853,9 +853,19 @@ def export_cash_flow(operating, investing, financing, start_date, end_date,
             total_investing += amount
             row += 1
     else:
-        ws.cell(row=row, column=1, value='  No investing cash flows')
-        ws.cell(row=row, column=1).font = Font(italic=True)
-        row += 1
+        # Show explicit zero line items for professional presentation (GAAP compliant)
+        zero_investing_items = [
+            'Purchase of property & equipment',
+            'Proceeds from sale of assets',
+            'Purchase of investments',
+        ]
+        for item_desc in zero_investing_items:
+            ws.cell(row=row, column=1, value=f'  {item_desc}')
+            ws.cell(row=row, column=2, value=0.00)
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            ws.cell(row=row, column=1).font = Font(color='808080')  # Gray for no activity
+            ws.cell(row=row, column=2).font = Font(color='808080')
+            row += 1
     
     # Investing Total
     ws.cell(row=row, column=1, value='Net Cash from Investing Activities')
@@ -886,9 +896,20 @@ def export_cash_flow(operating, investing, financing, start_date, end_date,
             total_financing += amount
             row += 1
     else:
-        ws.cell(row=row, column=1, value='  No financing cash flows')
-        ws.cell(row=row, column=1).font = Font(italic=True)
-        row += 1
+        # Show explicit zero line items for professional presentation (GAAP compliant)
+        zero_financing_items = [
+            'Proceeds from borrowings',
+            'Repayment of debt principal',
+            'Owner contributions',
+            'Owner drawings/dividends',
+        ]
+        for item_desc in zero_financing_items:
+            ws.cell(row=row, column=1, value=f'  {item_desc}')
+            ws.cell(row=row, column=2, value=0.00)
+            ws.cell(row=row, column=2).number_format = '#,##0.00'
+            ws.cell(row=row, column=1).font = Font(color='808080')  # Gray for no activity
+            ws.cell(row=row, column=2).font = Font(color='808080')
+            row += 1
     
     # Financing Total
     ws.cell(row=row, column=1, value='Net Cash from Financing Activities')
