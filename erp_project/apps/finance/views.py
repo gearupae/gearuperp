@@ -2949,10 +2949,13 @@ def cash_flow(request):
     EXCLUDED_SOURCES = [
         'opening_balance', 'reversal', 'adjustment', 'depreciation',
         'provision', 'accrual', 'corporate_tax', 'vat', 'year_end',
+        'system', 'system_opening',  # Add system-generated entries
     ]
     
     # ========================================
     # GET CASH MOVEMENTS (Direct Method)
+    # CRITICAL: EXCLUDE ALL OPENING BALANCE ENTRIES
+    # Opening balances are POSITIONS, not TRANSACTIONS
     # ========================================
     
     # Get journals that:
@@ -2960,6 +2963,7 @@ def cash_flow(request):
     # 2. Are posted
     # 3. Are within date range
     # 4. Are NOT from excluded sources
+    # 5. Are NOT opening balance entries (by reference, type, or description)
     
     cash_journal_lines = JournalEntryLine.objects.filter(
         account_id__in=cash_account_ids,
@@ -2970,7 +2974,19 @@ def cash_flow(request):
         journal_entry__source_module__in=EXCLUDED_SOURCES
     ).exclude(
         # Exclude journals that are only accrual/depreciation related
-        journal_entry__entry_type__in=['adjusting', 'closing']
+        journal_entry__entry_type__in=['adjusting', 'closing', 'opening']  # Add 'opening' entry type
+    ).exclude(
+        # CRITICAL: Exclude opening balance by reference patterns
+        journal_entry__reference__icontains='OPENING BALANCE'
+    ).exclude(
+        journal_entry__reference__istartswith='OB-'
+    ).exclude(
+        # Exclude opening balance by description
+        journal_entry__description__icontains='Opening Balance'
+    ).exclude(
+        # Exclude system-generated opening entries
+        journal_entry__is_system_generated=True,
+        journal_entry__entry_type='opening'
     ).select_related('journal_entry', 'account').order_by('journal_entry__date')
     
     # Process cash movements
@@ -3115,30 +3131,47 @@ def cash_flow(request):
             investing_total += journal_cash_movement
         
         # C. FINANCING ACTIVITIES
-        # - Capital introduced
+        # - Capital introduced / contributions
         # - Loans received/repaid
-        # - Drawings
-        # - Dividends
+        # - Drawings / withdrawals
+        # - Dividends paid
+        # - Share capital / equity issued
         
         elif counter_type == AccountType.EQUITY or counter_category in ['capital', 'reserves', 'retained_earnings']:
-            if 'drawing' in counter_name:
-                item['category'] = 'Drawings'
+            if 'drawing' in counter_name or 'withdrawal' in counter_name:
+                item['category'] = 'Owner drawings / withdrawals'
             elif 'dividend' in counter_name:
                 item['category'] = 'Dividends paid'
-            elif 'capital' in counter_name:
-                item['category'] = 'Capital introduced' if journal_cash_movement > 0 else 'Capital withdrawn'
+            elif 'capital' in counter_name or 'partner' in counter_name or 'owner' in counter_name:
+                item['category'] = 'Capital contributed by owners' if journal_cash_movement > 0 else 'Capital withdrawn'
+            elif 'share' in counter_name:
+                item['category'] = 'Share capital issued' if journal_cash_movement > 0 else 'Share buyback'
+            elif 'retained' in counter_name:
+                item['category'] = 'Retained earnings adjustment'
             else:
-                item['category'] = 'Financing - Equity'
+                item['category'] = 'Other financing - Equity'
             financing_items.append(item)
             financing_total += journal_cash_movement
             
-        elif 'loan' in counter_name or 'borrowing' in counter_name:
-            item['category'] = 'Loan received' if journal_cash_movement > 0 else 'Loan repayment'
+        elif 'loan' in counter_name or 'borrowing' in counter_name or 'mortgage' in counter_name:
+            item['category'] = 'Proceeds from loans' if journal_cash_movement > 0 else 'Loan repayments'
+            financing_items.append(item)
+            financing_total += journal_cash_movement
+            
+        elif counter_type == AccountType.LIABILITY and ('long term' in counter_name or 'term loan' in counter_name):
+            # Long-term liability typically = financing
+            item['category'] = 'Financing - Long term liability'
             financing_items.append(item)
             financing_total += journal_cash_movement
         
-        # Default to operating
+        # Default to operating (but NOT opening balance entries)
         else:
+            # Double-check this isn't an opening balance entry
+            ref_lower = (journal.reference or '').lower()
+            desc_lower = (journal.description or '').lower()
+            if 'opening' in ref_lower or 'opening' in desc_lower or ref_lower.startswith('ob-'):
+                continue  # Skip opening balance entries
+            
             item['category'] = 'Other operating cash flow'
             operating_items.append(item)
             operating_total += journal_cash_movement
