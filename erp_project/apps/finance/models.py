@@ -1408,7 +1408,7 @@ class VATReturn(BaseModel):
             reference=f"VAT-{self.return_number}",
             description=f"VAT Return Settlement - {self.period_start} to {self.period_end}",
             source_module='vat',
-            source_document_id=self.pk,
+            source_id=self.pk,  # Correct field name
             entry_type='standard',
             is_system_generated=True,
             created_by=user,
@@ -1500,10 +1500,10 @@ class VATReturn(BaseModel):
             reference=f"REV-{original.reference}",
             description=f"Reversal of {original.reference} - VAT Return {self.return_number}",
             source_module='vat',
-            source_document_id=self.pk,
+            source_id=self.pk,  # Correct field name
             entry_type='reversal',
             is_system_generated=True,
-            reversed_from=original,
+            reversal_of=original,  # Correct field name
             created_by=user,
         )
         
