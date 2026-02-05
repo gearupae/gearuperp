@@ -3036,9 +3036,9 @@ def cash_flow(request):
         if any(kw in counter_name for kw in non_cash_keywords):
             continue
         
-        # Skip PDC Receivable (not actual cash)
-        if 'pdc' in counter_name and 'receivable' in counter_name:
-            continue
+        # NOTE: PDC Receivable clearance IS actual cash (when PDC cheque clears)
+        # Dr Bank (cash in), Cr PDC Receivable (receivable reduces)
+        # This should be classified as "Cash received from customers" - do NOT skip!
         
         # Build item
         # Positive = Cash In, Negative = Cash Out
@@ -3088,7 +3088,11 @@ def cash_flow(request):
             
         elif 'receivable' in counter_name or 'debtor' in counter_name or counter_category == 'trade_receivables':
             # AR clearing = Customer payment received
-            item['category'] = 'Cash received from customers'
+            # PDC Receivable clearance = PDC cheque deposited and cleared
+            if 'pdc' in counter_name:
+                item['category'] = 'Cash received from customers (PDC clearance)'
+            else:
+                item['category'] = 'Cash received from customers'
             operating_items.append(item)
             operating_total += journal_cash_movement
             
