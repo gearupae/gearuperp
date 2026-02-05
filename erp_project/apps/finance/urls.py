@@ -114,6 +114,7 @@ urlpatterns = [
     path('reports/vat/', views.vat_report, name='vat_report'),
     path('reports/corporate-tax/', views.corporate_tax_report, name='corporate_tax_report'),
     path('reports/corporate-tax/create/', views.corporate_tax_create, name='corporate_tax_create'),
+    path('reports/corporate-tax/<int:pk>/recalculate/', views.corporate_tax_recalculate, name='corporate_tax_recalculate'),
     path('reports/corporate-tax/<int:pk>/post-provision/', views.corporate_tax_post_provision, name='corporate_tax_post_provision'),
     path('reports/corporate-tax/<int:pk>/pay/', views.corporate_tax_pay, name='corporate_tax_pay'),
     

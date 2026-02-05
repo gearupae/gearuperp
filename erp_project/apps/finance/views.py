@@ -2028,6 +2028,89 @@ def corporate_tax_post_provision(request, pk):
 
 
 @login_required
+def corporate_tax_recalculate(request, pk):
+    """
+    Recalculate Corporate Tax Computation from current GL values.
+    
+    This updates the stored Revenue/Expenses/Accounting Profit to match
+    the current General Ledger, ensuring consistency between:
+    - Tax Summary
+    - Tax Computation
+    - Tax History
+    
+    Adjustments (non-deductible, exempt income, other) are preserved.
+    """
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('finance:corporate_tax_report')
+    
+    computation = get_object_or_404(CorporateTaxComputation, pk=pk)
+    
+    # Cannot recalculate filed/paid computations
+    if computation.status in ['filed', 'paid']:
+        messages.error(request, f'Cannot recalculate - computation is already {computation.status}.')
+        return redirect('finance:corporate_tax_report')
+    
+    try:
+        fiscal_year = computation.fiscal_year
+        start_date = fiscal_year.start_date
+        end_date = fiscal_year.end_date
+        
+        # ========================================
+        # RECALCULATE FROM CURRENT GL
+        # ========================================
+        income_accounts = Account.objects.filter(is_active=True, account_type=AccountType.INCOME)
+        expense_accounts = Account.objects.filter(is_active=True, account_type=AccountType.EXPENSE)
+        
+        # Revenue from journal lines
+        income_lines = JournalEntryLine.objects.filter(
+            account__in=income_accounts,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        ).aggregate(
+            total_debit=Sum('debit'),
+            total_credit=Sum('credit')
+        )
+        gl_revenue = (income_lines['total_credit'] or Decimal('0.00')) - (income_lines['total_debit'] or Decimal('0.00'))
+        
+        # Expenses from journal lines
+        expense_lines = JournalEntryLine.objects.filter(
+            account__in=expense_accounts,
+            journal_entry__status='posted',
+            journal_entry__date__gte=start_date,
+            journal_entry__date__lte=end_date,
+        ).aggregate(
+            total_debit=Sum('debit'),
+            total_credit=Sum('credit')
+        )
+        gl_expenses = (expense_lines['total_debit'] or Decimal('0.00')) - (expense_lines['total_credit'] or Decimal('0.00'))
+        
+        # Update stored values
+        old_revenue = computation.revenue
+        old_expenses = computation.expenses
+        
+        computation.revenue = gl_revenue
+        computation.expenses = gl_expenses
+        computation.save(update_fields=['revenue', 'expenses'])
+        
+        # Recalculate derived values
+        computation.calculate()
+        
+        messages.success(
+            request, 
+            f'Tax computation for {fiscal_year.name} recalculated from current GL. '
+            f'Revenue: {old_revenue:,.2f} → {gl_revenue:,.2f}, '
+            f'Expenses: {old_expenses:,.2f} → {gl_expenses:,.2f}'
+        )
+        
+    except Exception as e:
+        messages.error(request, f'Error recalculating: {e}')
+    
+    return redirect('finance:corporate_tax_report')
+
+
+@login_required
 def corporate_tax_pay(request, pk):
     """
     Pay Corporate Tax.

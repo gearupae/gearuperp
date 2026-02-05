@@ -330,6 +330,7 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>Tax Computation History</h6>
+        <small class="text-muted"><i class="fas fa-info-circle me-1"></i>Stored values from when computation was created/updated</small>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -345,15 +346,23 @@
                         <th class="text-end">Tax Payable</th>
                         <th class="text-end">Paid</th>
                         <th>Status</th>
+                        <th class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for comp in tax_computations %}
-                    <tr>
+                    <tr {% if comp.revenue == 0 and current_revenue > 0 %}class="table-warning"{% endif %}>
                         <td class="fw-medium">{{ comp.fiscal_year.name }}</td>
-                        <td class="text-end">{{ comp.revenue|floatformat:2|intcomma }}</td>
+                        <td class="text-end {% if comp.revenue == 0 %}text-danger{% endif %}">
+                            {{ comp.revenue|floatformat:2|intcomma }}
+                            {% if comp.revenue == 0 and current_revenue > 0 %}
+                            <i class="fas fa-exclamation-triangle text-warning ms-1" title="Revenue is 0 but GL shows income"></i>
+                            {% endif %}
+                        </td>
                         <td class="text-end">{{ comp.expenses|floatformat:2|intcomma }}</td>
-                        <td class="text-end">{{ comp.accounting_profit|floatformat:2|intcomma }}</td>
+                        <td class="text-end {% if comp.accounting_profit < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ comp.accounting_profit|floatformat:2|intcomma }}
+                        </td>
                         <td class="text-end">
                             <span class="{% if comp.non_deductible_expenses > 0 %}text-danger{% endif %}">+{{ comp.non_deductible_expenses|floatformat:0|intcomma }}</span>
                             /
@@ -376,10 +385,26 @@
                                 <span class="badge bg-light text-dark"><i class="fas fa-check"></i> Posted</span>
                             {% endif %}
                         </td>
+                        <td class="text-center">
+                            {% if can_post and comp.status not in 'filed,paid' %}
+                            <form method="post" action="{% url 'finance:corporate_tax_recalculate' comp.pk %}" 
+                                  style="display: inline;"
+                                  onsubmit="return confirm('Recalculate this computation from current General Ledger values?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-primary" title="Refresh from GL">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </form>
+                            {% else %}
+                            <span class="text-muted" title="Filed/Paid computations cannot be recalculated">
+                                <i class="fas fa-lock"></i>
+                            </span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
+                        <td colspan="10" class="text-center py-5 text-muted">
                             <i class="fas fa-landmark fa-3x mb-3 d-block"></i>
                             No tax computations recorded
                         </td>
