@@ -331,8 +331,8 @@ def journal_reverse(request, pk):
         return redirect('finance:journal_list')
     
     if not entry.is_reversible:
-        if entry.status != 'posted':
-            messages.error(request, 'Only posted entries can be reversed.')
+    if entry.status != 'posted':
+        messages.error(request, 'Only posted entries can be reversed.')
         elif entry.period and entry.period.is_locked:
             messages.error(request, f'Cannot reverse - accounting period {entry.period.name} is locked.')
         elif entry.fiscal_year and entry.fiscal_year.is_closed:
@@ -733,11 +733,11 @@ def trial_balance(request):
                     # This prevents cash from appearing in Credit column
                     debit_amount = net_balance  # Will be negative
                     credit_amount = Decimal('0.00')
-                else:
+        else:
                     # Other assets with credit balance or overdraft accounts
                     debit_amount = Decimal('0.00')
                     credit_amount = abs(net_balance)
-        else:
+            else:
             # Liability, Equity, or Income account - normally shows Credit balance
             if net_balance <= 0:
                 debit_amount = Decimal('0.00')
@@ -3474,7 +3474,7 @@ def ar_aging(request):
         except ValueError:
             today = date.today()
     else:
-        today = date.today()
+    today = date.today()
     
     # Get AR account (typically 1200 or similar)
     ar_account = Account.objects.filter(
@@ -3625,7 +3625,7 @@ def ap_aging(request):
         except ValueError:
             today = date.today()
     else:
-        today = date.today()
+    today = date.today()
     
     # Get AP account (typically 2000 or similar)
     ap_account = Account.objects.filter(
@@ -3917,11 +3917,11 @@ def payment_post(request, pk):
     # Fallback to hardcoded codes for backward compatibility
     ar_account = AccountMapping.get_account_or_default('customer_receipt_ar_clear', '1200')
     if not ar_account:
-        ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
+    ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
     
     ap_account = AccountMapping.get_account_or_default('vendor_payment_ap_clear', '2000')
     if not ap_account:
-        ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
+    ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
     
     bank_account = payment.bank_account.gl_account
     
@@ -3940,7 +3940,7 @@ def payment_post(request, pk):
                 description=f"Payment from {payment.party_name}",
                 credit=payment.amount,
             )
-        else:
+    else:
             messages.warning(request, 'Accounts Receivable account not configured in Account Mapping.')
     else:
         # Debit AP (clears payable), Credit Bank

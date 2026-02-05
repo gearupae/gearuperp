@@ -325,7 +325,7 @@ class VendorBill(BaseModel):
             ap_account = Account.objects.filter(
                 account_type=AccountType.LIABILITY, is_active=True, code__startswith='20'
             ).first()
-        if not ap_account:
+            if not ap_account:
             raise ValidationError(
                 "Accounts Payable account not configured. "
                 "Please set up Account Mapping in Finance → Account Mapping."
@@ -336,7 +336,7 @@ class VendorBill(BaseModel):
             expense_account = Account.objects.filter(
                 account_type=AccountType.EXPENSE, is_active=True
             ).first()
-        if not expense_account:
+            if not expense_account:
             raise ValidationError(
                 "Expense account not configured. "
                 "Please set up Account Mapping in Finance → Account Mapping."

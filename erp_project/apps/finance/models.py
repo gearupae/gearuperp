@@ -1300,19 +1300,25 @@ class VATReturn(BaseModel):
         """
         Get VAT control accounts for posting.
         Returns dict with output_vat_account, input_vat_account, vat_payable_account.
+        
+        Uses AccountMapping with transaction_type:
+        - vat_output → Output VAT Account (Liability)
+        - vat_input → Input VAT Account (Asset)
+        - vat_payable → VAT Payable to FTA Account (Liability)
         """
         from .models import Account, AccountType, AccountMapping
         
-        # Try to get from AccountMapping first
-        output_vat_mapping = AccountMapping.objects.filter(mapping_type='vat_output').first()
-        input_vat_mapping = AccountMapping.objects.filter(mapping_type='vat_input').first()
-        vat_payable_mapping = AccountMapping.objects.filter(mapping_type='vat_payable').first()
+        # Try to get from AccountMapping first (using transaction_type, not mapping_type)
+        output_vat_mapping = AccountMapping.objects.filter(transaction_type='vat_output').first()
+        input_vat_mapping = AccountMapping.objects.filter(transaction_type='vat_input').first()
+        vat_payable_mapping = AccountMapping.objects.filter(transaction_type='vat_payable').first()
         
         # Output VAT Account (Liability - VAT collected on sales)
         output_vat_account = None
         if output_vat_mapping and output_vat_mapping.account:
             output_vat_account = output_vat_mapping.account
         else:
+            # Fallback: search by account name/code
             output_vat_account = Account.objects.filter(
                 is_active=True,
                 account_type=AccountType.LIABILITY
@@ -1327,6 +1333,7 @@ class VATReturn(BaseModel):
         if input_vat_mapping and input_vat_mapping.account:
             input_vat_account = input_vat_mapping.account
         else:
+            # Fallback: search by account name/code
             input_vat_account = Account.objects.filter(
                 is_active=True,
                 account_type=AccountType.ASSET
@@ -1341,6 +1348,7 @@ class VATReturn(BaseModel):
         if vat_payable_mapping and vat_payable_mapping.account:
             vat_payable_account = vat_payable_mapping.account
         else:
+            # Fallback: search by account name/code
             vat_payable_account = Account.objects.filter(
                 is_active=True,
                 account_type=AccountType.LIABILITY
