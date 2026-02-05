@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load humanize %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
@@ -11,15 +12,54 @@
         </nav>
         <h4 class="mb-0 fw-bold">{{ title }}</h4>
     </div>
-    <div>
+    <div class="d-flex align-items-center gap-2">
         {% if vat_return.status == 'draft' %}
-        <span class="badge bg-secondary fs-6 me-2">Draft</span>
+        <span class="badge bg-secondary fs-6">Draft</span>
+        {% elif vat_return.status == 'posted' %}
+        <span class="badge bg-primary fs-6">Posted</span>
         {% elif vat_return.status == 'submitted' %}
-        <span class="badge bg-warning fs-6 me-2">Submitted</span>
+        <span class="badge bg-warning fs-6">Submitted to FTA</span>
         {% elif vat_return.status == 'accepted' %}
-        <span class="badge bg-success fs-6 me-2">Accepted by FTA</span>
+        <span class="badge bg-success fs-6">Accepted by FTA</span>
+        {% endif %}
+        
+        {% if vat_return.is_period_locked %}
+        <span class="badge bg-danger fs-6"><i class="fas fa-lock me-1"></i>Period Locked</span>
         {% endif %}
     </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="mb-3">
+    {% if can_post %}
+    <form method="post" action="{% url 'finance:vatreturn_post' vat_return.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-success" onclick="return confirm('Post this VAT Return? This will create a journal entry and lock the VAT period.')">
+            <i class="fas fa-check-circle me-1"></i>Post VAT Return
+        </button>
+    </form>
+    {% endif %}
+    
+    {% if can_reverse %}
+    <form method="post" action="{% url 'finance:vatreturn_reverse' vat_return.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-warning" onclick="return confirm('Reverse this VAT Return? This will unlock the VAT period.')">
+            <i class="fas fa-undo me-1"></i>Reverse VAT Return
+        </button>
+    </form>
+    {% endif %}
+    
+    {% if vat_return.status == 'posted' %}
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#submitFTAModal">
+        <i class="fas fa-paper-plane me-1"></i>Submit to FTA
+    </button>
+    {% endif %}
+    
+    {% if can_edit %}
+    <a href="#" class="btn btn-outline-primary"><i class="fas fa-edit me-1"></i>Edit</a>
+    {% endif %}
+    
+    <a href="{% url 'finance:vatreturn_list' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Back to List</a>
 </div>
 
 <div class="row">
@@ -141,6 +181,10 @@
                         <th class="text-muted">Due Date</th>
                         <td>{{ vat_return.due_date|date:"d/m/Y" }}</td>
                     </tr>
+                    <tr>
+                        <th class="text-muted">Status</th>
+                        <td>{{ vat_return.get_status_display }}</td>
+                    </tr>
                     {% if vat_return.fta_reference %}
                     <tr>
                         <th class="text-muted">FTA Reference</th>
@@ -161,11 +205,120 @@
             </div>
         </div>
         
+        <!-- Journal Entry Info (if posted) -->
+        {% if vat_return.journal_entry %}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-book me-2 text-success"></i>Journal Entry</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted">Entry Number</th>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' vat_return.journal_entry.pk %}">
+                                {{ vat_return.journal_entry.entry_number }}
+                            </a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Posted Date</th>
+                        <td>{{ vat_return.posted_date|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Posted By</th>
+                        <td>{{ vat_return.posted_by.username }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Total Debit</th>
+                        <td class="text-end">{{ vat_return.journal_entry.total_debit|floatformat:2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Total Credit</th>
+                        <td class="text-end">{{ vat_return.journal_entry.total_credit|floatformat:2|intcomma }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Reversal Info (if reversed) -->
+        {% if vat_return.reversal_journal_entry %}
+        <div class="card border-0 shadow-sm mb-3 border-warning">
+            <div class="card-header bg-warning-subtle py-3">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-undo me-2 text-warning"></i>Reversal Entry</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th class="text-muted">Entry Number</th>
+                        <td>
+                            <a href="{% url 'finance:journal_detail' vat_return.reversal_journal_entry.pk %}">
+                                {{ vat_return.reversal_journal_entry.entry_number }}
+                            </a>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th class="text-muted">Date</th>
+                        <td>{{ vat_return.reversal_journal_entry.date|date:"d/m/Y" }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        
         <div class="card border-0 shadow-sm {% if vat_return.is_refund %}bg-success{% else %}bg-danger{% endif %} text-white">
             <div class="card-body text-center">
                 <h6 class="mb-2">{% if vat_return.is_refund %}VAT REFUND DUE{% else %}VAT PAYABLE{% endif %}</h6>
-                <h2 class="mb-0">AED {{ vat_return.net_vat|floatformat:2 }}</h2>
+                <h2 class="mb-0">AED {{ vat_return.net_vat|floatformat:2|intcomma }}</h2>
+                {% if vat_return.status == 'posted' or vat_return.status == 'submitted' %}
+                <small class="opacity-75">Journal Posted</small>
+                {% elif vat_return.status == 'draft' %}
+                <small class="opacity-75">Not Yet Posted</small>
+                {% endif %}
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Submit to FTA Modal -->
+<div class="modal fade" id="submitFTAModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'finance:vatreturn_submit' vat_return.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">Submit to FTA</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Warning:</strong> Once submitted to FTA, this VAT Return cannot be reversed.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">FTA Reference Number</label>
+                        <input type="text" name="fta_reference" class="form-control" placeholder="Enter FTA confirmation reference">
+                        <small class="text-muted">Enter the reference number received from FTA portal</small>
+                    </div>
+                    <table class="table table-sm">
+                        <tr>
+                            <th>Period</th>
+                            <td>{{ vat_return.period_start|date:"d/m/Y" }} - {{ vat_return.period_end|date:"d/m/Y" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Net VAT</th>
+                            <td class="fw-bold">AED {{ vat_return.net_vat|floatformat:2|intcomma }}</td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane me-1"></i>Confirm Submission
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

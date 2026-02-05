@@ -81,6 +81,9 @@ urlpatterns = [
     path('vat-returns/', views.VATReturnListView.as_view(), name='vatreturn_list'),
     path('vat-returns/create/', views.VATReturnCreateView.as_view(), name='vatreturn_create'),
     path('vat-returns/<int:pk>/', views.VATReturnDetailView.as_view(), name='vatreturn_detail'),
+    path('vat-returns/<int:pk>/post/', views.vatreturn_post, name='vatreturn_post'),
+    path('vat-returns/<int:pk>/reverse/', views.vatreturn_reverse, name='vatreturn_reverse'),
+    path('vat-returns/<int:pk>/submit/', views.vatreturn_submit_to_fta, name='vatreturn_submit'),
     
     # ============ TAX CODES ============
     path('tax-codes/', views.TaxCodeListView.as_view(), name='taxcode_list'),

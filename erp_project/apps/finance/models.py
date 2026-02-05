@@ -1168,9 +1168,16 @@ class VATReturn(BaseModel):
     """
     UAE VAT Return model for quarterly/monthly filing.
     Period locked after filing (FTA requirement).
+    
+    POSTING WORKFLOW:
+    1. Draft - VAT Return created, can be edited
+    2. Posted - Journal entry created, period locked
+    3. Submitted - Filed with FTA (cannot reverse)
+    4. Accepted - FTA confirmation received
     """
     STATUS_CHOICES = [
         ('draft', 'Draft'),
+        ('posted', 'Posted'),  # NEW: After journal entry posted
         ('submitted', 'Submitted'),
         ('accepted', 'Accepted'),
         ('amended', 'Amended'),
@@ -1216,6 +1223,33 @@ class VATReturn(BaseModel):
     total_sales = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     total_purchases = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     
+    # ========================================
+    # POSTING / JOURNAL ENTRY FIELDS (NEW)
+    # ========================================
+    journal_entry = models.ForeignKey(
+        'JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vat_returns'
+    )
+    posted_date = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='posted_vat_returns'
+    )
+    reversal_journal_entry = models.ForeignKey(
+        'JournalEntry',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vat_return_reversals'
+    )
+    is_period_locked = models.BooleanField(default=False)
+    
     # Filing info
     filed_date = models.DateTimeField(null=True, blank=True)
     filed_by = models.ForeignKey(
@@ -1251,6 +1285,269 @@ class VATReturn(BaseModel):
     def is_refund(self):
         """Check if this return results in a refund."""
         return self.net_vat < 0
+    
+    @property
+    def can_post(self):
+        """Check if VAT Return can be posted."""
+        return self.status == 'draft' and self.output_vat >= 0 and self.input_vat >= 0
+    
+    @property
+    def can_reverse(self):
+        """Check if VAT Return can be reversed (only if Posted, not yet Submitted)."""
+        return self.status == 'posted' and self.journal_entry is not None
+    
+    def get_vat_accounts(self):
+        """
+        Get VAT control accounts for posting.
+        Returns dict with output_vat_account, input_vat_account, vat_payable_account.
+        """
+        from .models import Account, AccountType, AccountMapping
+        
+        # Try to get from AccountMapping first
+        output_vat_mapping = AccountMapping.objects.filter(mapping_type='vat_output').first()
+        input_vat_mapping = AccountMapping.objects.filter(mapping_type='vat_input').first()
+        vat_payable_mapping = AccountMapping.objects.filter(mapping_type='vat_payable').first()
+        
+        # Output VAT Account (Liability - VAT collected on sales)
+        output_vat_account = None
+        if output_vat_mapping and output_vat_mapping.account:
+            output_vat_account = output_vat_mapping.account
+        else:
+            output_vat_account = Account.objects.filter(
+                is_active=True,
+                account_type=AccountType.LIABILITY
+            ).filter(
+                models.Q(name__icontains='output vat') |
+                models.Q(name__icontains='vat payable') |
+                models.Q(code='2200')
+            ).first()
+        
+        # Input VAT Account (Asset - VAT paid on purchases)
+        input_vat_account = None
+        if input_vat_mapping and input_vat_mapping.account:
+            input_vat_account = input_vat_mapping.account
+        else:
+            input_vat_account = Account.objects.filter(
+                is_active=True,
+                account_type=AccountType.ASSET
+            ).filter(
+                models.Q(name__icontains='input vat') |
+                models.Q(name__icontains='vat recoverable') |
+                models.Q(code='1200') | models.Q(code='1300')
+            ).first()
+        
+        # VAT Payable to FTA Account (Liability - Net amount owed to FTA)
+        vat_payable_account = None
+        if vat_payable_mapping and vat_payable_mapping.account:
+            vat_payable_account = vat_payable_mapping.account
+        else:
+            vat_payable_account = Account.objects.filter(
+                is_active=True,
+                account_type=AccountType.LIABILITY
+            ).filter(
+                models.Q(name__icontains='vat payable') |
+                models.Q(name__icontains='fta') |
+                models.Q(code='2210')
+            ).exclude(
+                name__icontains='output'
+            ).first()
+            
+            # If no separate FTA account, use output VAT account
+            if not vat_payable_account and output_vat_account:
+                vat_payable_account = output_vat_account
+        
+        return {
+            'output_vat_account': output_vat_account,
+            'input_vat_account': input_vat_account,
+            'vat_payable_account': vat_payable_account,
+        }
+    
+    def post(self, user):
+        """
+        Post VAT Return - Creates journal entry to clear VAT control accounts.
+        
+        Journal Entry Logic (UAE FTA Compliant):
+        Dr Output VAT Control (clears liability)     = Output VAT Amount
+        Cr Input VAT Control (clears asset)          = Input VAT Amount
+        Cr/Dr VAT Payable to FTA                     = Net VAT (difference)
+        
+        This clears the VAT control accounts and transfers net balance to FTA payable.
+        
+        IMPORTANT: This does NOT affect P&L or Corporate Tax calculations.
+        """
+        from django.utils import timezone
+        from django.core.exceptions import ValidationError
+        
+        if not self.can_post:
+            raise ValidationError("VAT Return cannot be posted. Status must be 'draft'.")
+        
+        # Get VAT accounts
+        vat_accounts = self.get_vat_accounts()
+        output_vat_account = vat_accounts['output_vat_account']
+        input_vat_account = vat_accounts['input_vat_account']
+        vat_payable_account = vat_accounts['vat_payable_account']
+        
+        if not output_vat_account:
+            raise ValidationError("Output VAT account not found. Please configure VAT accounts.")
+        if not input_vat_account:
+            raise ValidationError("Input VAT account not found. Please configure VAT accounts.")
+        if not vat_payable_account:
+            raise ValidationError("VAT Payable to FTA account not found. Please configure VAT accounts.")
+        
+        # Create Journal Entry
+        journal = JournalEntry.objects.create(
+            date=self.period_end,
+            reference=f"VAT-{self.return_number}",
+            description=f"VAT Return Settlement - {self.period_start} to {self.period_end}",
+            source_module='vat',
+            source_document_id=self.pk,
+            entry_type='standard',
+            is_system_generated=True,
+            created_by=user,
+        )
+        
+        # Add journal lines
+        # Dr Output VAT Control (clear the liability - debit reduces credit balance)
+        if self.output_vat > 0:
+            JournalEntryLine.objects.create(
+                journal_entry=journal,
+                account=output_vat_account,
+                description=f"Clear Output VAT - {self.return_number}",
+                debit=self.output_vat,
+                credit=Decimal('0.00'),
+            )
+        
+        # Cr Input VAT Control (clear the asset - credit reduces debit balance)
+        if self.input_vat > 0:
+            JournalEntryLine.objects.create(
+                journal_entry=journal,
+                account=input_vat_account,
+                description=f"Clear Input VAT - {self.return_number}",
+                debit=Decimal('0.00'),
+                credit=self.input_vat,
+            )
+        
+        # Cr/Dr VAT Payable to FTA (net difference)
+        net_vat = self.output_vat - self.input_vat + self.adjustments
+        if net_vat > 0:
+            # Net VAT Payable - Credit to increase liability
+            JournalEntryLine.objects.create(
+                journal_entry=journal,
+                account=vat_payable_account,
+                description=f"VAT Payable to FTA - {self.return_number}",
+                debit=Decimal('0.00'),
+                credit=net_vat,
+            )
+        elif net_vat < 0:
+            # Net VAT Refund - Debit to create receivable/reduce liability
+            JournalEntryLine.objects.create(
+                journal_entry=journal,
+                account=vat_payable_account,
+                description=f"VAT Refund Due from FTA - {self.return_number}",
+                debit=abs(net_vat),
+                credit=Decimal('0.00'),
+            )
+        
+        # Update journal totals
+        journal.total_debit = sum(line.debit for line in journal.lines.all())
+        journal.total_credit = sum(line.credit for line in journal.lines.all())
+        journal.save(update_fields=['total_debit', 'total_credit'])
+        
+        # Post the journal entry
+        journal.status = 'posted'
+        journal.save(update_fields=['status'])
+        
+        # Update VAT Return
+        self.journal_entry = journal
+        self.posted_date = timezone.now()
+        self.posted_by = user
+        self.status = 'posted'
+        self.is_period_locked = True
+        self.save(update_fields=['journal_entry', 'posted_date', 'posted_by', 'status', 'is_period_locked'])
+        
+        return journal
+    
+    def reverse(self, user):
+        """
+        Reverse VAT Return - Creates reversal journal entry.
+        
+        This:
+        1. Creates exact reversal of the posting journal
+        2. Unlocks the VAT period
+        3. Sets status back to 'draft'
+        """
+        from django.utils import timezone
+        from django.core.exceptions import ValidationError
+        
+        if not self.can_reverse:
+            raise ValidationError("VAT Return cannot be reversed. Status must be 'posted'.")
+        
+        if not self.journal_entry:
+            raise ValidationError("No journal entry found to reverse.")
+        
+        # Create reversal journal entry
+        original = self.journal_entry
+        reversal = JournalEntry.objects.create(
+            date=timezone.now().date(),
+            reference=f"REV-{original.reference}",
+            description=f"Reversal of {original.reference} - VAT Return {self.return_number}",
+            source_module='vat',
+            source_document_id=self.pk,
+            entry_type='reversal',
+            is_system_generated=True,
+            reversed_from=original,
+            created_by=user,
+        )
+        
+        # Reverse each line (swap debits and credits)
+        for line in original.lines.all():
+            JournalEntryLine.objects.create(
+                journal_entry=reversal,
+                account=line.account,
+                description=f"Reversal: {line.description}",
+                debit=line.credit,
+                credit=line.debit,
+            )
+        
+        # Update reversal totals
+        reversal.total_debit = sum(line.debit for line in reversal.lines.all())
+        reversal.total_credit = sum(line.credit for line in reversal.lines.all())
+        reversal.status = 'posted'
+        reversal.save(update_fields=['total_debit', 'total_credit', 'status'])
+        
+        # Update original journal
+        original.reversed_by = reversal
+        original.save(update_fields=['reversed_by'])
+        
+        # Update VAT Return
+        self.reversal_journal_entry = reversal
+        self.status = 'draft'
+        self.is_period_locked = False
+        self.save(update_fields=['reversal_journal_entry', 'status', 'is_period_locked'])
+        
+        return reversal
+    
+    def check_period_lock(self, transaction_date):
+        """
+        Check if a transaction date falls within a locked VAT period.
+        Used to prevent editing VAT-related transactions in locked periods.
+        """
+        if not self.is_period_locked:
+            return False
+        return self.period_start <= transaction_date <= self.period_end
+    
+    @classmethod
+    def is_date_in_locked_period(cls, transaction_date):
+        """
+        Class method to check if any locked VAT period contains the given date.
+        """
+        locked_periods = cls.objects.filter(
+            is_period_locked=True,
+            is_active=True,
+            period_start__lte=transaction_date,
+            period_end__gte=transaction_date
+        )
+        return locked_periods.exists()
 
 
 class CorporateTaxComputation(BaseModel):

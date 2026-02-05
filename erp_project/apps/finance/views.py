@@ -770,7 +770,7 @@ def trial_balance(request):
                 abnormal = True
         
         account_data = {
-            'account': account,
+                'account': account,
             'code': account.code,
             'name': account.name,
             'account_type': account.account_type,
@@ -2808,7 +2808,154 @@ class VATReturnDetailView(PermissionRequiredMixin, DetailView):
             self.request.user.is_superuser or 
             PermissionChecker.has_permission(self.request.user, 'finance', 'edit')
         ) and self.object.status == 'draft'
+        context['can_post'] = context['can_edit'] and self.object.can_post
+        context['can_reverse'] = (
+            self.request.user.is_superuser or 
+            PermissionChecker.has_permission(self.request.user, 'finance', 'edit')
+        ) and self.object.can_reverse
         return context
+
+
+@login_required
+def vatreturn_post(request, pk):
+    """
+    Post VAT Return - Creates journal entry to clear VAT control accounts.
+    
+    JOURNAL ENTRY (UAE FTA Compliant):
+    Dr Output VAT Control        = Output VAT Amount
+    Cr Input VAT Control         = Input VAT Amount
+    Cr VAT Payable to FTA        = Net VAT (difference)
+    
+    This does NOT affect P&L or Corporate Tax calculations.
+    """
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('finance:vatreturn_list')
+    
+    vat_return = get_object_or_404(VATReturn, pk=pk)
+    
+    if not vat_return.can_post:
+        messages.error(request, f'VAT Return {vat_return.return_number} cannot be posted. Status must be "draft".')
+        return redirect('finance:vatreturn_detail', pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            journal = vat_return.post(user=request.user)
+            
+            # Log audit entry
+            from django.contrib.admin.models import LogEntry, CHANGE
+            from django.contrib.contenttypes.models import ContentType
+            LogEntry.objects.create(
+                user_id=request.user.pk,
+                content_type_id=ContentType.objects.get_for_model(vat_return).pk,
+                object_id=vat_return.pk,
+                object_repr=str(vat_return),
+                action_flag=CHANGE,
+                change_message=f'Posted VAT Return. Journal: {journal.entry_number}. Period: {vat_return.period_start} to {vat_return.period_end}. Net VAT: {vat_return.net_vat}'
+            )
+            
+            messages.success(
+                request, 
+                f'VAT Return {vat_return.return_number} posted successfully. '
+                f'Journal Entry: {journal.entry_number}. '
+                f'Net VAT {"Payable" if vat_return.net_vat > 0 else "Refund"}: AED {abs(vat_return.net_vat):,.2f}'
+            )
+        except Exception as e:
+            messages.error(request, f'Error posting VAT Return: {str(e)}')
+    
+    return redirect('finance:vatreturn_detail', pk=pk)
+
+
+@login_required
+def vatreturn_reverse(request, pk):
+    """
+    Reverse VAT Return - Creates reversal journal entry.
+    
+    This:
+    1. Creates exact reversal of the posting journal
+    2. Unlocks the VAT period
+    3. Sets status back to 'draft'
+    """
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('finance:vatreturn_list')
+    
+    vat_return = get_object_or_404(VATReturn, pk=pk)
+    
+    if not vat_return.can_reverse:
+        messages.error(request, f'VAT Return {vat_return.return_number} cannot be reversed. Status must be "posted".')
+        return redirect('finance:vatreturn_detail', pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            original_journal = vat_return.journal_entry
+            reversal = vat_return.reverse(user=request.user)
+            
+            # Log audit entry
+            from django.contrib.admin.models import LogEntry, CHANGE
+            from django.contrib.contenttypes.models import ContentType
+            LogEntry.objects.create(
+                user_id=request.user.pk,
+                content_type_id=ContentType.objects.get_for_model(vat_return).pk,
+                object_id=vat_return.pk,
+                object_repr=str(vat_return),
+                action_flag=CHANGE,
+                change_message=f'Reversed VAT Return. Original Journal: {original_journal.entry_number}. Reversal Journal: {reversal.entry_number}. Period unlocked.'
+            )
+            
+            messages.success(
+                request, 
+                f'VAT Return {vat_return.return_number} reversed successfully. '
+                f'Reversal Journal: {reversal.entry_number}. '
+                f'VAT period {vat_return.period_start} to {vat_return.period_end} is now unlocked.'
+            )
+        except Exception as e:
+            messages.error(request, f'Error reversing VAT Return: {str(e)}')
+    
+    return redirect('finance:vatreturn_detail', pk=pk)
+
+
+@login_required
+def vatreturn_submit_to_fta(request, pk):
+    """
+    Submit VAT Return to FTA - Marks as submitted and prevents reversal.
+    """
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('finance:vatreturn_list')
+    
+    vat_return = get_object_or_404(VATReturn, pk=pk)
+    
+    if vat_return.status != 'posted':
+        messages.error(request, f'VAT Return must be posted before submitting to FTA.')
+        return redirect('finance:vatreturn_detail', pk=pk)
+    
+    if request.method == 'POST':
+        from django.utils import timezone
+        
+        fta_reference = request.POST.get('fta_reference', '')
+        
+        vat_return.status = 'submitted'
+        vat_return.filed_date = timezone.now()
+        vat_return.filed_by = request.user
+        vat_return.fta_reference = fta_reference
+        vat_return.save(update_fields=['status', 'filed_date', 'filed_by', 'fta_reference'])
+        
+        # Log audit entry
+        from django.contrib.admin.models import LogEntry, CHANGE
+        from django.contrib.contenttypes.models import ContentType
+        LogEntry.objects.create(
+            user_id=request.user.pk,
+            content_type_id=ContentType.objects.get_for_model(vat_return).pk,
+            object_id=vat_return.pk,
+            object_repr=str(vat_return),
+            action_flag=CHANGE,
+            change_message=f'Submitted VAT Return to FTA. Reference: {fta_reference}. Period: {vat_return.period_start} to {vat_return.period_end}'
+        )
+        
+        messages.success(request, f'VAT Return {vat_return.return_number} submitted to FTA.')
+    
+    return redirect('finance:vatreturn_detail', pk=pk)
 
 
 # ============ ADDITIONAL REPORTS ============
@@ -2863,8 +3010,8 @@ def cash_flow(request):
     # Fallback if no accounts marked as cash accounts
     if not cash_bank_accounts.exists():
         cash_bank_accounts = Account.objects.filter(
-            is_active=True,
-            account_type=AccountType.ASSET,
+        is_active=True,
+        account_type=AccountType.ASSET,
             is_fixed_deposit=False  # EXCLUDE Fixed Deposits
         ).filter(
             Q(name__icontains='bank') |
@@ -2876,7 +3023,7 @@ def cash_flow(request):
             Q(name__icontains='pdc') |  # Exclude PDC Receivable
             Q(name__icontains='fixed deposit') |  # Exclude FD by name
             Q(name__icontains='term deposit')  # Exclude term deposits
-        ).order_by('code')
+    ).order_by('code')
     
     if bank_filter:
         cash_bank_accounts = cash_bank_accounts.filter(pk=bank_filter)
