@@ -1593,43 +1593,46 @@ def vat_report(request):
         # CALCULATE FROM TRANSACTIONS (DRAFT/PREVIEW MODE)
         # ========================================
         
-        # Get VAT Payable account (Output VAT)
-        # CRITICAL: Look for account with 'vat' and 'output' or 'payable' in name
-        vat_payable_account = Account.objects.filter(
+        # Get ALL VAT Payable accounts (Output VAT) - not just first!
+        # CRITICAL: Look for accounts with 'vat' and 'output' or 'payable' in name
+        vat_payable_accounts = Account.objects.filter(
             account_type=AccountType.LIABILITY, 
             is_active=True,
             name__icontains='vat'
         ).filter(
             Q(name__icontains='output') | Q(name__icontains='payable')
-        ).first()
+        ).exclude(
+            # Exclude settlement accounts (used for VAT return posting)
+            name__icontains='settlement'
+        )
         
-        # Fallback: Look by code pattern (22xx for VAT Payable)
-        if not vat_payable_account:
-            vat_payable_account = Account.objects.filter(
-                code__startswith='22', 
+        # Fallback: Look by code pattern (21xx, 22xx for VAT Payable)
+        if not vat_payable_accounts.exists():
+            vat_payable_accounts = Account.objects.filter(
+                Q(code__startswith='21') | Q(code__startswith='22') | Q(code__startswith='2000'), 
                 account_type=AccountType.LIABILITY, 
                 is_active=True,
                 name__icontains='vat'
-            ).first()
+            )
         
-        # Get VAT Recoverable account (Input VAT)
-        # CRITICAL: Look for account with 'vat' and 'input' or 'recoverable' in name
-        vat_recoverable_account = Account.objects.filter(
+        # Get ALL VAT Recoverable accounts (Input VAT) - not just first!
+        # CRITICAL: Look for accounts with 'vat' and 'input' or 'recoverable' in name
+        vat_recoverable_accounts = Account.objects.filter(
             account_type=AccountType.ASSET, 
             is_active=True,
             name__icontains='vat'
         ).filter(
             Q(name__icontains='input') | Q(name__icontains='recoverable')
-        ).first()
+        )
         
-        # Fallback: Look by code pattern (12xx for Input VAT)
-        if not vat_recoverable_account:
-            vat_recoverable_account = Account.objects.filter(
-                code__startswith='12', 
+        # Fallback: Look by code pattern (12xx, 13xx for Input VAT)
+        if not vat_recoverable_accounts.exists():
+            vat_recoverable_accounts = Account.objects.filter(
+                Q(code__startswith='12') | Q(code__startswith='13') | Q(code__startswith='1000'), 
                 account_type=AccountType.ASSET, 
                 is_active=True,
                 name__icontains='vat'
-            ).first()
+            )
         
         # Get Sales accounts (Income - typically 4xxx)
         sales_accounts = Account.objects.filter(
@@ -1641,30 +1644,36 @@ def vat_report(request):
             account_type=AccountType.EXPENSE, is_active=True
         )
         
-        # Calculate Output VAT from VAT Payable journal lines
+        # Calculate Output VAT from ALL VAT Payable accounts
+        # Output VAT = Credit entries to VAT Payable (when sales are made)
         output_vat_lines = JournalEntryLine.objects.filter(
-            account=vat_payable_account,
+            account__in=vat_payable_accounts,
             journal_entry__status='posted',
             journal_entry__date__gte=start_date,
             journal_entry__date__lte=end_date,
         ).exclude(
             # Exclude VAT Return settlement entries (already counted in submitted returns)
             journal_entry__source_module='vat'
-        ) if vat_payable_account else JournalEntryLine.objects.none()
+        ).exclude(
+            journal_entry__source_module='vat_return'
+        ) if vat_payable_accounts.exists() else JournalEntryLine.objects.none()
         
         current_output_vat = output_vat_lines.aggregate(
             total=Sum('credit')
         )['total'] or Decimal('0.00')
         
-        # Calculate Input VAT from VAT Recoverable journal lines
+        # Calculate Input VAT from ALL VAT Recoverable accounts
+        # Input VAT = Debit entries to VAT Recoverable (when purchases are made)
         input_vat_lines = JournalEntryLine.objects.filter(
-            account=vat_recoverable_account,
+            account__in=vat_recoverable_accounts,
             journal_entry__status='posted',
             journal_entry__date__gte=start_date,
             journal_entry__date__lte=end_date,
         ).exclude(
             journal_entry__source_module='vat'
-        ) if vat_recoverable_account else JournalEntryLine.objects.none()
+        ).exclude(
+            journal_entry__source_module='vat_return'
+        ) if vat_recoverable_accounts.exists() else JournalEntryLine.objects.none()
         
         current_input_vat = input_vat_lines.aggregate(
             total=Sum('debit')
