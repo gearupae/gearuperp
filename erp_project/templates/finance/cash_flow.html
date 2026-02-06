@@ -7,9 +7,12 @@
     .expandable:hover { background-color: #f8f9fa; }
     .expand-icon { transition: transform 0.3s ease; display: inline-block; }
     .expand-icon.expanded { transform: rotate(90deg); }
+    /* IFRS Direct Method: Show category-level line items by default */
+    /* Level 2 = Category rows (Cash received from customers, etc.) - VISIBLE by default */
+    /* Level 3 = Individual transactions - hidden until drilled down */
     .detail-row { display: none; }
     .detail-row.show { display: table-row; }
-    .level-2 { background-color: #f8f9fa; }
+    .level-2 { display: table-row !important; background-color: #f8f9fa; }  /* ALWAYS VISIBLE */
     .level-3 { background-color: #fff; font-size: 0.9rem; }
     .amount-link { text-decoration: none; color: inherit; }
     .amount-link:hover { text-decoration: underline; color: var(--bs-primary); }
