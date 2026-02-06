@@ -3573,7 +3573,14 @@ def cash_flow(request):
             operating_items.append(item)
             operating_total += journal_cash_movement
             
-        elif 'receivable' in counter_name or 'debtor' in counter_name or counter_category == 'trade_receivables':
+        elif (
+            'receivable' in counter_name or 
+            'debtor' in counter_name or 
+            counter_category == 'trade_receivables' or
+            counter_name.startswith('ar ') or  # "AR - Customer A"
+            counter_name.startswith('ar-') or  # "AR-Customer"
+            counter_account.code.startswith('11')  # 11xx = Receivables (standard COA)
+        ):
             # AR clearing = Customer payment received
             # PDC Receivable clearance = PDC cheque deposited and cleared
             # IFRS: Once PDC clears, it's normal customer cash receipt - merge into single category
@@ -3582,12 +3589,23 @@ def cash_flow(request):
             operating_items.append(item)
             operating_total += journal_cash_movement
             
-        elif 'payable' in counter_name or 'creditor' in counter_name or counter_category == 'trade_payables':
+        elif (
+            'payable' in counter_name or 
+            'creditor' in counter_name or 
+            counter_category == 'trade_payables' or
+            counter_name.startswith('ap ') or  # "AP - Vendor A"
+            counter_name.startswith('ap-') or  # "AP-Vendor"
+            counter_account.code.startswith('21') or  # 21xx = Payables (standard COA)
+            'accrued' in counter_name  # Accrued Expenses = Operating
+        ):
             # AP clearing = Payment to supplier
+            # Accrued expenses clearing = Operating expense payment
             if 'vat' in counter_name or 'tax' in counter_name:
                 item['category'] = 'VAT/Tax paid'
-            elif 'salary' in counter_name or 'employee' in counter_name:
+            elif 'salary' in counter_name or 'employee' in counter_name or 'wage' in counter_name:
                 item['category'] = 'Cash paid to employees'
+            elif 'accrued' in counter_name:
+                item['category'] = 'Cash paid for accrued expenses'
             else:
                 item['category'] = 'Cash paid to suppliers'
             operating_items.append(item)
