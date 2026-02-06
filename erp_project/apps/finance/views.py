@@ -3557,7 +3557,36 @@ def cash_flow(request):
         counter_lines = journal.lines.exclude(account_id__in=cash_account_ids)
         
         if not counter_lines.exists():
-            # Cash-to-cash transfer within same accounts - skip
+            # Check if this is a Fixed Deposit movement (cash-to-FD or FD-to-cash)
+            # These should appear in Investing Activities per IAS 7
+            fd_lines = journal.lines.filter(account__is_fixed_deposit=True)
+            non_fd_cash_lines = journal.lines.filter(account_id__in=cash_account_ids).exclude(account__is_fixed_deposit=True)
+            
+            if fd_lines.exists() and non_fd_cash_lines.exists():
+                # This is a Fixed Deposit transfer - show in Investing Activities
+                fd_movement = Decimal('0.00')
+                for fd_line in fd_lines:
+                    # Debit to FD = investing outflow (buying FD)
+                    # Credit to FD = investing inflow (FD matured/withdrawn)
+                    fd_movement += fd_line.credit - fd_line.debit
+                
+                if fd_movement != 0:
+                    fd_account = fd_lines.first().account
+                    item = {
+                        'date': journal.date,
+                        'reference': journal.reference or journal.entry_number,
+                        'description': journal.description or f"Fixed Deposit {'withdrawal' if fd_movement > 0 else 'placement'}",
+                        'counter_account': f"{fd_account.code} - {fd_account.name}",
+                        'counter_account_type': 'asset',
+                        'amount': fd_movement,
+                        'journal_id': journal.pk,
+                        'source_module': journal.source_module,
+                        'is_inflow': fd_movement > 0,
+                        'category': 'Fixed deposit withdrawal' if fd_movement > 0 else 'Fixed deposit placement',
+                    }
+                    investing_items.append(item)
+                    investing_total += fd_movement
+            # Skip other cash-to-cash transfers
             continue
         
         # Determine classification based on counter account
