@@ -331,8 +331,8 @@ def journal_reverse(request, pk):
         return redirect('finance:journal_list')
     
     if not entry.is_reversible:
-    if entry.status != 'posted':
-        messages.error(request, 'Only posted entries can be reversed.')
+        if entry.status != 'posted':
+            messages.error(request, 'Only posted entries can be reversed.')
         elif entry.period and entry.period.is_locked:
             messages.error(request, f'Cannot reverse - accounting period {entry.period.name} is locked.')
         elif entry.fiscal_year and entry.fiscal_year.is_closed:
