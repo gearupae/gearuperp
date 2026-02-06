@@ -3436,6 +3436,8 @@ def cash_flow(request):
         ).filter(
             Q(journal_entry__source_module__in=OPENING_BALANCE_SOURCES) |
             Q(journal_entry__entry_type='opening') |
+            Q(journal_entry__entry_type='opening_balance') |  # Added: check for 'opening_balance' type
+            Q(journal_entry__description__icontains='opening balance') |  # Added: check description
             Q(journal_entry__reference__icontains='OPENING BALANCE') |
             Q(journal_entry__reference__istartswith='OB-')
         ).aggregate(
@@ -3510,7 +3512,7 @@ def cash_flow(request):
         journal_entry__source_module__in=EXCLUDED_SOURCES
     ).exclude(
         # Exclude journals that are only accrual/depreciation related
-        journal_entry__entry_type__in=['adjusting', 'closing', 'opening']  # Add 'opening' entry type
+        journal_entry__entry_type__in=['adjusting', 'closing', 'opening', 'opening_balance']  # Include 'opening_balance'
     ).exclude(
         # CRITICAL: Exclude opening balance by reference patterns
         journal_entry__reference__icontains='OPENING BALANCE'
