@@ -3576,10 +3576,9 @@ def cash_flow(request):
         elif 'receivable' in counter_name or 'debtor' in counter_name or counter_category == 'trade_receivables':
             # AR clearing = Customer payment received
             # PDC Receivable clearance = PDC cheque deposited and cleared
-            if 'pdc' in counter_name:
-                item['category'] = 'Cash received from customers (PDC clearance)'
-            else:
-                item['category'] = 'Cash received from customers'
+            # IFRS: Once PDC clears, it's normal customer cash receipt - merge into single category
+            # Internal tracking via description, external presentation as single line
+            item['category'] = 'Cash received from customers'
             operating_items.append(item)
             operating_total += journal_cash_movement
             
