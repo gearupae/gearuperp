@@ -147,23 +147,23 @@
                 </tr>
                 <tr>
                     <td>Box 1: Standard Rated Supplies (5%)</td>
-                    <td class="text-end">{{ current_sales|floatformat:2|intcomma }}</td>
-                    <td class="text-end">{{ current_output_vat|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ standard_rated_supplies|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ standard_rated_vat|floatformat:2|intcomma }}</td>
                 </tr>
                 <tr>
                     <td>Box 2: Zero-Rated Supplies</td>
-                    <td class="text-end">0.00</td>
+                    <td class="text-end">{{ zero_rated_supplies|floatformat:2|intcomma }}</td>
                     <td class="text-end">0.00</td>
                 </tr>
                 <tr>
                     <td>Box 3: Exempt Supplies</td>
-                    <td class="text-end">0.00</td>
+                    <td class="text-end">{{ exempt_supplies|floatformat:2|intcomma }}</td>
                     <td class="text-end">-</td>
                 </tr>
                 <tr class="table-light fw-bold">
                     <td>Total Output VAT</td>
-                    <td class="text-end">{{ current_sales|floatformat:2|intcomma }}</td>
-                    <td class="text-end">{{ current_output_vat|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ total_sales|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ total_output_vat|floatformat:2|intcomma }}</td>
                 </tr>
                 
                 <tr class="table-success">
@@ -171,18 +171,18 @@
                 </tr>
                 <tr>
                     <td>Box 9: Standard Rated Expenses</td>
-                    <td class="text-end">{{ current_purchases|floatformat:2|intcomma }}</td>
-                    <td class="text-end">{{ current_input_vat|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ standard_rated_expenses|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ total_input_vat|floatformat:2|intcomma }}</td>
                 </tr>
                 <tr class="table-light fw-bold">
                     <td>Total Input VAT</td>
-                    <td class="text-end">{{ current_purchases|floatformat:2|intcomma }}</td>
-                    <td class="text-end">{{ current_input_vat|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ total_purchases|floatformat:2|intcomma }}</td>
+                    <td class="text-end">{{ total_input_vat|floatformat:2|intcomma }}</td>
                 </tr>
                 
                 <tr class="table-dark fw-bold">
                     <td colspan="2">Net VAT {% if is_refund %}Refundable{% else %}Payable{% endif %}</td>
-                    <td class="text-end fs-5">{{ current_net_vat|floatformat:2|intcomma }}</td>
+                    <td class="text-end fs-5">{{ net_vat|floatformat:2|intcomma }}</td>
                 </tr>
             </tbody>
         </table>

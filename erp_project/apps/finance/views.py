@@ -1593,15 +1593,43 @@ def vat_report(request):
         # CALCULATE FROM TRANSACTIONS (DRAFT/PREVIEW MODE)
         # ========================================
         
-        # Get VAT Payable account (Output VAT - typically 2100)
+        # Get VAT Payable account (Output VAT)
+        # CRITICAL: Look for account with 'vat' and 'output' or 'payable' in name
         vat_payable_account = Account.objects.filter(
-            code__startswith='21', account_type=AccountType.LIABILITY, is_active=True
+            account_type=AccountType.LIABILITY, 
+            is_active=True,
+            name__icontains='vat'
+        ).filter(
+            Q(name__icontains='output') | Q(name__icontains='payable')
         ).first()
         
-        # Get VAT Recoverable account (Input VAT - typically 1300)
+        # Fallback: Look by code pattern (22xx for VAT Payable)
+        if not vat_payable_account:
+            vat_payable_account = Account.objects.filter(
+                code__startswith='22', 
+                account_type=AccountType.LIABILITY, 
+                is_active=True,
+                name__icontains='vat'
+            ).first()
+        
+        # Get VAT Recoverable account (Input VAT)
+        # CRITICAL: Look for account with 'vat' and 'input' or 'recoverable' in name
         vat_recoverable_account = Account.objects.filter(
-            code__startswith='13', account_type=AccountType.ASSET, is_active=True
+            account_type=AccountType.ASSET, 
+            is_active=True,
+            name__icontains='vat'
+        ).filter(
+            Q(name__icontains='input') | Q(name__icontains='recoverable')
         ).first()
+        
+        # Fallback: Look by code pattern (12xx for Input VAT)
+        if not vat_recoverable_account:
+            vat_recoverable_account = Account.objects.filter(
+                code__startswith='12', 
+                account_type=AccountType.ASSET, 
+                is_active=True,
+                name__icontains='vat'
+            ).first()
         
         # Get Sales accounts (Income - typically 4xxx)
         sales_accounts = Account.objects.filter(
