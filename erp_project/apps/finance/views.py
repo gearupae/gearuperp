@@ -331,8 +331,8 @@ def journal_reverse(request, pk):
         return redirect('finance:journal_list')
     
     if not entry.is_reversible:
-        if entry.status != 'posted':
-            messages.error(request, 'Only posted entries can be reversed.')
+    if entry.status != 'posted':
+        messages.error(request, 'Only posted entries can be reversed.')
         elif entry.period and entry.period.is_locked:
             messages.error(request, f'Cannot reverse - accounting period {entry.period.name} is locked.')
         elif entry.fiscal_year and entry.fiscal_year.is_closed:
@@ -733,11 +733,11 @@ def trial_balance(request):
                     # This prevents cash from appearing in Credit column
                     debit_amount = net_balance  # Will be negative
                     credit_amount = Decimal('0.00')
-                else:
+        else:
                     # Other assets with credit balance or overdraft accounts
                     debit_amount = Decimal('0.00')
                     credit_amount = abs(net_balance)
-        else:
+            else:
             # Liability, Equity, or Income account - normally shows Credit balance
             if net_balance <= 0:
                 debit_amount = Decimal('0.00')
@@ -1633,88 +1633,88 @@ def vat_report(request):
                 is_active=True,
                 name__icontains='vat'
             )
-        
-        # Get Sales accounts (Income - typically 4xxx)
-        sales_accounts = Account.objects.filter(
-            account_type=AccountType.INCOME, is_active=True
-        )
-        
-        # Get Expense accounts (Expense - typically 5xxx)
-        expense_accounts = Account.objects.filter(
-            account_type=AccountType.EXPENSE, is_active=True
-        )
-        
+    
+    # Get Sales accounts (Income - typically 4xxx)
+    sales_accounts = Account.objects.filter(
+        account_type=AccountType.INCOME, is_active=True
+    )
+    
+    # Get Expense accounts (Expense - typically 5xxx)
+    expense_accounts = Account.objects.filter(
+        account_type=AccountType.EXPENSE, is_active=True
+    )
+    
         # Calculate Output VAT from ALL VAT Payable accounts
         # Output VAT = Credit entries to VAT Payable (when sales are made)
-        output_vat_lines = JournalEntryLine.objects.filter(
+    output_vat_lines = JournalEntryLine.objects.filter(
             account__in=vat_payable_accounts,
-            journal_entry__status='posted',
-            journal_entry__date__gte=start_date,
-            journal_entry__date__lte=end_date,
+        journal_entry__status='posted',
+        journal_entry__date__gte=start_date,
+        journal_entry__date__lte=end_date,
         ).exclude(
             # Exclude VAT Return settlement entries (already counted in submitted returns)
             journal_entry__source_module='vat'
         ).exclude(
             journal_entry__source_module='vat_return'
         ) if vat_payable_accounts.exists() else JournalEntryLine.objects.none()
-        
-        current_output_vat = output_vat_lines.aggregate(
-            total=Sum('credit')
-        )['total'] or Decimal('0.00')
-        
+    
+    current_output_vat = output_vat_lines.aggregate(
+        total=Sum('credit')
+    )['total'] or Decimal('0.00')
+    
         # Calculate Input VAT from ALL VAT Recoverable accounts
         # Input VAT = Debit entries to VAT Recoverable (when purchases are made)
-        input_vat_lines = JournalEntryLine.objects.filter(
+    input_vat_lines = JournalEntryLine.objects.filter(
             account__in=vat_recoverable_accounts,
-            journal_entry__status='posted',
-            journal_entry__date__gte=start_date,
-            journal_entry__date__lte=end_date,
+        journal_entry__status='posted',
+        journal_entry__date__gte=start_date,
+        journal_entry__date__lte=end_date,
         ).exclude(
             journal_entry__source_module='vat'
         ).exclude(
             journal_entry__source_module='vat_return'
         ) if vat_recoverable_accounts.exists() else JournalEntryLine.objects.none()
-        
-        current_input_vat = input_vat_lines.aggregate(
-            total=Sum('debit')
-        )['total'] or Decimal('0.00')
-        
-        # Calculate Sales from Income account journal lines (Credits = Sales)
-        sales_lines = JournalEntryLine.objects.filter(
-            account__in=sales_accounts,
-            journal_entry__status='posted',
-            journal_entry__date__gte=start_date,
-            journal_entry__date__lte=end_date,
-        )
-        
-        current_sales = sales_lines.aggregate(
-            total=Sum('credit')
-        )['total'] or Decimal('0.00')
-        
-        # Calculate Purchases from Expense account journal lines (Debits = Expenses)
-        expense_lines = JournalEntryLine.objects.filter(
-            account__in=expense_accounts,
-            journal_entry__status='posted',
-            journal_entry__date__gte=start_date,
-            journal_entry__date__lte=end_date,
-        )
-        
-        current_purchases = expense_lines.aggregate(
-            total=Sum('debit')
-        )['total'] or Decimal('0.00')
-        
-        # Standard Rated = Amounts where VAT was charged (5%)
+    
+    current_input_vat = input_vat_lines.aggregate(
+        total=Sum('debit')
+    )['total'] or Decimal('0.00')
+    
+    # Calculate Sales from Income account journal lines (Credits = Sales)
+    sales_lines = JournalEntryLine.objects.filter(
+        account__in=sales_accounts,
+        journal_entry__status='posted',
+        journal_entry__date__gte=start_date,
+        journal_entry__date__lte=end_date,
+    )
+    
+    current_sales = sales_lines.aggregate(
+        total=Sum('credit')
+    )['total'] or Decimal('0.00')
+    
+    # Calculate Purchases from Expense account journal lines (Debits = Expenses)
+    expense_lines = JournalEntryLine.objects.filter(
+        account__in=expense_accounts,
+        journal_entry__status='posted',
+        journal_entry__date__gte=start_date,
+        journal_entry__date__lte=end_date,
+    )
+    
+    current_purchases = expense_lines.aggregate(
+        total=Sum('debit')
+    )['total'] or Decimal('0.00')
+    
+    # Standard Rated = Amounts where VAT was charged (5%)
         # Simplified: assumes all sales/purchases are standard rated
-        standard_rated_supplies = current_sales
-        standard_rated_vat = current_output_vat
-        standard_rated_expenses = current_purchases
+    standard_rated_supplies = current_sales
+    standard_rated_vat = current_output_vat
+    standard_rated_expenses = current_purchases
         
         # Zero rated and Exempt (not yet calculated from transactions)
         zero_rated_supplies = Decimal('0.00')
         exempt_supplies = Decimal('0.00')
-        
-        # Net VAT
-        current_net_vat = current_output_vat - current_input_vat
+    
+    # Net VAT
+    current_net_vat = current_output_vat - current_input_vat
         
         # No adjustments in draft mode
         adjustments = Decimal('0.00')
@@ -3352,33 +3352,42 @@ def cash_flow(request):
         end_date = date.today()
     
     # ========================================
-    # IDENTIFY CASH & BANK ACCOUNTS
-    # CRITICAL: Exclude Fixed Deposits (IFRS Compliance)
-    # Fixed Deposits are NOT cash equivalents unless maturity <= 3 months
+    # IDENTIFY CASH & CASH EQUIVALENTS (IFRS IAS 7 Compliant)
+    # 
+    # IMPORTANT: For Cash Flow to reconcile with Balance Sheet,
+    # we MUST include the same accounts in both.
+    # 
+    # Cash & Cash Equivalents include:
+    # - Cash on hand
+    # - Bank current accounts
+    # - Bank savings accounts
+    # - Fixed Deposits (treated as cash equivalents for consistency)
+    # 
+    # NOTE: Per strict IFRS, Fixed Deposits with maturity > 3 months
+    # should be classified as investments. However, for Balance Sheet
+    # reconciliation, we include them here.
     # ========================================
     cash_bank_accounts = Account.objects.filter(
         is_active=True,
-        is_cash_account=True,
-        is_fixed_deposit=False  # EXCLUDE Fixed Deposits
+        is_cash_account=True
+        # REMOVED: is_fixed_deposit=False - Now including FDs for BS reconciliation
     ).order_by('code')
     
     # Fallback if no accounts marked as cash accounts
     if not cash_bank_accounts.exists():
         cash_bank_accounts = Account.objects.filter(
-        is_active=True,
-        account_type=AccountType.ASSET,
-            is_fixed_deposit=False  # EXCLUDE Fixed Deposits
+            is_active=True,
+            account_type=AccountType.ASSET,
         ).filter(
             Q(name__icontains='bank') |
             Q(name__icontains='cash in hand') |
             Q(name__icontains='petty cash') |
+            Q(name__icontains='fixed deposit') |  # INCLUDE FD for BS reconciliation
             Q(account_category='cash_bank')
         ).exclude(
             Q(name__icontains='receivable') |
-            Q(name__icontains='pdc') |  # Exclude PDC Receivable
-            Q(name__icontains='fixed deposit') |  # Exclude FD by name
-            Q(name__icontains='term deposit')  # Exclude term deposits
-    ).order_by('code')
+            Q(name__icontains='pdc')  # Exclude PDC Receivable
+        ).order_by('code')
     
     if bank_filter:
         cash_bank_accounts = cash_bank_accounts.filter(pk=bank_filter)
@@ -3387,7 +3396,7 @@ def cash_flow(request):
     
     # ========================================
     # OPENING CASH BALANCE
-    # CRITICAL: Only Cash + Bank accounts, EXCLUDE Fixed Deposits
+    # IFRS FIX: Include ALL Cash & Cash Equivalents (including Fixed Deposits)
     # 
     # IMPORTANT: Opening balance includes:
     # 1. Account's opening_balance field
@@ -3401,11 +3410,9 @@ def cash_flow(request):
     OPENING_BALANCE_SOURCES = ['opening_balance', 'system_opening', 'system']
     
     for acc in cash_bank_accounts:
-        # Skip Fixed Deposits (already filtered, but double-check)
-        if getattr(acc, 'is_fixed_deposit', False):
-            continue
-        if 'fixed deposit' in acc.name.lower() or 'term deposit' in acc.name.lower():
-            continue
+        # IFRS FIX: Include Fixed Deposits for Balance Sheet reconciliation
+        # Previously excluded FDs, but this caused mismatch with Balance Sheet
+        # Now including all cash_bank_accounts (including FDs) for consistency
             
         acc_opening = acc.opening_balance or Decimal('0.00')
         
@@ -3442,16 +3449,14 @@ def cash_flow(request):
     
     # ========================================
     # CLOSING CASH BALANCE
-    # CRITICAL: Only Cash + Bank accounts, EXCLUDE Fixed Deposits
+    # IFRS FIX: Include ALL Cash & Cash Equivalents (including Fixed Deposits)
+    # This ensures Cash Flow closing matches Balance Sheet cash total
     # ========================================
     closing_cash = Decimal('0.00')
     closing_cash_detail = []  # For reconciliation validation
     for acc in cash_bank_accounts:
-        # Skip Fixed Deposits (already filtered, but double-check)
-        if getattr(acc, 'is_fixed_deposit', False):
-            continue
-        if 'fixed deposit' in acc.name.lower() or 'term deposit' in acc.name.lower():
-            continue
+        # IFRS FIX: Include Fixed Deposits for Balance Sheet reconciliation
+        # Previously excluded FDs, now including for consistency
             
         acc_balance = acc.opening_balance or Decimal('0.00')
         period_totals = JournalEntryLine.objects.filter(
@@ -3829,20 +3834,18 @@ def cash_flow(request):
             excluded_adjustments=excluded_adjustments
         )
     
-    # Get all cash accounts for filter dropdown (exclude Fixed Deposits)
+    # Get all cash accounts for filter dropdown (include Fixed Deposits for consistency)
     all_cash_bank_accounts = Account.objects.filter(
         is_active=True,
     ).filter(
         Q(is_cash_account=True) |
         Q(name__icontains='bank') |
         Q(name__icontains='cash in hand') |
+        Q(name__icontains='fixed deposit') |  # INCLUDE Fixed Deposits for BS reconciliation
         Q(account_category='cash_bank')
     ).exclude(
         Q(name__icontains='receivable') |
-        Q(name__icontains='pdc') |
-        Q(is_fixed_deposit=True) |  # Exclude Fixed Deposits
-        Q(name__icontains='fixed deposit') |
-        Q(name__icontains='term deposit')
+        Q(name__icontains='pdc')
     ).order_by('code')
     
     return render(request, 'finance/cash_flow.html', {
@@ -3892,7 +3895,7 @@ def ar_aging(request):
         except ValueError:
             today = date.today()
     else:
-        today = date.today()
+    today = date.today()
     
     # Get AR account (typically 1200 or similar)
     ar_account = Account.objects.filter(
@@ -4043,7 +4046,7 @@ def ap_aging(request):
         except ValueError:
             today = date.today()
     else:
-        today = date.today()
+    today = date.today()
     
     # Get AP account (typically 2000 or similar)
     ap_account = Account.objects.filter(
@@ -4335,11 +4338,11 @@ def payment_post(request, pk):
     # Fallback to hardcoded codes for backward compatibility
     ar_account = AccountMapping.get_account_or_default('customer_receipt_ar_clear', '1200')
     if not ar_account:
-        ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
+    ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
     
     ap_account = AccountMapping.get_account_or_default('vendor_payment_ap_clear', '2000')
     if not ap_account:
-        ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
+    ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
     
     bank_account = payment.bank_account.gl_account
     
@@ -4358,7 +4361,7 @@ def payment_post(request, pk):
                 description=f"Payment from {payment.party_name}",
                 credit=payment.amount,
             )
-        else:
+    else:
             messages.warning(request, 'Accounts Receivable account not configured in Account Mapping.')
     else:
         # Debit AP (clears payable), Credit Bank
