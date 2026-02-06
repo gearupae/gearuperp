@@ -1265,7 +1265,14 @@ def balance_sheet(request):
             total_fixed_assets_cost += balance
             
         # Current assets (Cash, Bank, Receivables, etc.)
-        elif acc.account_category in ['cash_bank', 'trade_receivables', 'tax_receivables', 'inventory', 'prepaid', 'other_current_assets']:
+        # CRITICAL: Check BOTH account_category AND is_cash_account flag
+        # This ensures consistency with Cash Flow Statement
+        elif (
+            acc.account_category in ['cash_bank', 'trade_receivables', 'tax_receivables', 'inventory', 'prepaid', 'other_current_assets'] or
+            acc.is_cash_account or  # Include ALL accounts flagged as cash
+            (acc.account_category is None and ('cash' in acc.name.lower() or 'bank' in acc.name.lower()) and 
+             'receivable' not in acc.name.lower() and 'pdc' not in acc.name.lower())  # Fallback for uncategorized
+        ):
             current_assets_data.append({'account': acc, 'amount': balance})
             total_current_assets += balance
         else:
