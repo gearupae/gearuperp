@@ -733,11 +733,11 @@ def trial_balance(request):
                     # This prevents cash from appearing in Credit column
                     debit_amount = net_balance  # Will be negative
                     credit_amount = Decimal('0.00')
-        else:
+                else:
                     # Other assets with credit balance or overdraft accounts
                     debit_amount = Decimal('0.00')
                     credit_amount = abs(net_balance)
-            else:
+        else:
             # Liability, Equity, or Income account - normally shows Credit balance
             if net_balance <= 0:
                 debit_amount = Decimal('0.00')
@@ -1704,21 +1704,21 @@ def vat_report(request):
     )['total'] or Decimal('0.00')
     
     # Standard Rated = Amounts where VAT was charged (5%)
-        # Simplified: assumes all sales/purchases are standard rated
+    # Simplified: assumes all sales/purchases are standard rated
     standard_rated_supplies = current_sales
     standard_rated_vat = current_output_vat
     standard_rated_expenses = current_purchases
-        
-        # Zero rated and Exempt (not yet calculated from transactions)
-        zero_rated_supplies = Decimal('0.00')
-        exempt_supplies = Decimal('0.00')
+    
+    # Zero rated and Exempt (not yet calculated from transactions)
+    zero_rated_supplies = Decimal('0.00')
+    exempt_supplies = Decimal('0.00')
     
     # Net VAT
     current_net_vat = current_output_vat - current_input_vat
-        
-        # No adjustments in draft mode
-        adjustments = Decimal('0.00')
-        adjustment_reason = ''
+    
+    # No adjustments in draft mode
+    adjustments = Decimal('0.00')
+    adjustment_reason = ''
     
     # ========================================
     # EXCEL EXPORT
@@ -3895,7 +3895,7 @@ def ar_aging(request):
         except ValueError:
             today = date.today()
     else:
-    today = date.today()
+        today = date.today()
     
     # Get AR account (typically 1200 or similar)
     ar_account = Account.objects.filter(
@@ -4046,7 +4046,7 @@ def ap_aging(request):
         except ValueError:
             today = date.today()
     else:
-    today = date.today()
+        today = date.today()
     
     # Get AP account (typically 2000 or similar)
     ap_account = Account.objects.filter(
@@ -4338,11 +4338,11 @@ def payment_post(request, pk):
     # Fallback to hardcoded codes for backward compatibility
     ar_account = AccountMapping.get_account_or_default('customer_receipt_ar_clear', '1200')
     if not ar_account:
-    ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
+        ar_account = Account.objects.filter(code__startswith='12', account_type='asset').first()
     
     ap_account = AccountMapping.get_account_or_default('vendor_payment_ap_clear', '2000')
     if not ap_account:
-    ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
+        ap_account = Account.objects.filter(code__startswith='20', account_type='liability').first()
     
     bank_account = payment.bank_account.gl_account
     
@@ -4361,7 +4361,7 @@ def payment_post(request, pk):
                 description=f"Payment from {payment.party_name}",
                 credit=payment.amount,
             )
-    else:
+        else:
             messages.warning(request, 'Accounts Receivable account not configured in Account Mapping.')
     else:
         # Debit AP (clears payable), Credit Bank
