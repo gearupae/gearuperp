@@ -3149,6 +3149,31 @@ class VATReturnCreateView(CreatePermissionMixin, CreateView):
         return redirect(self.success_url)
 
 
+class VATReturnUpdateView(EditPermissionMixin, UpdateView):
+    """Edit VAT Return - only for draft returns"""
+    model = VATReturn
+    form_class = VATReturnForm
+    template_name = 'finance/vatreturn_form.html'
+    context_object_name = 'vat_return'
+    module_name = 'finance'
+    
+    def get_queryset(self):
+        # Only allow editing draft returns
+        return VATReturn.objects.filter(status='draft')
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['title'] = f'Edit VAT Return: {self.object.return_number}'
+        context['is_edit'] = True
+        return context
+    
+    def form_valid(self, form):
+        self.object = form.save()
+        self.object.calculate()
+        messages.success(self.request, f'VAT Return {self.object.return_number} updated.')
+        return redirect('finance:vatreturn_detail', pk=self.object.pk)
+
+
 class VATReturnDetailView(PermissionRequiredMixin, DetailView):
     model = VATReturn
     template_name = 'finance/vatreturn_detail.html'
