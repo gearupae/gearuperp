@@ -3149,7 +3149,7 @@ class VATReturnCreateView(CreatePermissionMixin, CreateView):
         return redirect(self.success_url)
 
 
-class VATReturnUpdateView(EditPermissionMixin, UpdateView):
+class VATReturnUpdateView(UpdatePermissionMixin, UpdateView):
     """Edit VAT Return - only for draft returns"""
     model = VATReturn
     form_class = VATReturnForm
