@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
-from django.db.models import Q, Sum, F, Value, DecimalField, Count, Avg
+from django.db.models import Q, Sum, F, Value, DecimalField, Count, Avg, Prefetch
 from django.db import models as db_models
 from django.db.models.functions import Coalesce
 from django.db import transaction
@@ -178,7 +178,16 @@ class ItemListView(PermissionRequiredMixin, ListView):
     
     def get_queryset(self):
         # Annotate total_stock at database level to ensure fresh data
-        queryset = Item.objects.filter(is_active=True).select_related('category').annotate(
+        queryset = Item.objects.filter(is_active=True).select_related('category').prefetch_related(
+            Prefetch(
+                'stock_records',
+                queryset=Stock.objects.filter(
+                    warehouse__is_active=True,
+                    quantity__gt=0
+                ).select_related('warehouse'),
+                to_attr='active_stock_records'
+            )
+        ).annotate(
             total_stock_calc=Coalesce(
                 Sum(
                     'stock_records__quantity',
