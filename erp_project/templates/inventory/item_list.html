@@ -94,6 +94,7 @@
                         <th class="text-end">Purchase Price</th>
                         <th class="text-end">Selling Price</th>
                         <th class="text-end">Stock</th>
+                        <th>Condition</th>
                         <th>Status</th>
                         <th class="text-center" style="min-width: 150px;">Actions</th>
                     </tr>
@@ -129,6 +130,19 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if item.condition_status == 'in_store' %}
+                            <span class="badge" style="background:#dcfce7;color:#166534;">In Store</span>
+                            {% elif item.condition_status == 'in_use' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af;">In Use</span>
+                            {% elif item.condition_status == 'repair' %}
+                            <span class="badge" style="background:#fef3c7;color:#92400e;">Repair</span>
+                            {% elif item.condition_status == 'damaged' %}
+                            <span class="badge" style="background:#fecaca;color:#991b1b;">Damaged</span>
+                            {% else %}
+                            <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             {% if item.status == 'active' %}
                             <span class="badge badge-active">Active</span>
                             {% else %}
@@ -155,7 +169,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9" class="text-center py-5 text-muted">
+                        <td colspan="10" class="text-center py-5 text-muted">
                             <i class="fas fa-cubes fa-3x mb-3 d-block"></i>
                             No items found
                         </td>

@@ -2,7 +2,7 @@
 Inventory Forms
 """
 from django import forms
-from .models import Category, Warehouse, Item, Stock, StockMovement, ConsumableRequest
+from .models import Category, Warehouse, Item, Stock, StockMovement, ConsumableRequest, ConditionLog
 
 
 class CategoryForm(forms.ModelForm):
@@ -49,7 +49,8 @@ class ItemForm(forms.ModelForm):
         model = Item
         fields = [
             'name', 'description', 'category', 'item_type', 'status',
-            'purchase_price', 'selling_price', 'unit', 'minimum_stock', 'tax_code'
+            'purchase_price', 'selling_price', 'unit', 'minimum_stock', 'tax_code',
+            'condition_status', 'condition_notes',
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 2}),
@@ -59,8 +60,10 @@ class ItemForm(forms.ModelForm):
         from apps.finance.models import TaxCode
         super().__init__(*args, **kwargs)
         for field_name, field in self.fields.items():
-            if field_name in ['category', 'item_type', 'status', 'tax_code']:
+            if field_name in ['category', 'item_type', 'status', 'tax_code', 'condition_status']:
                 field.widget.attrs['class'] = 'form-select'
+            elif field_name == 'condition_notes':
+                field.widget = forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'e.g., Assigned to John, Bay 3 / Sent for repair on...'})
             else:
                 field.widget.attrs['class'] = 'form-control'
         self.fields['category'].queryset = Category.objects.filter(is_active=True)
@@ -219,5 +222,99 @@ class ConsumableRequestRejectForm(forms.Form):
         required=True,
         widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         label='Rejection Reason'
+    )
+
+
+# ============ STOCK TRANSFER FORM ============
+
+class StockTransferForm(forms.Form):
+    """Form for manual stock transfers between warehouses."""
+    item = forms.ModelChoiceField(
+        queryset=Item.objects.none(),
+        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_transfer_item'}),
+        required=True,
+        empty_label="Select an item..."
+    )
+    from_warehouse = forms.ModelChoiceField(
+        queryset=Warehouse.objects.none(),
+        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_from_warehouse'}),
+        required=True,
+        empty_label="Select source warehouse...",
+        label='From Warehouse'
+    )
+    to_warehouse = forms.ModelChoiceField(
+        queryset=Warehouse.objects.none(),
+        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_to_warehouse'}),
+        required=True,
+        empty_label="Select destination warehouse...",
+        label='To Warehouse'
+    )
+    quantity = forms.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        min_value=0.01,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'placeholder': '0.00'})
+    )
+    reference = forms.CharField(
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Transfer request #123'})
+    )
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Reason for transfer...'})
+    )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['item'].queryset = Item.objects.filter(
+            is_active=True, item_type='product', status='active'
+        ).order_by('name')
+        self.fields['from_warehouse'].queryset = Warehouse.objects.filter(
+            is_active=True, status='active'
+        ).order_by('name')
+        self.fields['to_warehouse'].queryset = Warehouse.objects.filter(
+            is_active=True, status='active'
+        ).order_by('name')
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        from_wh = cleaned_data.get('from_warehouse')
+        to_wh = cleaned_data.get('to_warehouse')
+        item = cleaned_data.get('item')
+        quantity = cleaned_data.get('quantity')
+        
+        if from_wh and to_wh and from_wh == to_wh:
+            raise forms.ValidationError("Source and destination warehouses must be different.")
+        
+        if item and from_wh and quantity:
+            try:
+                stock = Stock.objects.get(item=item, warehouse=from_wh)
+                if stock.quantity < quantity:
+                    raise forms.ValidationError(
+                        f"Insufficient stock in {from_wh.name}. "
+                        f"Available: {stock.quantity}, Requested: {quantity}"
+                    )
+            except Stock.DoesNotExist:
+                raise forms.ValidationError(
+                    f"No stock record for {item.name} in {from_wh.name}."
+                )
+        
+        return cleaned_data
+
+
+# ============ CONDITION CHANGE FORM ============
+
+class ItemConditionForm(forms.Form):
+    """Form for changing an item's condition status."""
+    condition_status = forms.ChoiceField(
+        choices=Item.CONDITION_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='New Condition'
+    )
+    condition_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Reason for status change...'}),
+        label='Notes'
     )
 

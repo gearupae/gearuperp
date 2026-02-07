@@ -83,6 +83,13 @@ class Item(BaseModel):
         ('inactive', 'Inactive'),
     ]
     
+    CONDITION_CHOICES = [
+        ('in_store', 'In Store / Warehouse'),
+        ('in_use', 'In Use'),
+        ('repair', 'Under Repair'),
+        ('damaged', 'Damaged'),
+    ]
+    
     item_code = models.CharField(max_length=50, unique=True, editable=False)
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -103,6 +110,19 @@ class Item(BaseModel):
     # Stock
     unit = models.CharField(max_length=20, default='pcs')  # pcs, kg, m, etc.
     minimum_stock = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    
+    # Condition / usage tracking
+    condition_status = models.CharField(
+        max_length=20,
+        choices=CONDITION_CHOICES,
+        default='in_store',
+        help_text='Current condition: In Store, In Use, Under Repair, or Damaged'
+    )
+    condition_notes = models.TextField(
+        blank=True,
+        help_text='Notes about current condition (e.g., assigned to whom, repair details)'
+    )
+    condition_changed_at = models.DateTimeField(null=True, blank=True)
     
     # Tax Code - source of truth for VAT (SAP/Oracle Standard)
     tax_code = models.ForeignKey(
@@ -143,6 +163,54 @@ class Item(BaseModel):
     def is_low_stock(self):
         """Check if item is below minimum stock level."""
         return self.total_stock < self.minimum_stock
+    
+    def change_condition(self, new_status, notes='', user=None):
+        """Change item condition and log the change."""
+        from django.utils import timezone
+        old_status = self.condition_status
+        if old_status == new_status and not notes:
+            return  # No change
+        self.condition_status = new_status
+        self.condition_notes = notes
+        self.condition_changed_at = timezone.now()
+        self.save(update_fields=['condition_status', 'condition_notes', 'condition_changed_at', 'updated_at'])
+        
+        # Log the change
+        ConditionLog.objects.create(
+            item=self,
+            from_status=old_status,
+            to_status=new_status,
+            notes=notes,
+            changed_by=user,
+        )
+
+
+class ConditionLog(models.Model):
+    """
+    Tracks condition status changes for inventory items.
+    Provides a full audit trail of item condition history.
+    """
+    item = models.ForeignKey(
+        'Item',
+        on_delete=models.CASCADE,
+        related_name='condition_logs'
+    )
+    from_status = models.CharField(max_length=20, choices=Item.CONDITION_CHOICES)
+    to_status = models.CharField(max_length=20, choices=Item.CONDITION_CHOICES)
+    notes = models.TextField(blank=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-changed_at']
+    
+    def __str__(self):
+        return f"{self.item.name}: {self.get_from_status_display()} → {self.get_to_status_display()}"
 
 
 class Stock(BaseModel):

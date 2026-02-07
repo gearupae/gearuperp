@@ -12,10 +12,11 @@ from django.db.models.functions import Coalesce
 from django.db import transaction
 from decimal import Decimal
 
-from .models import Category, Warehouse, Item, Stock, StockMovement, ConsumableRequest
+from .models import Category, Warehouse, Item, Stock, StockMovement, ConsumableRequest, ConditionLog
 from .forms import (
     CategoryForm, WarehouseForm, ItemForm, StockAdjustmentForm,
-    ConsumableRequestForm, ConsumableRequestApproveForm, ConsumableRequestRejectForm
+    ConsumableRequestForm, ConsumableRequestApproveForm, ConsumableRequestRejectForm,
+    StockTransferForm, ItemConditionForm,
 )
 from apps.core.mixins import PermissionRequiredMixin, CreatePermissionMixin, UpdatePermissionMixin
 from apps.core.utils import PermissionChecker
@@ -288,8 +289,19 @@ class ItemDetailView(PermissionRequiredMixin, DetailView):
             item=self.object,
             warehouse__is_active=True
         ).select_related('warehouse')
-        context['movements'] = StockMovement.objects.filter(item=self.object)[:20]
+        context['movements'] = StockMovement.objects.filter(
+            item=self.object
+        ).select_related('warehouse', 'to_warehouse')[:50]
+        context['condition_logs'] = ConditionLog.objects.filter(
+            item=self.object
+        ).select_related('changed_by')[:20]
+        context['condition_form'] = ItemConditionForm(initial={
+            'condition_status': self.object.condition_status
+        })
         context['can_edit'] = self.request.user.is_superuser or PermissionChecker.has_permission(self.request.user, 'inventory', 'edit')
+        # Transfer form
+        context['transfer_form'] = StockTransferForm(initial={'item': self.object.pk})
+        context['warehouses'] = Warehouse.objects.filter(is_active=True, status='active')
         return context
 
 
@@ -526,6 +538,104 @@ def movement_detail(request, pk):
         context['journal_lines'] = movement.journal_entry.lines.all().select_related('account')
     
     return render(request, 'inventory/movement_detail.html', context)
+
+
+# ============ STOCK TRANSFER VIEW ============
+
+@login_required
+def stock_transfer(request):
+    """Manual stock transfer between warehouses."""
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('inventory:movement_list')
+    
+    if request.method == 'POST':
+        form = StockTransferForm(request.POST)
+        if form.is_valid():
+            item = form.cleaned_data['item']
+            from_warehouse = form.cleaned_data['from_warehouse']
+            to_warehouse = form.cleaned_data['to_warehouse']
+            quantity = form.cleaned_data['quantity']
+            reference = form.cleaned_data['reference']
+            notes = form.cleaned_data['notes']
+            
+            try:
+                with transaction.atomic():
+                    from datetime import date
+                    # Create the transfer movement
+                    movement = StockMovement.objects.create(
+                        item=item,
+                        warehouse=from_warehouse,
+                        to_warehouse=to_warehouse,
+                        movement_type='transfer',
+                        source='manual',
+                        quantity=quantity,
+                        unit_cost=item.purchase_price or Decimal('0.00'),
+                        reference=reference or f'Manual transfer to {to_warehouse.name}',
+                        notes=notes,
+                        movement_date=date.today(),
+                    )
+                    
+                    # Update stock levels
+                    movement.update_stock()
+                    
+                    messages.success(
+                        request,
+                        f'Successfully transferred {quantity} {item.unit} of {item.name} '
+                        f'from {from_warehouse.name} to {to_warehouse.name}. '
+                        f'Movement: {movement.movement_number}'
+                    )
+                    return redirect('inventory:movement_detail', pk=movement.pk)
+                    
+            except Exception as e:
+                messages.error(request, f'Transfer failed: {str(e)}')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    if field == '__all__':
+                        messages.error(request, error)
+                    else:
+                        messages.error(request, f'{form.fields[field].label or field}: {error}')
+    else:
+        initial = {}
+        item_id = request.GET.get('item')
+        if item_id:
+            initial['item'] = item_id
+        form = StockTransferForm(initial=initial)
+    
+    return render(request, 'inventory/stock_transfer.html', {
+        'title': 'Manual Stock Transfer',
+        'form': form,
+    })
+
+
+@login_required
+def item_change_condition(request, pk):
+    """Change an item's condition status (in_store, in_use, repair, damaged)."""
+    item = get_object_or_404(Item, pk=pk)
+    
+    if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'inventory', 'edit')):
+        messages.error(request, 'Permission denied.')
+        return redirect('inventory:item_detail', pk=pk)
+    
+    if request.method == 'POST':
+        form = ItemConditionForm(request.POST)
+        if form.is_valid():
+            new_status = form.cleaned_data['condition_status']
+            notes = form.cleaned_data['condition_notes']
+            old_display = item.get_condition_status_display()
+            
+            item.change_condition(new_status, notes, user=request.user)
+            
+            new_display = item.get_condition_status_display()
+            messages.success(
+                request,
+                f'Item condition updated: {old_display} → {new_display}'
+            )
+        else:
+            messages.error(request, 'Invalid form data.')
+    
+    return redirect('inventory:item_detail', pk=pk)
 
 
 # ============ CONSUMABLE REQUEST VIEWS ============

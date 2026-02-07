@@ -33,6 +33,12 @@ urlpatterns = [
     path('movements/<int:pk>/', views.movement_detail, name='movement_detail'),
     path('movements/<int:pk>/post/', views.movement_post_to_accounting, name='movement_post'),
     
+    # Stock Transfers
+    path('transfers/', views.stock_transfer, name='stock_transfer'),
+    
+    # Item Condition
+    path('items/<int:pk>/condition/', views.item_change_condition, name='item_change_condition'),
+    
     # Consumable Requests
     path('consumables/', views.ConsumableRequestListView.as_view(), name='consumable_request_list'),
     path('consumables/create/', views.consumable_request_create, name='consumable_request_create'),

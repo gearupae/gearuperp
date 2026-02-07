@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item"><a href="{% url 'inventory:movement_list' %}">Movements</a></li>
+            <li class="breadcrumb-item active">{{ title }}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold"><i class="fas fa-exchange-alt me-2 text-primary"></i>{{ title }}</h4>
+            <p class="text-muted mb-0">Transfer stock between warehouses manually</p>
+        </div>
+        <a href="{% url 'inventory:movement_list' %}" class="btn btn-light">
+            <i class="fas fa-arrow-left me-1"></i>Back to Movements
+        </a>
+    </div>
+</div>
+
+{% if form.errors or form.non_field_errors %}
+<div class="alert alert-danger mb-4">
+    <h6 class="alert-heading mb-2"><i class="fas fa-exclamation-triangle me-2"></i>Please correct the errors below:</h6>
+    {% for error in form.non_field_errors %}
+        <div>{{ error }}</div>
+    {% endfor %}
+    {% for field, errors in form.errors.items %}
+        {% if field != '__all__' %}
+        <div><strong>{{ field }}:</strong> {{ errors|join:", " }}</div>
+        {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold"><i class="fas fa-truck-loading me-2"></i>Transfer Details</h6>
+            </div>
+            <div class="card-body">
+                <form method="post" id="transferForm">
+                    {% csrf_token %}
+                    
+                    <!-- Item Selection -->
+                    <div class="mb-4">
+                        <label class="form-label fw-medium">Item <span class="text-danger">*</span></label>
+                        {{ form.item }}
+                        <small class="text-muted mt-1 d-block"><i class="fas fa-info-circle me-1"></i>Only active product items are shown</small>
+                    </div>
+                    
+                    <!-- Warehouse Selection -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-5">
+                            <label class="form-label fw-medium">From Warehouse <span class="text-danger">*</span></label>
+                            {{ form.from_warehouse }}
+                            <div id="fromStockInfo" class="mt-1"></div>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-center justify-content-center">
+                            <div class="text-center" style="margin-top: 20px;">
+                                <i class="fas fa-arrow-right fa-2x text-primary"></i>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label fw-medium">To Warehouse <span class="text-danger">*</span></label>
+                            {{ form.to_warehouse }}
+                        </div>
+                    </div>
+                    
+                    <!-- Quantity -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Quantity <span class="text-danger">*</span></label>
+                            {{ form.quantity }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-medium">Reference</label>
+                            {{ form.reference }}
+                        </div>
+                    </div>
+                    
+                    <!-- Notes -->
+                    <div class="mb-4">
+                        <label class="form-label fw-medium">Notes</label>
+                        {{ form.notes }}
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="fas fa-exchange-alt me-2"></i>Execute Transfer
+                        </button>
+                        <a href="{% url 'inventory:movement_list' %}" class="btn btn-light">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Transfer Info -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h6 class="fw-semibold mb-3"><i class="fas fa-info-circle me-2 text-info"></i>How Transfers Work</h6>
+                <ul class="list-unstyled mb-0 small">
+                    <li class="mb-2">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        Stock is deducted from the source warehouse
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        Stock is added to the destination warehouse
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        A movement record is created for audit trail
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-minus-circle text-muted me-2"></i>
+                        No accounting entry (internal transfer)
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Validation -->
+        <div class="card">
+            <div class="card-body">
+                <h6 class="fw-semibold mb-3"><i class="fas fa-shield-alt me-2 text-warning"></i>Validation Rules</h6>
+                <ul class="list-unstyled mb-0 small text-muted">
+                    <li class="mb-2"><i class="fas fa-dot-circle me-2"></i>Source and destination must be different</li>
+                    <li class="mb-2"><i class="fas fa-dot-circle me-2"></i>Sufficient stock must exist in source warehouse</li>
+                    <li class="mb-2"><i class="fas fa-dot-circle me-2"></i>Quantity must be greater than zero</li>
+                    <li><i class="fas fa-dot-circle me-2"></i>Transfer cannot be reversed (use new transfer)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fromWarehouse = document.getElementById('id_from_warehouse');
+    const toWarehouse = document.getElementById('id_to_warehouse');
+    
+    // Prevent selecting same warehouse
+    if (fromWarehouse && toWarehouse) {
+        fromWarehouse.addEventListener('change', function() {
+            Array.from(toWarehouse.options).forEach(opt => {
+                opt.disabled = (opt.value === this.value && opt.value !== '');
+            });
+        });
+        toWarehouse.addEventListener('change', function() {
+            Array.from(fromWarehouse.options).forEach(opt => {
+                opt.disabled = (opt.value === this.value && opt.value !== '');
+            });
+        });
+    }
+    
+    // Confirm before submit
+    document.getElementById('transferForm').addEventListener('submit', function(e) {
+        if (!confirm('Are you sure you want to execute this stock transfer? This action cannot be undone.')) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %}
+

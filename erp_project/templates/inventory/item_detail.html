@@ -13,8 +13,11 @@
             <h4 class="mb-1 fw-bold">{{ item.item_code }}</h4>
             <span class="text-muted">{{ item.name }}</span>
         </div>
-        <div>
+        <div class="d-flex gap-2">
             {% if can_edit %}
+            <a href="{% url 'inventory:stock_transfer' %}?item={{ item.pk }}" class="btn btn-outline-primary">
+                <i class="fas fa-exchange-alt me-1"></i>Transfer Stock
+            </a>
             <a href="{% url 'inventory:item_edit' item.pk %}" class="btn btn-primary">
                 <i class="fas fa-edit me-2"></i>Edit
             </a>
@@ -25,6 +28,7 @@
 
 <div class="row g-4">
     <div class="col-lg-8">
+        <!-- Item Details -->
         <div class="card mb-4">
             <div class="card-header"><h6 class="mb-0 fw-semibold">Item Details</h6></div>
             <div class="card-body">
@@ -64,8 +68,16 @@
         </div>
         
         {% if item.item_type == 'product' %}
+        <!-- Stock by Warehouse -->
         <div class="card mb-4">
-            <div class="card-header"><h6 class="mb-0 fw-semibold">Stock by Warehouse</h6></div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold">Stock by Warehouse</h6>
+                {% if can_edit %}
+                <a href="{% url 'inventory:stock_transfer' %}?item={{ item.pk }}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-exchange-alt me-1"></i>Transfer
+                </a>
+                {% endif %}
+            </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table mb-0">
@@ -73,17 +85,21 @@
                             <tr>
                                 <th>Warehouse</th>
                                 <th class="text-end">Quantity</th>
+                                <th class="text-end">Value (AED)</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for stock in stock_records %}
                             <tr>
-                                <td>{{ stock.warehouse.name }}</td>
-                                <td class="text-end">{{ stock.quantity }}</td>
+                                <td>
+                                    <i class="fas fa-warehouse me-2 text-muted"></i>{{ stock.warehouse.name }}
+                                </td>
+                                <td class="text-end">{{ stock.quantity }} {{ item.unit }}</td>
+                                <td class="text-end">{{ stock.quantity|floatformat:2 }}</td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="2" class="text-center py-4 text-muted">No stock records</td>
+                                <td colspan="3" class="text-center py-4 text-muted">No stock records</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -91,7 +107,8 @@
                             <tr>
                                 <td class="fw-bold">Total Stock</td>
                                 {% with stock_qty=item.total_stock_calc|default:0 %}
-                                <td class="text-end fw-bold {% if stock_qty < item.minimum_stock %}text-danger{% endif %}">{{ stock_qty }}</td>
+                                <td class="text-end fw-bold {% if stock_qty < item.minimum_stock %}text-danger{% endif %}">{{ stock_qty }} {{ item.unit }}</td>
+                                <td></td>
                                 {% endwith %}
                             </tr>
                         </tfoot>
@@ -100,40 +117,142 @@
             </div>
         </div>
         
-        <div class="card">
-            <div class="card-header"><h6 class="mb-0 fw-semibold">Recent Movements</h6></div>
+        <!-- Movement History (Full) -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold"><i class="fas fa-history me-2"></i>Movement History</h6>
+                <span class="badge bg-secondary">{{ movements|length }} record{{ movements|length|pluralize }}</span>
+            </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table mb-0">
+                    <table class="table table-hover mb-0">
                         <thead>
                             <tr>
                                 <th>Date</th>
+                                <th>Movement #</th>
                                 <th>Type</th>
-                                <th>Warehouse</th>
-                                <th class="text-end">Quantity</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th class="text-end">Qty</th>
                                 <th>Reference</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for movement in movements %}
                             <tr>
-                                <td>{{ movement.movement_date|date:"d/m/Y" }}</td>
+                                <td class="text-nowrap">{{ movement.movement_date|date:"d/m/Y" }}</td>
+                                <td>
+                                    <a href="{% url 'inventory:movement_detail' movement.pk %}" class="text-decoration-none fw-medium">
+                                        {{ movement.movement_number }}
+                                    </a>
+                                </td>
                                 <td>
                                     {% if movement.movement_type == 'in' %}
-                                    <span class="badge badge-active">Stock In</span>
+                                    <span class="badge badge-active"><i class="fas fa-arrow-down me-1"></i>In</span>
                                     {% elif movement.movement_type == 'out' %}
-                                    <span class="badge badge-inactive">Stock Out</span>
+                                    <span class="badge badge-inactive"><i class="fas fa-arrow-up me-1"></i>Out</span>
+                                    {% elif movement.movement_type == 'transfer' %}
+                                    <span class="badge" style="background:#dbeafe;color:#1e40af;"><i class="fas fa-exchange-alt me-1"></i>Transfer</span>
+                                    {% elif movement.movement_type == 'adjustment_plus' %}
+                                    <span class="badge bg-info"><i class="fas fa-plus me-1"></i>Adj</span>
+                                    {% elif movement.movement_type == 'adjustment_minus' %}
+                                    <span class="badge bg-secondary"><i class="fas fa-minus me-1"></i>Adj</span>
                                     {% else %}
                                     <span class="badge bg-secondary">{{ movement.get_movement_type_display }}</span>
                                     {% endif %}
                                 </td>
                                 <td>{{ movement.warehouse.name }}</td>
-                                <td class="text-end">{{ movement.quantity }}</td>
-                                <td>{{ movement.reference|default:"-" }}</td>
+                                <td>
+                                    {% if movement.to_warehouse %}
+                                    {{ movement.to_warehouse.name }}
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end fw-medium">
+                                    {% if movement.movement_type == 'out' or movement.movement_type == 'adjustment_minus' %}
+                                    <span class="text-danger">-{{ movement.quantity }}</span>
+                                    {% elif movement.movement_type == 'in' or movement.movement_type == 'adjustment_plus' %}
+                                    <span class="text-success">+{{ movement.quantity }}</span>
+                                    {% else %}
+                                    {{ movement.quantity }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ movement.reference|default:"-"|truncatewords:5 }}</small>
+                                </td>
+                                <td>
+                                    {% if movement.posted %}
+                                    <span class="badge badge-active"><i class="fas fa-check me-1"></i>Posted</span>
+                                    {% else %}
+                                    <span class="badge bg-light text-muted">Draft</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="5" class="text-center py-4 text-muted">No movements</td>
+                                <td colspan="8" class="text-center py-4 text-muted">
+                                    <i class="fas fa-exchange-alt fa-2x mb-2 d-block"></i>
+                                    No movements recorded yet
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Condition Change History -->
+        {% if condition_logs %}
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold"><i class="fas fa-clipboard-list me-2"></i>Condition History</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>From</th>
+                                <th></th>
+                                <th>To</th>
+                                <th>Notes</th>
+                                <th>Changed By</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in condition_logs %}
+                            <tr>
+                                <td class="text-nowrap">{{ log.changed_at|date:"d/m/Y H:i" }}</td>
+                                <td>
+                                    {% if log.from_status == 'in_store' %}
+                                    <span class="badge" style="background:#dcfce7;color:#166534;">In Store</span>
+                                    {% elif log.from_status == 'in_use' %}
+                                    <span class="badge" style="background:#dbeafe;color:#1e40af;">In Use</span>
+                                    {% elif log.from_status == 'repair' %}
+                                    <span class="badge" style="background:#fef3c7;color:#92400e;">Repair</span>
+                                    {% elif log.from_status == 'damaged' %}
+                                    <span class="badge" style="background:#fecaca;color:#991b1b;">Damaged</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center"><i class="fas fa-arrow-right text-muted"></i></td>
+                                <td>
+                                    {% if log.to_status == 'in_store' %}
+                                    <span class="badge" style="background:#dcfce7;color:#166534;">In Store</span>
+                                    {% elif log.to_status == 'in_use' %}
+                                    <span class="badge" style="background:#dbeafe;color:#1e40af;">In Use</span>
+                                    {% elif log.to_status == 'repair' %}
+                                    <span class="badge" style="background:#fef3c7;color:#92400e;">Repair</span>
+                                    {% elif log.to_status == 'damaged' %}
+                                    <span class="badge" style="background:#fecaca;color:#991b1b;">Damaged</span>
+                                    {% endif %}
+                                </td>
+                                <td><small>{{ log.notes|default:"-"|truncatewords:8 }}</small></td>
+                                <td><small>{{ log.changed_by.get_full_name|default:log.changed_by.username|default:"-" }}</small></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -144,7 +263,9 @@
         {% endif %}
     </div>
     
+    <!-- Right Sidebar -->
     <div class="col-lg-4">
+        <!-- Status -->
         <div class="card mb-4">
             <div class="card-body">
                 <h6 class="text-muted mb-3">Status</h6>
@@ -156,7 +277,56 @@
             </div>
         </div>
         
+        <!-- Condition Status -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-semibold">Condition Status</h6>
+                {% if can_edit %}
+                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#conditionModal">
+                    <i class="fas fa-sync-alt me-1"></i>Change
+                </button>
+                {% endif %}
+            </div>
+            <div class="card-body text-center">
+                {% if item.condition_status == 'in_store' %}
+                <div class="rounded-3 p-3 mb-3" style="background:#dcfce7;">
+                    <i class="fas fa-warehouse fa-2x mb-2" style="color:#166534;"></i>
+                    <h5 class="mb-0" style="color:#166534;">In Store / Warehouse</h5>
+                </div>
+                {% elif item.condition_status == 'in_use' %}
+                <div class="rounded-3 p-3 mb-3" style="background:#dbeafe;">
+                    <i class="fas fa-user-check fa-2x mb-2" style="color:#1e40af;"></i>
+                    <h5 class="mb-0" style="color:#1e40af;">In Use</h5>
+                </div>
+                {% elif item.condition_status == 'repair' %}
+                <div class="rounded-3 p-3 mb-3" style="background:#fef3c7;">
+                    <i class="fas fa-tools fa-2x mb-2" style="color:#92400e;"></i>
+                    <h5 class="mb-0" style="color:#92400e;">Under Repair</h5>
+                </div>
+                {% elif item.condition_status == 'damaged' %}
+                <div class="rounded-3 p-3 mb-3" style="background:#fecaca;">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-2" style="color:#991b1b;"></i>
+                    <h5 class="mb-0" style="color:#991b1b;">Damaged</h5>
+                </div>
+                {% endif %}
+                
+                {% if item.condition_notes %}
+                <div class="text-start mt-2">
+                    <small class="text-muted d-block mb-1">Notes:</small>
+                    <p class="small mb-0">{{ item.condition_notes }}</p>
+                </div>
+                {% endif %}
+                
+                {% if item.condition_changed_at %}
+                <small class="text-muted d-block mt-2">
+                    <i class="fas fa-clock me-1"></i>Last changed: {{ item.condition_changed_at|date:"d/m/Y H:i" }}
+                </small>
+                {% endif %}
+            </div>
+        </div>
+        
         {% if item.item_type == 'product' %}
+        <!-- Stock Status -->
         <div class="card mb-4">
             <div class="card-body">
                 <h6 class="text-muted mb-3">Stock Status</h6>
@@ -179,6 +349,7 @@
         </div>
         {% endif %}
         
+        <!-- Audit Info -->
         <div class="card">
             <div class="card-body">
                 <h6 class="text-muted mb-3">Audit Information</h6>
@@ -194,5 +365,58 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
+<!-- Condition Change Modal -->
+{% if can_edit %}
+<div class="modal fade" id="conditionModal" tabindex="-1" aria-labelledby="conditionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'inventory:item_change_condition' item.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="conditionModalLabel">
+                        <i class="fas fa-sync-alt me-2"></i>Change Item Condition
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-3">Update the condition status for <strong>{{ item.name }}</strong></p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">Current Condition</label>
+                        <div>
+                            {% if item.condition_status == 'in_store' %}
+                            <span class="badge" style="background:#dcfce7;color:#166534;">In Store / Warehouse</span>
+                            {% elif item.condition_status == 'in_use' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af;">In Use</span>
+                            {% elif item.condition_status == 'repair' %}
+                            <span class="badge" style="background:#fef3c7;color:#92400e;">Under Repair</span>
+                            {% elif item.condition_status == 'damaged' %}
+                            <span class="badge" style="background:#fecaca;color:#991b1b;">Damaged</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-medium">New Condition <span class="text-danger">*</span></label>
+                        {{ condition_form.condition_status }}
+                    </div>
+                    
+                    <div class="mb-0">
+                        <label class="form-label fw-medium">Notes</label>
+                        {{ condition_form.condition_notes }}
+                        <small class="text-muted mt-1 d-block">e.g., Assigned to Ahmed for project X / Sent for repair at XYZ Service</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check me-1"></i>Update Condition
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
