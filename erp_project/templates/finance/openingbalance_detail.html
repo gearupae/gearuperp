@@ -105,7 +105,7 @@
                 <table class="table table-borderless mb-0">
                     <tr>
                         <th class="text-muted" style="width: 150px;">Created By:</th>
-                        <td>{{ entry.created_by.get_full_name|default:entry.created_by.username }}</td>
+                        <td>{% if entry.created_by %}{{ entry.created_by.get_full_name|default:entry.created_by.username }}{% else %}System{% endif %}</td>
                     </tr>
                     {% if entry.posted_by %}
                     <tr>
