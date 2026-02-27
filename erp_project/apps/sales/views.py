@@ -495,18 +495,7 @@ class InvoiceUpdateView(UpdatePermissionMixin, UpdateView):
         form = self.get_form()
         items_formset = InvoiceItemFormSet(request.POST, instance=self.object)
         
-        # Debug: Check form and formset validity
-        form_valid = form.is_valid()
-        formset_valid = items_formset.is_valid()
-        
-        if not form_valid:
-            messages.error(request, f'Form errors: {form.errors}')
-        if not formset_valid:
-            messages.error(request, f'Formset errors: {items_formset.errors}')
-            if items_formset.non_form_errors():
-                messages.error(request, f'Formset non-form errors: {items_formset.non_form_errors()}')
-        
-        if form_valid and formset_valid:
+        if form.is_valid() and items_formset.is_valid():
             return self.form_valid(form, items_formset)
         else:
             return self.form_invalid(form, items_formset)

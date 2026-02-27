@@ -110,6 +110,8 @@ class InvoiceItemForm(forms.ModelForm):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['description'].required = False
+        self.fields['unit_price'].required = False
         for field_name, field in self.fields.items():
             if field_name in ['tax_code']:
                 field.widget.attrs['class'] = 'form-select'
@@ -118,16 +120,26 @@ class InvoiceItemForm(forms.ModelForm):
             else:
                 field.widget.attrs['class'] = 'form-control'
         
-        # Set Tax Code queryset and default
         self.fields['tax_code'].queryset = TaxCode.objects.filter(is_active=True)
         self.fields['tax_code'].required = False
         self.fields['tax_code'].empty_label = "-- No Tax (Out of Scope) --"
         
-        # Pre-select default tax code if creating new item
         if not self.instance.pk:
             default_tax_code = TaxCode.objects.filter(is_active=True, is_default=True).first()
             if default_tax_code:
                 self.fields['tax_code'].initial = default_tax_code
+
+    def clean(self):
+        cleaned_data = super().clean()
+        description = (cleaned_data.get('description') or '').strip()
+        unit_price = cleaned_data.get('unit_price')
+        if not description and not unit_price:
+            return cleaned_data
+        if not description:
+            self.add_error('description', 'Description is required.')
+        if not unit_price and unit_price != 0:
+            self.add_error('unit_price', 'Unit price is required.')
+        return cleaned_data
 
 
 InvoiceItemFormSet = forms.inlineformset_factory(
