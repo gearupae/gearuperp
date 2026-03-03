@@ -5,14 +5,20 @@ With full accounting integration:
 - Depreciation → Depreciation Expense (Dr), Accumulated Depreciation (Cr)
 - Disposal → Gain/Loss on Disposal, Clear Asset & Accum Depreciation
 """
-from django.db import models
+import calendar
+import logging
+from datetime import date
+from decimal import Decimal
+
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from decimal import Decimal
-from datetime import date
-from dateutil.relativedelta import relativedelta
+from django.db import models, transaction
+
 from apps.core.models import BaseModel
 from apps.core.utils import generate_number
+
+logger = logging.getLogger(__name__)
 
 
 class AssetCategory(BaseModel):
@@ -24,6 +30,15 @@ class AssetCategory(BaseModel):
         ('straight_line', 'Straight Line'),
         ('declining_balance', 'Declining Balance'),
         ('units_of_production', 'Units of Production'),
+    ]
+    PARTIAL_MONTH_CHOICES = [
+        ('full_month', 'Full Month Depreciation'),
+        ('pro_rata', 'Pro-Rata (Days-Based)'),
+        ('mid_month', 'Mid-Month Convention'),
+    ]
+    DEPRECIATION_START_CHOICES = [
+        ('acquisition_date', 'From Acquisition Date'),
+        ('next_month', 'First Day of Following Month'),
     ]
     
     name = models.CharField(max_length=200)
@@ -40,6 +55,18 @@ class AssetCategory(BaseModel):
     salvage_value_percent = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('0.00'),
         help_text="Salvage value as % of cost"
+    )
+    partial_month_policy = models.CharField(
+        max_length=20,
+        choices=PARTIAL_MONTH_CHOICES,
+        default='full_month',
+        help_text="How to handle depreciation in the acquisition month"
+    )
+    depreciation_start_policy = models.CharField(
+        max_length=20,
+        choices=DEPRECIATION_START_CHOICES,
+        default='acquisition_date',
+        help_text="When depreciation should begin"
     )
     
     # Default GL Accounts (linked to Account Mapping)
@@ -164,17 +191,27 @@ class FixedAsset(BaseModel):
     def save(self, *args, **kwargs):
         if not self.asset_number:
             self.asset_number = generate_number('FA', FixedAsset, 'asset_number')
-        
-        # Set depreciation settings from category if not specified
+
+        # GL integrity: an asset cannot be activated without an acquisition journal.
+        # This prevents assets from existing in the register without balance sheet support.
+        if self.status == 'active' and not self.acquisition_journal_id:
+            skip_gl_check = kwargs.pop('skip_gl_check', False)
+            if not skip_gl_check:
+                raise ValidationError(
+                    "Cannot activate asset without an acquisition journal entry. "
+                    "Create a GL posting (Dr Fixed Asset / Cr AP or Bank) first, "
+                    "then link it via acquisition_journal before setting status to 'active'."
+                )
+        else:
+            kwargs.pop('skip_gl_check', None)
+
         if not self.depreciation_start_date:
             self.depreciation_start_date = self.acquisition_date
-        
-        # Calculate useful life in months
+
         self.useful_life_months = self.useful_life_years * 12
-        
-        # Calculate book value
+
         self.book_value = self.acquisition_cost - self.accumulated_depreciation
-        
+
         super().save(*args, **kwargs)
     
     @property
@@ -264,91 +301,187 @@ class FixedAsset(BaseModel):
         
         return journal
     
-    def run_depreciation(self, depreciation_date, user=None):
+    def validate_for_depreciation(self, depreciation_date):
         """
-        Run monthly depreciation.
+        Pre-validate asset readiness for depreciation.
+        Returns a list of human-readable error strings (empty = valid).
+        """
+        from apps.finance.models import AccountMapping, FiscalYear
+
+        errors = []
+
+        if self.status != 'active':
+            errors.append(f"Status is '{self.get_status_display()}', must be 'Active'.")
+            return errors
+
+        if self.acquisition_cost <= 0:
+            errors.append("Acquisition cost is zero or negative.")
+        if self.useful_life_years <= 0:
+            errors.append("Useful life (years) is zero.")
+        if self.useful_life_months <= 0:
+            errors.append("Useful life (months) is zero.")
+        if not self.depreciation_method:
+            errors.append("Depreciation method not set.")
+        if not self.depreciation_start_date:
+            errors.append("Depreciation start date not set.")
+        elif depreciation_date < self.depreciation_start_date:
+            errors.append(
+                f"Depreciation date {depreciation_date} is before "
+                f"start date {self.depreciation_start_date}."
+            )
+
+        if self.book_value <= self.salvage_value:
+            errors.append(
+                f"Fully depreciated (Book value {self.book_value} "
+                f"<= Salvage value {self.salvage_value})."
+            )
+
+        if not errors and self.monthly_depreciation <= 0:
+            errors.append("Calculated monthly depreciation is zero.")
+
+        dep_expense = self.category.depreciation_expense_account or \
+            AccountMapping.get_account('depreciation_expense', raise_error=False)
+        accum_dep = self.category.accumulated_depreciation_account or \
+            AccountMapping.get_account('accumulated_depreciation', raise_error=False)
+        if not dep_expense:
+            errors.append(
+                "Depreciation Expense GL account not configured "
+                "(neither on category nor in Account Mapping)."
+            )
+        if not accum_dep:
+            errors.append(
+                "Accumulated Depreciation GL account not configured "
+                "(neither on category nor in Account Mapping)."
+            )
+
+        period = depreciation_date.strftime('%Y-%m')
+        if AssetDepreciation.objects.filter(asset=self, period=period).exists():
+            errors.append(
+                f"Already depreciated for {depreciation_date.strftime('%B %Y')}."
+            )
+
+        try:
+            FiscalYear.validate_posting_allowed(depreciation_date)
+        except ValidationError as e:
+            errors.extend(e.messages if hasattr(e, 'messages') else [str(e)])
+
+        return errors
+
+    def _calculate_period_depreciation(self, depreciation_date):
+        """
+        Calculate depreciation for a specific period, handling partial-month
+        logic for the first depreciation month based on category policy.
+        """
+        base_amount = self.monthly_depreciation
+        if base_amount <= 0:
+            return Decimal('0.00')
+
+        is_first_period = not AssetDepreciation.objects.filter(asset=self).exists()
+        policy = getattr(self.category, 'partial_month_policy', 'full_month')
+
+        if is_first_period and self.depreciation_start_date and policy != 'full_month':
+            start = self.depreciation_start_date
+            if (start.year == depreciation_date.year
+                    and start.month == depreciation_date.month):
+                if policy == 'pro_rata':
+                    days_in_month = calendar.monthrange(
+                        depreciation_date.year, depreciation_date.month
+                    )[1]
+                    days_used = days_in_month - start.day + 1
+                    base_amount = (
+                        base_amount * Decimal(str(days_used)) / Decimal(str(days_in_month))
+                    ).quantize(Decimal('0.01'))
+                elif policy == 'mid_month':
+                    if start.day > 15:
+                        return Decimal('0.00')
+
+        if self.book_value - base_amount < self.salvage_value:
+            base_amount = self.book_value - self.salvage_value
+
+        return max(base_amount, Decimal('0.00'))
+
+    def run_depreciation(self, depreciation_date, user=None, batch_run=None):
+        """
+        Run monthly depreciation inside a single atomic transaction.
         Dr Depreciation Expense
         Cr Accumulated Depreciation
+        Creates both the journal entry and the AssetDepreciation record.
         """
-        from apps.finance.models import JournalEntry, JournalEntryLine, AccountMapping, FiscalYear
+        from apps.finance.models import (
+            AccountMapping, FiscalYear, JournalEntry, JournalEntryLine,
+        )
 
-        if self.status not in ['active']:
-            raise ValidationError("Only active assets can be depreciated.")
+        errors = self.validate_for_depreciation(depreciation_date)
+        if errors:
+            raise ValidationError(errors)
 
-        FiscalYear.validate_posting_allowed(depreciation_date)
-
-        if self.book_value <= self.salvage_value:
-            self.status = 'fully_depreciated'
-            self.save(update_fields=['status'])
-            raise ValidationError("Asset is fully depreciated.")
-        
-        # Calculate depreciation
-        depreciation_amount = self.monthly_depreciation
-        
-        # Don't depreciate below salvage value
-        if self.book_value - depreciation_amount < self.salvage_value:
-            depreciation_amount = self.book_value - self.salvage_value
-        
+        depreciation_amount = self._calculate_period_depreciation(depreciation_date)
         if depreciation_amount <= 0:
-            raise ValidationError("No depreciation to record.")
-        
-        # Get accounts
+            raise ValidationError("No depreciation to record for this period.")
+
         depreciation_expense = self.category.depreciation_expense_account or \
-                              AccountMapping.get_account_or_default('depreciation_expense', '5300')
+            AccountMapping.get_account_or_default('depreciation_expense', '5300')
         accum_depreciation = self.category.accumulated_depreciation_account or \
-                            AccountMapping.get_account_or_default('accumulated_depreciation', '1401')
-        
-        if not depreciation_expense or not accum_depreciation:
-            raise ValidationError("Depreciation accounts not configured.")
-        
-        # Create depreciation journal
-        journal = JournalEntry.objects.create(
-            date=depreciation_date,
-            reference=f"DEP-{self.asset_number}-{depreciation_date.strftime('%Y%m')}",
-            description=f"Depreciation: {self.asset_number} - {self.name} ({depreciation_date.strftime('%B %Y')})",
-            entry_type='standard',
-            source_module='fixed_asset',
+            AccountMapping.get_account_or_default('accumulated_depreciation', '1401')
+
+        period = depreciation_date.strftime('%Y-%m')
+
+        with transaction.atomic():
+            journal = JournalEntry.objects.create(
+                date=depreciation_date,
+                reference=f"DEP-{self.asset_number}-{depreciation_date.strftime('%Y%m')}",
+                description=(
+                    f"Depreciation: {self.asset_number} - {self.name} "
+                    f"({depreciation_date.strftime('%B %Y')})"
+                ),
+                entry_type='standard',
+                source_module='fixed_asset',
+                source_id=self.pk,
+                is_system_generated=True,
+            )
+
+            JournalEntryLine.objects.create(
+                journal_entry=journal,
+                account=depreciation_expense,
+                description=f"Depreciation Expense - {self.name}",
+                debit=depreciation_amount,
+                credit=Decimal('0.00'),
+            )
+            JournalEntryLine.objects.create(
+                journal_entry=journal,
+                account=accum_depreciation,
+                description=f"Accumulated Depreciation - {self.name}",
+                debit=Decimal('0.00'),
+                credit=depreciation_amount,
+            )
+
+            journal.calculate_totals()
+            journal.post(user)
+
+            self.accumulated_depreciation += depreciation_amount
+            self.book_value = self.acquisition_cost - self.accumulated_depreciation
+            self.last_depreciation_date = depreciation_date
+
+            if self.book_value <= self.salvage_value:
+                self.status = 'fully_depreciated'
+
+            self.save()
+
+            AssetDepreciation.objects.create(
+                asset=self,
+                depreciation_date=depreciation_date,
+                period=period,
+                depreciation_amount=depreciation_amount,
+                accumulated_depreciation=self.accumulated_depreciation,
+                book_value_after=self.book_value,
+                journal_entry=journal,
+                batch_run=batch_run,
+            )
+
+        logger.info(
+            "Depreciation posted: asset=%s period=%s amount=%s journal=%s",
+            self.asset_number, period, depreciation_amount, journal.entry_number,
         )
-        
-        JournalEntryLine.objects.create(
-            journal_entry=journal,
-            account=depreciation_expense,
-            description=f"Depreciation Expense - {self.name}",
-            debit=depreciation_amount,
-            credit=Decimal('0.00'),
-        )
-        
-        JournalEntryLine.objects.create(
-            journal_entry=journal,
-            account=accum_depreciation,
-            description=f"Accumulated Depreciation - {self.name}",
-            debit=Decimal('0.00'),
-            credit=depreciation_amount,
-        )
-        
-        journal.calculate_totals()
-        journal.post(user)
-        
-        # Update asset
-        self.accumulated_depreciation += depreciation_amount
-        self.book_value = self.acquisition_cost - self.accumulated_depreciation
-        self.last_depreciation_date = depreciation_date
-        
-        if self.book_value <= self.salvage_value:
-            self.status = 'fully_depreciated'
-        
-        self.save()
-        
-        # Create depreciation record
-        AssetDepreciation.objects.create(
-            asset=self,
-            depreciation_date=depreciation_date,
-            depreciation_amount=depreciation_amount,
-            accumulated_depreciation=self.accumulated_depreciation,
-            book_value_after=self.book_value,
-            journal_entry=journal,
-        )
-        
         return journal
     
     def dispose(self, disposal_date, disposal_amount, reason='', user=None):
@@ -457,30 +590,93 @@ class FixedAsset(BaseModel):
         return journal
 
 
+class DepreciationBatchRun(models.Model):
+    """
+    Audit record for each batch depreciation run.
+    Provides traceability: who ran depreciation, when, and the outcome.
+    """
+    STATUS_CHOICES = [
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('completed_with_errors', 'Completed with Errors'),
+        ('failed', 'Failed'),
+    ]
+
+    batch_number = models.CharField(max_length=50, unique=True, editable=False)
+    depreciation_date = models.DateField()
+    period = models.CharField(max_length=7, db_index=True, help_text="YYYY-MM")
+    run_date = models.DateTimeField(auto_now_add=True)
+    run_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='depreciation_runs',
+    )
+    total_assets = models.IntegerField(default=0)
+    success_count = models.IntegerField(default=0)
+    error_count = models.IntegerField(default=0)
+    skip_count = models.IntegerField(default=0)
+    total_depreciation = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00')
+    )
+    status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='running')
+    notes = models.TextField(blank=True)
+    error_details = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-run_date']
+
+    def __str__(self):
+        return f"{self.batch_number} - {self.period}"
+
+    def save(self, *args, **kwargs):
+        if not self.batch_number:
+            self.batch_number = generate_number(
+                'DEP-BATCH', DepreciationBatchRun, 'batch_number'
+            )
+        if not self.period and self.depreciation_date:
+            self.period = self.depreciation_date.strftime('%Y-%m')
+        super().save(*args, **kwargs)
+
+
 class AssetDepreciation(models.Model):
     """
     Depreciation history for each asset.
+    One record per asset per accounting period.
     """
     asset = models.ForeignKey(
         FixedAsset,
         on_delete=models.CASCADE,
-        related_name='depreciation_records'
+        related_name='depreciation_records',
     )
     depreciation_date = models.DateField()
+    period = models.CharField(
+        max_length=7, db_index=True, default='', help_text="YYYY-MM"
+    )
     depreciation_amount = models.DecimalField(max_digits=15, decimal_places=2)
     accumulated_depreciation = models.DecimalField(max_digits=15, decimal_places=2)
     book_value_after = models.DecimalField(max_digits=15, decimal_places=2)
     journal_entry = models.ForeignKey(
         'finance.JournalEntry',
         on_delete=models.SET_NULL,
-        null=True,
-        blank=True
+        null=True, blank=True,
+    )
+    batch_run = models.ForeignKey(
+        DepreciationBatchRun,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='depreciation_records',
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         ordering = ['-depreciation_date']
-        unique_together = ['asset', 'depreciation_date']
-    
+        unique_together = ['asset', 'period']
+
     def __str__(self):
-        return f"{self.asset.asset_number} - {self.depreciation_date}: {self.depreciation_amount}"
+        return f"{self.asset.asset_number} - {self.period}: {self.depreciation_amount}"
+
+    def save(self, *args, **kwargs):
+        if not self.period and self.depreciation_date:
+            self.period = self.depreciation_date.strftime('%Y-%m')
+        super().save(*args, **kwargs)

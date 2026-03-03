@@ -7,16 +7,19 @@
         <h4 class="mb-1 fw-bold">{{ title }}</h4>
         <p class="text-muted mb-0">Manage fixed assets and depreciation</p>
     </div>
-    {% if can_create %}
     <div class="d-flex gap-2">
+        <a href="{% url 'assets:asset_list' %}?format=excel" class="btn btn-outline-success">
+            <i class="fas fa-file-excel me-1"></i>Export Excel
+        </a>
+        {% if can_create %}
         <a href="{% url 'assets:run_depreciation' %}" class="btn btn-outline-primary">
             <i class="fas fa-sync me-1"></i>Run Depreciation
         </a>
         <a href="{% url 'assets:asset_create' %}" class="btn btn-primary">
             <i class="fas fa-plus me-2"></i>Add Asset
         </a>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
 <!-- Summary Cards -->

@@ -1,18 +1,26 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.views.generic import ListView, DetailView, CreateView, UpdateView
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib import messages
-from django.urls import reverse_lazy
-from django.db.models import Sum, Q
-from django.core.exceptions import ValidationError
-from datetime import date
+import logging
+from datetime import date, datetime
 from decimal import Decimal
 
-from apps.core.mixins import PermissionRequiredMixin, CreatePermissionMixin, UpdatePermissionMixin
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import ValidationError
+from django.db.models import Sum, Q
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse_lazy
+from django.views.generic import ListView, DetailView, CreateView, UpdateView
+
+from apps.core.mixins import (
+    PermissionRequiredMixin, CreatePermissionMixin, UpdatePermissionMixin,
+)
 from apps.core.utils import PermissionChecker
-from .models import AssetCategory, FixedAsset, AssetDepreciation
+from .models import (
+    AssetCategory, FixedAsset, AssetDepreciation, DepreciationBatchRun,
+)
 from .forms import AssetCategoryForm, FixedAssetForm, DisposalForm
+
+logger = logging.getLogger(__name__)
 
 
 # ============ ASSET CATEGORIES ============
@@ -82,6 +90,66 @@ class FixedAssetListView(PermissionRequiredMixin, ListView):
             queryset = queryset.filter(category_id=category)
         
         return queryset
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get('format') == 'excel':
+            return self._export_excel()
+        return super().get(request, *args, **kwargs)
+
+    def _export_excel(self):
+        from apps.finance.excel_exports import export_asset_register
+        from apps.finance.models import Account, JournalEntryLine
+        from django.db.models.functions import Coalesce
+
+        qs = self.get_queryset().order_by('asset_number')
+        today = date.today()
+
+        asset_data = []
+        for a in qs:
+            asset_data.append({
+                'asset_number': a.asset_number,
+                'name': a.name,
+                'category': a.category.name if a.category else '',
+                'status': a.get_status_display(),
+                'acquisition_date': a.acquisition_date,
+                'cost': a.acquisition_cost,
+                'accum_depreciation': a.accumulated_depreciation,
+                'book_value': a.book_value,
+                'method': a.get_depreciation_method_display(),
+                'useful_life': a.useful_life_years,
+                'has_journal': a.acquisition_journal_id is not None,
+            })
+
+        fa_cats = ['fixed_furniture', 'fixed_it', 'fixed_vehicles', 'fixed_other']
+        fa_gl = Account.objects.filter(account_type='asset', is_active=True, account_category__in=fa_cats)
+        ad_gl = Account.objects.filter(account_type='asset', is_active=True, account_category='accum_depreciation')
+
+        fa_agg = JournalEntryLine.objects.filter(
+            account__in=fa_gl, journal_entry__status='posted'
+        ).exclude(journal_entry__reference__startswith='TEST-CF-').aggregate(
+            d=Coalesce(Sum('debit'), Decimal('0')), c=Coalesce(Sum('credit'), Decimal('0'))
+        )
+        ad_agg = JournalEntryLine.objects.filter(
+            account__in=ad_gl, journal_entry__status='posted'
+        ).exclude(journal_entry__reference__startswith='TEST-CF-').aggregate(
+            d=Coalesce(Sum('debit'), Decimal('0')), c=Coalesce(Sum('credit'), Decimal('0'))
+        )
+
+        reg_cost = sum(a['cost'] for a in asset_data)
+        reg_accum = sum(a['accum_depreciation'] for a in asset_data)
+        gl_cost = fa_agg['d'] - fa_agg['c']
+        gl_accum = ad_agg['c'] - ad_agg['d']
+
+        reconciliation = {
+            'register_cost': reg_cost,
+            'gl_cost': gl_cost,
+            'register_accum': reg_accum,
+            'gl_accum': gl_accum,
+            'register_nbv': reg_cost - reg_accum,
+            'gl_nbv': gl_cost - gl_accum,
+        }
+
+        return export_asset_register(asset_data, reconciliation, today.isoformat())
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -233,41 +301,149 @@ def asset_dispose(request, pk):
 
 @login_required
 def run_depreciation(request):
-    """Run depreciation for all active assets."""
+    """Run depreciation for all active assets with full audit trail."""
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'assets', 'edit')):
         messages.error(request, 'Permission denied.')
         return redirect('assets:asset_list')
-    
+
+    active_assets = FixedAsset.objects.filter(
+        is_active=True, status='active'
+    ).select_related('category')
+    results = None
+    batch_run = None
+
     if request.method == 'POST':
-        depreciation_date_str = request.POST.get('depreciation_date')
+        depreciation_date_str = request.POST.get('depreciation_date', '')
         try:
-            from datetime import datetime
-            depreciation_date = datetime.strptime(depreciation_date_str, '%Y-%m-%d').date()
-        except:
+            depreciation_date = datetime.strptime(
+                depreciation_date_str, '%Y-%m-%d'
+            ).date()
+        except (ValueError, TypeError):
             depreciation_date = date.today().replace(day=1)
-        
-        active_assets = FixedAsset.objects.filter(is_active=True, status='active')
-        success_count = 0
-        error_count = 0
-        
-        for asset in active_assets:
-            try:
-                asset.run_depreciation(depreciation_date, user=request.user)
-                success_count += 1
-            except Exception as e:
-                error_count += 1
-        
-        if success_count > 0:
-            messages.success(request, f'Depreciation run completed. {success_count} assets depreciated.')
-        if error_count > 0:
-            messages.warning(request, f'{error_count} assets had errors.')
-        
-        return redirect('assets:asset_list')
-    
+
+        period = depreciation_date.strftime('%Y-%m')
+
+        existing_batch = DepreciationBatchRun.objects.filter(
+            period=period,
+            status__in=['completed', 'completed_with_errors'],
+        ).first()
+        if existing_batch:
+            messages.warning(
+                request,
+                f'Depreciation was already run for {period} '
+                f'(Batch: {existing_batch.batch_number}). '
+                f'Reverse the previous run before re-running.'
+            )
+        else:
+            batch_run = DepreciationBatchRun.objects.create(
+                depreciation_date=depreciation_date,
+                run_by=request.user,
+                total_assets=active_assets.count(),
+            )
+
+            results = []
+            success_count = 0
+            error_count = 0
+            skip_count = 0
+            total_depreciation = Decimal('0.00')
+            error_details = {}
+
+            for asset in active_assets:
+                validation_errors = asset.validate_for_depreciation(depreciation_date)
+
+                if validation_errors:
+                    is_skip = any(
+                        'already depreciated' in e.lower()
+                        or 'fully depreciated' in e.lower()
+                        for e in validation_errors
+                    )
+                    status = 'skipped' if is_skip else 'error'
+                    msg = '; '.join(validation_errors)
+                    results.append({
+                        'asset': asset,
+                        'status': status,
+                        'message': msg,
+                    })
+                    if is_skip:
+                        skip_count += 1
+                    else:
+                        error_count += 1
+                        error_details[asset.asset_number] = msg
+                    continue
+
+                try:
+                    journal = asset.run_depreciation(
+                        depreciation_date,
+                        user=request.user,
+                        batch_run=batch_run,
+                    )
+                    dep_record = AssetDepreciation.objects.filter(
+                        asset=asset, period=period
+                    ).first()
+                    amount = dep_record.depreciation_amount if dep_record else Decimal('0.00')
+                    total_depreciation += amount
+                    results.append({
+                        'asset': asset,
+                        'status': 'success',
+                        'amount': amount,
+                        'journal': journal.entry_number,
+                        'message': f'Depreciated AED {amount:,.2f}',
+                    })
+                    success_count += 1
+                except Exception as e:
+                    msg = str(e)
+                    logger.exception(
+                        "Depreciation failed for %s: %s",
+                        asset.asset_number, msg,
+                    )
+                    results.append({
+                        'asset': asset,
+                        'status': 'error',
+                        'message': msg,
+                    })
+                    error_count += 1
+                    error_details[asset.asset_number] = msg
+
+            batch_run.success_count = success_count
+            batch_run.error_count = error_count
+            batch_run.skip_count = skip_count
+            batch_run.total_depreciation = total_depreciation
+            batch_run.error_details = error_details
+            if error_count > 0 and success_count > 0:
+                batch_run.status = 'completed_with_errors'
+            elif error_count > 0:
+                batch_run.status = 'failed'
+            else:
+                batch_run.status = 'completed'
+            batch_run.save()
+
+            if success_count > 0:
+                messages.success(
+                    request,
+                    f'Depreciation completed: {success_count} assets '
+                    f'(AED {total_depreciation:,.2f}).'
+                )
+            if skip_count > 0:
+                messages.info(
+                    request,
+                    f'{skip_count} assets skipped '
+                    f'(already depreciated or fully depreciated).'
+                )
+            if error_count > 0:
+                messages.warning(
+                    request,
+                    f'{error_count} assets had errors. See details below.'
+                )
+
+    recent_batches = DepreciationBatchRun.objects.all()[:5]
+
     context = {
         'title': 'Run Depreciation',
-        'active_assets': FixedAsset.objects.filter(is_active=True, status='active').count(),
+        'active_assets': active_assets.count(),
         'today': date.today().strftime('%Y-%m-%d'),
+        'results': results,
+        'batch_run': batch_run,
+        'recent_batches': recent_batches,
     }
     return render(request, 'assets/run_depreciation.html', context)
 
@@ -312,12 +488,11 @@ def asset_register_report(request):
 
 @login_required
 def depreciation_report(request):
-    """Depreciation Schedule Report."""
+    """Depreciation Schedule Report - filters by depreciation posting date."""
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'assets', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
-    
-    # Get date range with robust parsing
+
     try:
         from_str = request.GET.get('from_date', '')
         to_str = request.GET.get('to_date', '')
@@ -326,21 +501,37 @@ def depreciation_report(request):
     except (ValueError, TypeError):
         from_date = date(date.today().year, 1, 1)
         to_date = date.today()
-    
+
+    category_id = request.GET.get('category', '')
+
     depreciation_records = AssetDepreciation.objects.filter(
         depreciation_date__gte=from_date,
-        depreciation_date__lte=to_date
-    ).select_related('asset', 'asset__category', 'journal_entry').order_by('depreciation_date')
-    
-    totals = depreciation_records.aggregate(
-        total_depreciation=Sum('depreciation_amount')
+        depreciation_date__lte=to_date,
+    ).select_related(
+        'asset', 'asset__category', 'journal_entry',
+    ).order_by('depreciation_date', 'asset__asset_number')
+
+    if category_id:
+        depreciation_records = depreciation_records.filter(
+            asset__category_id=category_id
+        )
+
+    # Also include records whose journal is posted (exclude draft-only if any)
+    depreciation_records = depreciation_records.filter(
+        Q(journal_entry__isnull=True) | Q(journal_entry__status='posted')
     )
-    
+
+    totals = depreciation_records.aggregate(
+        total_depreciation=Sum('depreciation_amount'),
+    )
+
     context = {
         'title': 'Depreciation Report',
         'depreciation_records': depreciation_records,
         'totals': totals,
         'from_date': from_date,
         'to_date': to_date,
+        'categories': AssetCategory.objects.filter(is_active=True),
+        'selected_category': category_id,
     }
     return render(request, 'assets/depreciation_report.html', context)

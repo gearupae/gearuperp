@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load humanize %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
@@ -20,18 +21,15 @@
             <div class="card-body">
                 <form method="post">
                     {% csrf_token %}
-                    
                     <div class="mb-4">
                         <label class="form-label">Depreciation Date</label>
                         <input type="date" name="depreciation_date" class="form-control" value="{{ today }}" required>
                         <small class="text-muted">Select the date for depreciation posting (usually first of month)</small>
                     </div>
-                    
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
                         <strong>{{ active_assets }}</strong> active assets will be depreciated.
                     </div>
-                    
                     <button type="submit" class="btn btn-primary" onclick="return confirm('Run depreciation for {{ active_assets }} active assets?');">
                         <i class="fas fa-play me-1"></i>Run Depreciation
                     </button>
@@ -39,7 +37,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
@@ -66,8 +64,133 @@
         </div>
     </div>
 </div>
+
+{% if results %}
+<!-- Batch Summary -->
+{% if batch_run %}
+<div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-clipboard-check me-2"></i>Batch: {{ batch_run.batch_number }}</h6>
+        <span class="badge {% if batch_run.status == 'completed' %}bg-success{% elif batch_run.status == 'completed_with_errors' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+            {{ batch_run.get_status_display }}
+        </span>
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-md-3">
+                <h5 class="mb-0 text-success">{{ batch_run.success_count }}</h5>
+                <small class="text-muted">Depreciated</small>
+            </div>
+            <div class="col-md-3">
+                <h5 class="mb-0 text-info">{{ batch_run.skip_count }}</h5>
+                <small class="text-muted">Skipped</small>
+            </div>
+            <div class="col-md-3">
+                <h5 class="mb-0 text-danger">{{ batch_run.error_count }}</h5>
+                <small class="text-muted">Errors</small>
+            </div>
+            <div class="col-md-3">
+                <h5 class="mb-0 text-primary">AED {{ batch_run.total_depreciation|floatformat:2|intcomma }}</h5>
+                <small class="text-muted">Total Depreciation</small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Per-Asset Results -->
+<div class="card mt-3">
+    <div class="card-header">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-list me-2"></i>Per-Asset Results</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Status</th>
+                        <th>Asset #</th>
+                        <th>Asset Name</th>
+                        <th>Category</th>
+                        <th class="text-end">Amount</th>
+                        <th>Journal</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr class="{% if result.status == 'success' %}table-success{% elif result.status == 'skipped' %}table-light{% else %}table-danger{% endif %}">
+                        <td>
+                            {% if result.status == 'success' %}
+                            <span class="badge bg-success">OK</span>
+                            {% elif result.status == 'skipped' %}
+                            <span class="badge bg-secondary">Skip</span>
+                            {% else %}
+                            <span class="badge bg-danger">Error</span>
+                            {% endif %}
+                        </td>
+                        <td><a href="{% url 'assets:asset_detail' result.asset.pk %}">{{ result.asset.asset_number }}</a></td>
+                        <td>{{ result.asset.name }}</td>
+                        <td>{{ result.asset.category.name }}</td>
+                        <td class="text-end">
+                            {% if result.amount %}AED {{ result.amount|floatformat:2|intcomma }}{% else %}-{% endif %}
+                        </td>
+                        <td>
+                            {% if result.journal %}{{ result.journal }}{% else %}-{% endif %}
+                        </td>
+                        <td><small>{{ result.message }}</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if recent_batches %}
+<div class="card mt-4">
+    <div class="card-header">
+        <h6 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>Recent Depreciation Runs</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Batch #</th>
+                        <th>Period</th>
+                        <th>Date Run</th>
+                        <th>Run By</th>
+                        <th class="text-center">Success</th>
+                        <th class="text-center">Skipped</th>
+                        <th class="text-center">Errors</th>
+                        <th class="text-end">Total Dep.</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for batch in recent_batches %}
+                    <tr>
+                        <td>{{ batch.batch_number }}</td>
+                        <td>{{ batch.period }}</td>
+                        <td>{{ batch.run_date|date:"d/m/Y H:i" }}</td>
+                        <td>{{ batch.run_by|default:"-" }}</td>
+                        <td class="text-center">{{ batch.success_count }}</td>
+                        <td class="text-center">{{ batch.skip_count }}</td>
+                        <td class="text-center">{{ batch.error_count }}</td>
+                        <td class="text-end">AED {{ batch.total_depreciation|floatformat:2|intcomma }}</td>
+                        <td>
+                            <span class="badge {% if batch.status == 'completed' %}bg-success{% elif batch.status == 'completed_with_errors' %}bg-warning text-dark{% elif batch.status == 'running' %}bg-info{% else %}bg-danger{% endif %}">
+                                {{ batch.get_status_display }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
-
-
-
-

@@ -84,10 +84,10 @@
 </div>
 
 <!-- Source Information -->
-{% if ar_account %}
+{% if ar_accounts %}
 <div class="alert alert-info mb-4">
     <i class="fas fa-info-circle me-2"></i>
-    Reading from: <strong>{{ ar_account.code }} - {{ ar_account.name }}</strong> (Journal Entries)
+    Reading from: {% for acc in ar_accounts %}<strong>{{ acc.code }} - {{ acc.name }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %} (Journal Entries)
 </div>
 {% endif %}
 

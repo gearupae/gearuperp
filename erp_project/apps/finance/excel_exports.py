@@ -590,24 +590,21 @@ def export_ar_aging(customers, as_of_date):
 # ============ AP AGING EXPORT ============
 
 def export_ap_aging(vendors, as_of_date):
-    """Export AP Aging to Excel."""
+    """Export AP Aging to Excel with GL reconciliation."""
     wb = Workbook()
     ws = wb.active
     ws.title = 'AP Aging'
-    
-    # Title
+
     style_title_row(ws, 1, f'Accounts Payable Aging as of {as_of_date}', 7)
-    
-    # Headers
-    headers = ['Vendor', 'Current', '1-30 Days', '31-60 Days', '61-90 Days', 'Over 90 Days', 'Total']
+
+    headers = ['Reference', 'Current', '1-30 Days', '31-60 Days', '61-90 Days', 'Over 90 Days', 'Total']
     for col, header in enumerate(headers, 1):
         ws.cell(row=3, column=col, value=header)
     style_header_row(ws, 3, len(headers))
-    
-    # Data
+
     row = 4
     totals = {'current': 0, '1_30': 0, '31_60': 0, '61_90': 0, 'over_90': 0, 'total': 0}
-    
+
     for vendor in vendors:
         ws.cell(row=row, column=1, value=vendor.get('name', ''))
         ws.cell(row=row, column=2, value=format_currency(vendor.get('current', 0)))
@@ -616,7 +613,7 @@ def export_ap_aging(vendors, as_of_date):
         ws.cell(row=row, column=5, value=format_currency(vendor.get('61_90', vendor.get('days_61_90', 0))))
         ws.cell(row=row, column=6, value=format_currency(vendor.get('over_90', vendor.get('days_over_90', 0))))
         ws.cell(row=row, column=7, value=format_currency(vendor.get('total', 0)))
-        
+
         totals['current'] += vendor.get('current', 0) or 0
         totals['1_30'] += vendor.get('1_30', vendor.get('days_1_30', 0)) or 0
         totals['31_60'] += vendor.get('31_60', vendor.get('days_31_60', 0)) or 0
@@ -624,8 +621,7 @@ def export_ap_aging(vendors, as_of_date):
         totals['over_90'] += vendor.get('over_90', vendor.get('days_over_90', 0)) or 0
         totals['total'] += vendor.get('total', 0) or 0
         row += 1
-    
-    # Totals row
+
     ws.cell(row=row, column=1, value='TOTAL')
     ws.cell(row=row, column=1).font = Font(bold=True)
     for col in range(2, 8):
@@ -636,9 +632,76 @@ def export_ap_aging(vendors, as_of_date):
     ws.cell(row=row, column=5, value=format_currency(totals['61_90']))
     ws.cell(row=row, column=6, value=format_currency(totals['over_90']))
     ws.cell(row=row, column=7, value=format_currency(totals['total']))
-    
+
     auto_width_columns(ws)
-    
+
+    # --- Sheet 2: GL Reconciliation ---
+    ws2 = wb.create_sheet('GL Reconciliation')
+    style_title_row(ws2, 1, 'AP GL Reconciliation', 4)
+    ws2.cell(row=2, column=1, value=f'As of: {as_of_date}')
+
+    from apps.finance.models import Account, JournalEntryLine
+    from django.db.models import Sum
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+
+    ap_account = Account.objects.filter(code='2000', is_active=True).first()
+    if ap_account:
+        agg = JournalEntryLine.objects.filter(
+            account=ap_account, journal_entry__status='posted',
+        ).aggregate(
+            d=Coalesce(Sum('debit'), Decimal('0')),
+            c=Coalesce(Sum('credit'), Decimal('0')),
+        )
+        gl_bal = agg['c'] - agg['d']
+        report_total = Decimal(str(totals['total']))
+
+        r = 4
+        rec_headers = ['Description', 'Amount (AED)', 'Status']
+        for col, h in enumerate(rec_headers, 1):
+            c = ws2.cell(row=r, column=col, value=h)
+            c.font = Font(bold=True)
+            c.fill = PatternFill(start_color='DDDDDD', fill_type='solid')
+        r += 1
+
+        ok_fill = PatternFill(start_color='C6EFCE', fill_type='solid')
+        err_fill = PatternFill(start_color='FFC7CE', fill_type='solid')
+
+        ws2.cell(row=r, column=1, value='AP GL Balance (2000)')
+        ws2.cell(row=r, column=2, value=format_currency(gl_bal))
+        r += 1
+        ws2.cell(row=r, column=1, value='AP Aging Report Total')
+        ws2.cell(row=r, column=2, value=format_currency(report_total))
+        r += 1
+
+        diff = abs(gl_bal - report_total)
+        match = diff < Decimal('0.01')
+        ws2.cell(row=r, column=1, value='Difference')
+        ws2.cell(row=r, column=1).font = Font(bold=True)
+        ws2.cell(row=r, column=2, value=format_currency(diff))
+        status_cell = ws2.cell(row=r, column=3, value='RECONCILED' if match else 'MISMATCH')
+        status_cell.fill = ok_fill if match else err_fill
+        status_cell.font = Font(bold=True)
+
+        r += 2
+        ws2.cell(row=r, column=1, value='Unpaid Vendor Bills')
+        ws2.cell(row=r, column=1).font = Font(bold=True)
+        r += 1
+
+        from apps.purchase.models import VendorBill
+        for b in VendorBill.objects.filter(status__in=['posted', 'partial']).order_by('bill_date'):
+            out = b.total_amount - b.paid_amount
+            if out > 0:
+                ws2.cell(row=r, column=1, value=f'{b.bill_number} (due: {b.due_date})')
+                ws2.cell(row=r, column=2, value=format_currency(out))
+                overdue = (date.today() - b.due_date).days if b.due_date else 0
+                if overdue > 0:
+                    ws2.cell(row=r, column=3, value=f'OVERDUE {overdue} days')
+                    ws2.cell(row=r, column=3).font = Font(color='FF0000')
+                r += 1
+
+    auto_width_columns(ws2)
+
     response = create_excel_response(f'ap_aging_{as_of_date}.xlsx')
     wb.save(response)
     return response
@@ -647,56 +710,160 @@ def export_ap_aging(vendors, as_of_date):
 # ============ VAT REPORT EXPORT ============
 
 def export_vat_report(data, start_date, end_date):
-    """Export VAT Report to Excel."""
+    """Export VAT Report to Excel with GL reconciliation."""
     wb = Workbook()
     ws = wb.active
     ws.title = 'VAT Report'
-    
-    # Title
-    style_title_row(ws, 1, f'VAT Report', 4)
+
+    is_submitted = data.get('is_submitted', False)
+    source_label = 'Filed VAT Return' if is_submitted else 'Calculated from GL'
+    return_number = data.get('vat_return_number', '')
+    return_status = data.get('vat_return_status', 'draft')
+
+    style_title_row(ws, 1, 'UAE VAT Return Report (FTA Format)', 4)
     ws.cell(row=2, column=1, value=f'Period: {start_date} to {end_date}')
-    
-    row = 4
-    
-    # Output VAT
+    ws.cell(row=3, column=1, value=f'Data Source: {source_label}')
+    if return_number:
+        ws.cell(row=3, column=3, value=f'Return #: {return_number}  Status: {return_status}')
+
+    row = 5
+
+    header_fill = PatternFill(start_color='E2EFDA', fill_type='solid')
+    for col, h in enumerate(['Description', 'Taxable Amount (AED)', 'VAT Amount (AED)'], 1):
+        c = ws.cell(row=row, column=col, value=h)
+        c.font = Font(bold=True)
+        c.fill = header_fill
+    row += 1
+
     ws.cell(row=row, column=1, value='OUTPUT VAT (Sales)')
     ws.cell(row=row, column=1).font = Font(bold=True)
     row += 1
-    
-    ws.cell(row=row, column=1, value='Standard Rated Sales')
+
+    ws.cell(row=row, column=1, value='Standard Rated Supplies (Box 1)')
     ws.cell(row=row, column=2, value=format_currency(data.get('standard_sales', 0)))
     ws.cell(row=row, column=3, value=format_currency(data.get('output_vat', 0)))
     row += 1
-    
-    ws.cell(row=row, column=1, value='Zero Rated Sales')
+
+    ws.cell(row=row, column=1, value='Zero Rated Supplies (Box 3)')
     ws.cell(row=row, column=2, value=format_currency(data.get('zero_rated_sales', 0)))
     ws.cell(row=row, column=3, value=format_currency(0))
     row += 1
-    
-    ws.cell(row=row, column=1, value='Exempt Sales')
+
+    ws.cell(row=row, column=1, value='Exempt Supplies (Box 4)')
     ws.cell(row=row, column=2, value=format_currency(data.get('exempt_sales', 0)))
     ws.cell(row=row, column=3, value=format_currency(0))
-    row += 2
-    
-    # Input VAT
+    row += 1
+
+    out_of_scope = data.get('out_of_scope_sales', 0)
+    if out_of_scope:
+        ws.cell(row=row, column=1, value='Out of Scope Supplies')
+        ws.cell(row=row, column=2, value=format_currency(out_of_scope))
+        row += 1
+
+    row += 1
     ws.cell(row=row, column=1, value='INPUT VAT (Purchases)')
     ws.cell(row=row, column=1).font = Font(bold=True)
     row += 1
-    
-    ws.cell(row=row, column=1, value='Standard Rated Purchases')
+
+    ws.cell(row=row, column=1, value='Standard Rated Expenses (Box 9)')
     ws.cell(row=row, column=2, value=format_currency(data.get('standard_purchases', 0)))
     ws.cell(row=row, column=3, value=format_currency(data.get('input_vat', 0)))
     row += 2
-    
-    # Net VAT
+
+    adjustments = data.get('adjustments', 0) or 0
+    if adjustments:
+        ws.cell(row=row, column=1, value='Adjustments')
+        ws.cell(row=row, column=1).font = Font(bold=True)
+        ws.cell(row=row, column=3, value=format_currency(adjustments))
+        row += 1
+
+    net_vat = data.get('net_vat', 0) or ((data.get('output_vat', 0) or 0) - (data.get('input_vat', 0) or 0))
     ws.cell(row=row, column=1, value='NET VAT PAYABLE / (REFUNDABLE)')
     ws.cell(row=row, column=1).font = Font(bold=True, size=12)
-    net_vat = (data.get('output_vat', 0) or 0) - (data.get('input_vat', 0) or 0)
     ws.cell(row=row, column=3, value=format_currency(net_vat))
     ws.cell(row=row, column=3).font = Font(bold=True, size=12)
-    
+
     auto_width_columns(ws)
-    
+
+    # --- Sheet 2: GL Reconciliation ---
+    ws2 = wb.create_sheet('GL Reconciliation')
+    style_title_row(ws2, 1, 'VAT GL Reconciliation', 5)
+    ws2.cell(row=2, column=1, value=f'Period: {start_date} to {end_date}')
+
+    r = 4
+    rec_headers = ['Account', 'GL Balance', 'Report Amount', 'Difference', 'Status']
+    for col, h in enumerate(rec_headers, 1):
+        c = ws2.cell(row=r, column=col, value=h)
+        c.font = Font(bold=True)
+        c.fill = PatternFill(start_color='DDDDDD', fill_type='solid')
+    r += 1
+
+    from apps.finance.models import Account, JournalEntryLine
+    from django.db.models import Sum, Q
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+
+    vat_out_accs = Account.objects.filter(code='2110', is_active=True)
+    vat_in_accs = Account.objects.filter(code='1300', is_active=True)
+    vat_net_accs = Account.objects.filter(code='2120', is_active=True)
+
+    def _gl_bal(accounts, normal='credit'):
+        agg = JournalEntryLine.objects.filter(
+            account__in=accounts, journal_entry__status='posted',
+        ).exclude(
+            journal_entry__reference__startswith='TEST-CF-'
+        ).aggregate(
+            d=Coalesce(Sum('debit'), Decimal('0')),
+            c=Coalesce(Sum('credit'), Decimal('0')),
+        )
+        return agg['c'] - agg['d'] if normal == 'credit' else agg['d'] - agg['c']
+
+    output_gl = _gl_bal(vat_out_accs, 'credit')
+    input_gl = _gl_bal(vat_in_accs, 'debit')
+    net_gl = _gl_bal(vat_net_accs, 'credit')
+
+    report_output = data.get('output_vat', 0) or Decimal('0')
+    report_input = data.get('input_vat', 0) or Decimal('0')
+    report_net = net_vat if net_vat else Decimal('0')
+
+    ok_fill = PatternFill(start_color='C6EFCE', fill_type='solid')
+    err_fill = PatternFill(start_color='FFC7CE', fill_type='solid')
+
+    for label, gl_val, rpt_val in [
+        ('2110 VAT Output', output_gl, report_output),
+        ('1300 VAT Input', input_gl, report_input),
+        ('2120 VAT Net Payable', net_gl, report_net),
+    ]:
+        diff = abs(Decimal(str(gl_val)) - Decimal(str(rpt_val)))
+        match = diff < Decimal('0.01')
+        ws2.cell(row=r, column=1, value=label)
+        ws2.cell(row=r, column=2, value=format_currency(gl_val))
+        ws2.cell(row=r, column=3, value=format_currency(rpt_val))
+        ws2.cell(row=r, column=4, value=format_currency(diff))
+        status_cell = ws2.cell(row=r, column=5, value='MATCH' if match else 'MISMATCH')
+        status_cell.fill = ok_fill if match else err_fill
+        r += 1
+
+    r += 2
+    ws2.cell(row=r, column=1, value='Settlement Status')
+    ws2.cell(row=r, column=1).font = Font(bold=True)
+    r += 1
+    settled_dr = JournalEntryLine.objects.filter(
+        account__in=vat_net_accs, journal_entry__status='posted', debit__gt=0
+    ).aggregate(d=Coalesce(Sum('debit'), Decimal('0')))['d']
+    remaining = net_gl - settled_dr if net_gl > settled_dr else Decimal('0')
+    ws2.cell(row=r, column=1, value='Total Liability')
+    ws2.cell(row=r, column=2, value=format_currency(net_gl))
+    r += 1
+    ws2.cell(row=r, column=1, value='Amount Settled')
+    ws2.cell(row=r, column=2, value=format_currency(settled_dr))
+    r += 1
+    ws2.cell(row=r, column=1, value='Outstanding')
+    ws2.cell(row=r, column=2, value=format_currency(remaining))
+    ws2.cell(row=r, column=2).font = Font(bold=True, color='FF0000' if remaining > 0 else '008000')
+
+    auto_width_columns(ws2)
+
     response = create_excel_response(f'vat_report_{start_date}_to_{end_date}.xlsx')
     wb.save(response)
     return response
@@ -1265,6 +1432,85 @@ def export_vat_audit(start_date, end_date, transactions, box_totals):
 
 # ============ TAX RECONCILIATION BRIDGE EXPORT ============
 
+def export_bank_vs_gl(comparison_data, as_of_date):
+    """Export Bank vs GL Ledger Comparison to Excel."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Bank vs GL'
+
+    style_title_row(ws, 1, 'Bank vs GL Ledger Comparison', 7)
+    ws.cell(row=2, column=1, value=f'As of: {as_of_date}')
+
+    headers = [
+        'Bank Account', 'Account Number', 'Bank Name',
+        'GL Balance (AED)', 'Bank Balance (AED)', 'Difference (AED)',
+        'Last Reconciled', 'Status',
+    ]
+    for col, header in enumerate(headers, 1):
+        ws.cell(row=4, column=col, value=header)
+    style_header_row(ws, 4, len(headers))
+
+    row = 5
+    total_gl = Decimal('0.00')
+    total_bank = Decimal('0.00')
+    total_diff = Decimal('0.00')
+
+    diff_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+    match_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+
+    for data in comparison_data:
+        bank = data['bank']
+        gl_bal = data.get('gl_balance', Decimal('0.00')) or Decimal('0.00')
+        bank_bal = data.get('bank_balance', Decimal('0.00')) or Decimal('0.00')
+        diff = data.get('difference', Decimal('0.00')) or Decimal('0.00')
+
+        ws.cell(row=row, column=1, value=bank.name)
+        ws.cell(row=row, column=2, value=bank.account_number)
+        ws.cell(row=row, column=3, value=bank.bank_name)
+        ws.cell(row=row, column=4, value=format_currency(gl_bal))
+        ws.cell(row=row, column=5, value=format_currency(bank_bal))
+
+        diff_cell = ws.cell(row=row, column=6, value=format_currency(diff))
+        if abs(diff) >= Decimal('0.01'):
+            diff_cell.font = Font(bold=True, color='FF0000')
+
+        last_recon = data.get('last_reconciled')
+        ws.cell(
+            row=row, column=7,
+            value=last_recon.strftime('%d/%m/%Y') if last_recon else 'Never',
+        )
+
+        status = data.get('recon_status', '')
+        status_label = {
+            'reconciled': 'Reconciled',
+            'difference': 'Difference',
+            'not_reconciled': 'Not Reconciled',
+        }.get(status, status)
+        status_cell = ws.cell(row=row, column=8, value=status_label)
+        if status == 'reconciled':
+            status_cell.fill = match_fill
+        elif status == 'difference':
+            status_cell.fill = diff_fill
+
+        total_gl += gl_bal
+        total_bank += bank_bal
+        total_diff += diff
+        row += 1
+
+    for col in range(1, len(headers) + 1):
+        ws.cell(row=row, column=col).border = Border(top=Side(style='double'))
+    ws.cell(row=row, column=1, value='TOTAL').font = Font(bold=True)
+    ws.cell(row=row, column=4, value=format_currency(total_gl)).font = Font(bold=True)
+    ws.cell(row=row, column=5, value=format_currency(total_bank)).font = Font(bold=True)
+    ws.cell(row=row, column=6, value=format_currency(total_diff)).font = Font(bold=True)
+
+    auto_width_columns(ws)
+
+    response = create_excel_response(f'bank_vs_gl_{as_of_date}.xlsx')
+    wb.save(response)
+    return response
+
+
 def export_tax_reconciliation(ct_bridge, vat_revenue_bridge, vat_liability_bridge, fiscal_year, vat_return):
     """Export Tax Reconciliation Bridge Report to Excel."""
     wb = Workbook()
@@ -1385,6 +1631,103 @@ def export_tax_reconciliation(ct_bridge, vat_revenue_bridge, vat_liability_bridg
 
     fy_name = fiscal_year.name.replace(' ', '_') if fiscal_year else 'none'
     response = create_excel_response(f'tax_reconciliation_{fy_name}.xlsx')
+    wb.save(response)
+    return response
+
+
+# ============ ASSET REGISTER EXPORT ============
+
+def export_asset_register(assets, gl_reconciliation=None, as_of_date=None):
+    """Export Fixed Asset Register with GL reconciliation to Excel."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Asset Register'
+
+    title = 'Fixed Asset Register'
+    if as_of_date:
+        title += f' as of {as_of_date}'
+    style_title_row(ws, 1, title, 10)
+
+    headers = [
+        'Asset #', 'Name', 'Category', 'Status',
+        'Acquisition Date', 'Cost', 'Accum Depreciation',
+        'Book Value', 'Method', 'Useful Life (Yrs)',
+    ]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=3, column=col, value=h)
+    style_header_row(ws, 3, len(headers))
+
+    row = 4
+    totals = {'cost': Decimal('0'), 'accum': Decimal('0'), 'nbv': Decimal('0')}
+    for a in assets:
+        cost = a.get('cost', Decimal('0'))
+        accum = a.get('accum_depreciation', Decimal('0'))
+        nbv = a.get('book_value', cost - accum)
+        totals['cost'] += cost
+        totals['accum'] += accum
+        totals['nbv'] += nbv
+
+        ws.cell(row=row, column=1, value=a.get('asset_number', ''))
+        ws.cell(row=row, column=2, value=a.get('name', ''))
+        ws.cell(row=row, column=3, value=a.get('category', ''))
+        ws.cell(row=row, column=4, value=a.get('status', ''))
+        ws.cell(row=row, column=5, value=str(a.get('acquisition_date', '')))
+        ws.cell(row=row, column=6, value=format_currency(cost))
+        ws.cell(row=row, column=7, value=format_currency(accum))
+        ws.cell(row=row, column=8, value=format_currency(nbv))
+        ws.cell(row=row, column=9, value=a.get('method', ''))
+        ws.cell(row=row, column=10, value=a.get('useful_life', ''))
+
+        has_je = a.get('has_journal', False)
+        if not has_je:
+            for c in range(1, 11):
+                ws.cell(row=row, column=c).fill = PatternFill(
+                    start_color='FFD7D7', end_color='FFD7D7', fill_type='solid'
+                )
+        row += 1
+
+    ws.cell(row=row, column=5, value='TOTAL')
+    ws.cell(row=row, column=5).font = Font(bold=True)
+    ws.cell(row=row, column=6, value=format_currency(totals['cost']))
+    ws.cell(row=row, column=7, value=format_currency(totals['accum']))
+    ws.cell(row=row, column=8, value=format_currency(totals['nbv']))
+    for c in range(5, 9):
+        ws.cell(row=row, column=c).font = Font(bold=True)
+
+    if gl_reconciliation:
+        row += 2
+        ws2 = wb.create_sheet('GL Reconciliation')
+        style_title_row(ws2, 1, 'Asset Register vs GL Reconciliation', 4)
+
+        rec_headers = ['', 'Asset Register', 'GL Balance', 'Difference']
+        for col, h in enumerate(rec_headers, 1):
+            ws2.cell(row=3, column=col, value=h)
+        style_header_row(ws2, 3, len(rec_headers))
+
+        r = 4
+        for label, reg_key, gl_key in [
+            ('Gross Cost', 'register_cost', 'gl_cost'),
+            ('Accum Depreciation', 'register_accum', 'gl_accum'),
+            ('Net Book Value', 'register_nbv', 'gl_nbv'),
+        ]:
+            reg_val = gl_reconciliation.get(reg_key, Decimal('0'))
+            gl_val = gl_reconciliation.get(gl_key, Decimal('0'))
+            diff = reg_val - gl_val
+            ws2.cell(row=r, column=1, value=label)
+            ws2.cell(row=r, column=2, value=format_currency(reg_val))
+            ws2.cell(row=r, column=3, value=format_currency(gl_val))
+            ws2.cell(row=r, column=4, value=format_currency(diff))
+
+            match_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+            mismatch_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+            ws2.cell(row=r, column=4).fill = match_fill if abs(diff) < Decimal('0.01') else mismatch_fill
+            r += 1
+
+        auto_width_columns(ws2)
+
+    auto_width_columns(ws)
+
+    response = create_excel_response(f'asset_register_{as_of_date or "all"}.xlsx')
     wb.save(response)
     return response
 

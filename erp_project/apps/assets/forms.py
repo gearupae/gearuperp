@@ -8,7 +8,8 @@ class AssetCategoryForm(forms.ModelForm):
         fields = [
             'name', 'code', 'description',
             'depreciation_method', 'useful_life_years', 'salvage_value_percent',
-            'asset_account', 'depreciation_expense_account', 'accumulated_depreciation_account'
+            'partial_month_policy', 'depreciation_start_policy',
+            'asset_account', 'depreciation_expense_account', 'accumulated_depreciation_account',
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -17,6 +18,8 @@ class AssetCategoryForm(forms.ModelForm):
             'depreciation_method': forms.Select(attrs={'class': 'form-select'}),
             'useful_life_years': forms.NumberInput(attrs={'class': 'form-control'}),
             'salvage_value_percent': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'partial_month_policy': forms.Select(attrs={'class': 'form-select'}),
+            'depreciation_start_policy': forms.Select(attrs={'class': 'form-select'}),
             'asset_account': forms.Select(attrs={'class': 'form-select'}),
             'depreciation_expense_account': forms.Select(attrs={'class': 'form-select'}),
             'accumulated_depreciation_account': forms.Select(attrs={'class': 'form-select'}),

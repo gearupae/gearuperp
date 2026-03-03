@@ -126,7 +126,24 @@ class Account(BaseModel):
         default=False,
         help_text="Mark as True for Fixed Deposit accounts. These are EXCLUDED from Cash Flow Statement opening/closing balance."
     )
-    
+
+    CASH_FLOW_CHOICES = [
+        ('auto', 'Automatic (Derived)'),
+        ('operating', 'Operating'),
+        ('investing', 'Investing'),
+        ('financing', 'Financing'),
+        ('excluded', 'Excluded from Cash Flow'),
+    ]
+    cash_flow_classification = models.CharField(
+        max_length=20,
+        choices=CASH_FLOW_CHOICES,
+        default='auto',
+        help_text=(
+            "Cash flow statement classification for this account. "
+            "'Auto' derives classification from account type and category."
+        ),
+    )
+
     # Balance tracking
     opening_balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
@@ -562,7 +579,117 @@ class JournalEntry(BaseModel):
         for line in self.lines.all():
             if not line.account.is_leaf:
                 errors.append(f"Cannot post to parent account: {line.account.code}. Only leaf accounts allowed.")
-        
+
+        # AR-clearing guard: block Dr Bank / Cr Revenue on ANY source module
+        # except 'sales' (invoice posting) where Cr Revenue is correct.
+        # AP-bypass guard: Dr Expense / Cr Bank when AP is outstanding.
+        _GUARD_EXEMPT = frozenset({'sales', 'purchase', 'vat', 'vat_return', 'depreciation', 'system'})
+        if self.source_module not in _GUARD_EXEMPT:
+            lines = list(self.lines.all())
+            has_bank_debit = any(
+                l.debit > 0 and l.account.is_cash_account for l in lines
+            )
+            has_bank_credit = any(
+                l.credit > 0 and l.account.is_cash_account for l in lines
+            )
+            has_revenue_credit = any(
+                l.credit > 0 and l.account.account_type == AccountType.INCOME
+                for l in lines
+            )
+            has_expense_debit = any(
+                l.debit > 0 and l.account.account_type == AccountType.EXPENSE
+                for l in lines
+            )
+
+            if has_bank_debit and has_revenue_credit:
+                errors.append(
+                    "This journal debits a Bank/Cash account and credits a Revenue account. "
+                    "Customer payments must clear Accounts Receivable, not Revenue. "
+                    "Use the Payment module (Dr Bank / Cr AR). Crediting Revenue directly "
+                    "causes revenue overstatement, AR aging distortion, and tax base errors."
+                )
+
+            if has_expense_debit and has_bank_credit:
+                ap_balance = JournalEntryLine.objects.filter(
+                    account__code='2000',
+                    journal_entry__status='posted',
+                ).aggregate(
+                    dr=Sum('debit'), cr=Sum('credit'),
+                )
+                outstanding_ap = (ap_balance['cr'] or Decimal('0')) - (ap_balance['dr'] or Decimal('0'))
+                if outstanding_ap > 0:
+                    errors.append(
+                        f"This journal debits an Expense account and credits Bank directly, "
+                        f"but there is AED {outstanding_ap:,.2f} in outstanding Accounts Payable. "
+                        f"Use the Payment module (Dr AP / Cr Bank) to clear vendor invoices. "
+                        f"Direct expense booking bypasses AP and leaves invoices unpaid."
+                    )
+
+        # VAT control accounts (1300, 2110, 2120) must only be moved by
+        # system-generated modules (sales, purchase, vat, vat_return).
+        # Manual or payment postings to VAT accounts create FTA compliance risk.
+        _VAT_ALLOWED_SOURCES = frozenset({
+            'sales', 'purchase', 'vat', 'vat_return', 'opening_balance', 'system',
+        })
+        if self.source_module not in _VAT_ALLOWED_SOURCES:
+            _vat_cats = frozenset({'tax_receivables', 'tax_payables'})
+            lines_list = lines if 'lines' in dir() else list(self.lines.all())
+            vat_touched = [
+                l for l in lines_list
+                if l.account.account_category in _vat_cats
+                or l.account.code in ('1300', '2110', '2120')
+            ]
+            if vat_touched:
+                vat_names = ', '.join(
+                    f"{l.account.code} {l.account.name}" for l in vat_touched
+                )
+                errors.append(
+                    f"VAT control accounts ({vat_names}) can only be posted to by "
+                    f"Sales, Purchase, or VAT Return modules. Manual posting to VAT "
+                    f"accounts creates FTA compliance risk and VAT reconciliation errors."
+                )
+
+        # Revenue accounts must only be posted via system modules (sales,
+        # adjustment, credit_note, property, etc.).  Manual revenue credits
+        # cause overstatement, AR distortion, and corporate-tax base errors.
+        _REV_ALLOWED_SOURCES = frozenset({
+            'sales', 'adjustment', 'credit_note', 'system', 'opening_balance',
+            'property', 'bank_reconciliation',
+        })
+        if self.source_module not in _REV_ALLOWED_SOURCES:
+            lines_list = lines if 'lines' in dir() else list(self.lines.all())
+            rev_touched = [
+                l for l in lines_list
+                if l.account.account_type == AccountType.INCOME
+            ]
+            if rev_touched:
+                rev_names = ', '.join(
+                    f"{l.account.code} {l.account.name}" for l in rev_touched
+                )
+                errors.append(
+                    f"Revenue accounts ({rev_names}) can only be posted to by "
+                    f"Sales, Adjustment, or Credit Note modules. Manual posting "
+                    f"to revenue accounts causes revenue overstatement, AR distortion, "
+                    f"and corporate tax base errors. Use invoice workflow instead."
+                )
+
+        # Opening balance entries must have an equity balancing leg (Share Capital
+        # or Retained Earnings). Without this, assets get created without a funding
+        # source, which is an audit-critical structural flaw.
+        if self.source_module == 'opening_balance' or (
+            self.entry_type in ('opening', 'opening_balance')
+        ):
+            lines = list(self.lines.all())
+            has_equity_line = any(
+                l.account.account_type == AccountType.EQUITY for l in lines
+            )
+            if not has_equity_line:
+                errors.append(
+                    "Opening balance entries must include an Equity account "
+                    "(Share Capital or Retained Earnings) as the balancing entry. "
+                    "Assets cannot be created without a funding source."
+                )
+
         # Store bypass flag for audit (validate returns before post, so we attach to self)
         self._post_bypass_used = bypass_used
         return errors

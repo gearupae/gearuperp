@@ -17,9 +17,14 @@
                 </ol>
             </nav>
         </div>
-        <button class="btn btn-outline-dark" onclick="window.print()">
-            <i class="fas fa-print me-1"></i>Print
-        </button>
+        <div class="d-flex gap-2">
+            <a href="?date={{ as_of_date }}&format=excel" class="btn btn-success">
+                <i class="fas fa-file-excel me-1"></i>Export Excel
+            </a>
+            <button class="btn btn-outline-dark" onclick="window.print()">
+                <i class="fas fa-print me-1"></i>Print
+            </button>
+        </div>
     </div>
 
     <!-- Filters -->

@@ -825,7 +825,7 @@ def invoice_receive_payment(request, pk):
             status='draft',
         )
         
-        # Get accounts using Account Mapping
+        # Get accounts using Account Mapping — strict AR resolution, no Revenue fallback
         ar_account = AccountMapping.get_account_or_default('customer_receipt_ar_clear', '1200')
         if not ar_account:
             ar_account = Account.objects.filter(
@@ -833,7 +833,13 @@ def invoice_receive_payment(request, pk):
             ).first()
         
         if not ar_account:
-            messages.error(request, 'Accounts Receivable account not configured.')
+            messages.error(request, 'Accounts Receivable account not configured. '
+                           'Set up "customer_receipt_ar_clear" in Account Mapping.')
+            return redirect('sales:invoice_detail', pk=pk)
+        
+        if ar_account.account_type == AccountType.INCOME:
+            messages.error(request, 'AR clearing account is mapped to a Revenue account. '
+                           'Payments must credit Accounts Receivable, not Revenue.')
             return redirect('sales:invoice_detail', pk=pk)
         
         # Get bank GL account

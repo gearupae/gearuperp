@@ -3809,26 +3809,148 @@ def tax_reconciliation(request):
 
 # ============ ADDITIONAL REPORTS ============
 
+# ============ CASH FLOW CLASSIFICATION HELPERS (IAS 7) ============
+
+# account_category values that map to Investing
+_CF_INVESTING_CATEGORIES = frozenset({
+    'fixed_furniture', 'fixed_it', 'fixed_vehicles', 'fixed_other',
+    'accum_depreciation', 'intangible',
+})
+
+# account_category values that map to Financing
+_CF_FINANCING_CATEGORIES = frozenset({
+    'capital', 'reserves', 'retained_earnings',
+    'long_term_liabilities',
+})
+
+# Name sub-strings that signal Investing
+_CF_INVESTING_KEYWORDS = (
+    'fixed asset', 'furniture', 'equipment', 'vehicle', 'machinery',
+    'building', 'land', 'intangible', 'capital work', 'cwip',
+    'investment', 'property plant', 'accumulated depreciation',
+)
+
+# Name sub-strings that signal Financing
+_CF_FINANCING_KEYWORDS = (
+    'loan', 'borrowing', 'mortgage', 'finance lease',
+    'share capital', 'capital account', 'owner equity',
+    'drawing', 'dividend', 'partner capital', 'owner contribution',
+    'long term', 'long-term', 'term loan',
+)
+
+
+def _classify_account_for_cash_flow(account):
+    """
+    Classify a GL account for cash flow purposes (IAS 7).
+
+    Priority order:
+      1. Explicit ``cash_flow_classification`` on the account (if not 'auto')
+      2. ``account_category`` mapping
+      3. ``account_type`` (equity → financing; income/expense → operating)
+      4. Name-keyword heuristics
+      5. Account-code pattern (14xx → investing)
+      6. Default → operating
+    """
+    explicit = getattr(account, 'cash_flow_classification', 'auto') or 'auto'
+    if explicit != 'auto':
+        return explicit  # 'operating', 'investing', 'financing', or 'excluded'
+
+    cat = getattr(account, 'account_category', '') or ''
+    atype = account.account_type
+    name_lower = account.name.lower()
+    code = account.code
+
+    if cat in _CF_INVESTING_CATEGORIES:
+        return 'investing'
+    if cat in _CF_FINANCING_CATEGORIES:
+        return 'financing'
+
+    if atype == AccountType.EQUITY:
+        return 'financing'
+    if atype in (AccountType.INCOME, AccountType.EXPENSE):
+        return 'operating'
+
+    if any(kw in name_lower for kw in _CF_INVESTING_KEYWORDS):
+        return 'investing'
+    if any(kw in name_lower for kw in _CF_FINANCING_KEYWORDS):
+        return 'financing'
+
+    if atype == AccountType.ASSET and code.startswith('14'):
+        return 'investing'
+
+    return 'operating'
+
+
+def _cash_flow_category_label(classification, account, amount, source_module):
+    """Return a human-readable category label for the cash flow line item."""
+    name = account.name.lower()
+    atype = account.account_type
+    is_inflow = amount > 0
+
+    if classification == 'investing':
+        if 'accumulated depreciation' in name:
+            return 'Disposal of fixed assets'
+        if 'intangible' in name:
+            return 'Purchase of intangible assets' if not is_inflow else 'Sale of intangible assets'
+        if 'investment' in name:
+            return 'Investment activity'
+        return 'Purchase of fixed assets' if not is_inflow else 'Sale of fixed assets'
+
+    if classification == 'financing':
+        if atype == AccountType.EQUITY:
+            if 'drawing' in name or 'withdrawal' in name:
+                return 'Owner drawings / withdrawals'
+            if 'dividend' in name:
+                return 'Dividends paid'
+            if 'retained' in name:
+                return 'Retained earnings adjustment'
+            return 'Capital contributed by owners' if is_inflow else 'Capital withdrawn'
+        if 'loan' in name or 'borrowing' in name or 'mortgage' in name:
+            return 'Proceeds from loans' if is_inflow else 'Loan repayments'
+        return 'Other financing activity'
+
+    # Operating
+    if atype == AccountType.INCOME:
+        return 'Cash received from customers'
+    if atype == AccountType.EXPENSE:
+        if 'salary' in name or 'wage' in name or 'payroll' in name:
+            return 'Cash paid to employees'
+        if 'rent' in name:
+            return 'Cash paid for rent'
+        if 'utility' in name or 'electric' in name or 'internet' in name:
+            return 'Cash paid for utilities'
+        if 'bank charge' in name:
+            return 'Bank charges paid'
+        return 'Cash paid for operating expenses'
+    if 'receivable' in name or 'debtor' in name:
+        return 'Cash received from customers'
+    if 'payable' in name or 'creditor' in name or 'accrued' in name:
+        if 'vat' in name or 'tax' in name:
+            return 'VAT/Tax paid'
+        if 'salary' in name or 'employee' in name:
+            return 'Cash paid to employees'
+        return 'Cash paid to suppliers'
+    if 'vat' in name or 'tax' in name:
+        return 'VAT/Tax paid' if not is_inflow else 'Tax refund received'
+    if 'inventory' in name or 'stock' in name:
+        return 'Cash paid for inventory'
+    return 'Other operating cash flow'
+
+
 @login_required
 def cash_flow(request):
     """
     Cash Flow Statement - DIRECT METHOD (IFRS/UAE Compliant)
-    
+
     CRITICAL ACCOUNTING RULES:
     - Shows ONLY actual cash/bank movements
     - EXCLUDES: Ledger balances, AR/AP balances, Depreciation, Provisions, PDC (until cleared)
     - Source: Journal entries that HIT cash/bank accounts from actual transactions
-    
-    Valid source_modules for Cash Flow:
-    - payment, sales, purchase, bank_transfer, payroll, expense_claim, pdc (only clearance)
-    
-    EXCLUDES source_modules:
-    - opening_balance, reversal, adjustment, depreciation, provision, accrual
-    
-    Classification:
-    A. OPERATING: Customer receipts, Supplier payments, Salaries, Taxes, Operating expenses
-    B. INVESTING: Fixed asset purchases/sales, Investment activity
-    C. FINANCING: Capital, Loans, Drawings, Dividends
+
+    Classification is determined by the COUNTER-ACCOUNT (the non-cash side):
+    A. OPERATING: Revenue, Expense, AR, AP, VAT, working capital
+    B. INVESTING: Fixed Assets, Intangibles, Investments, Accum Depreciation
+    C. FINANCING: Equity, Loans, Drawings, Dividends, Long-term Liabilities
     """
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'finance', 'view')):
         messages.error(request, 'Permission denied.')
@@ -4034,229 +4156,109 @@ def cash_flow(request):
     
     for cash_line in cash_journal_lines:
         journal = cash_line.journal_entry
-        
-        # Skip if already processed
+
         if journal.pk in processed_journals:
             continue
         processed_journals.add(journal.pk)
-        
-        # Calculate net cash movement (Debit = Cash In, Credit = Cash Out for asset accounts)
+
+        # Net cash movement (Debit = Cash In, Credit = Cash Out for asset accounts)
         journal_cash_movement = Decimal('0.00')
         for line in journal.lines.filter(account_id__in=cash_account_ids):
             journal_cash_movement += line.debit - line.credit
-        
-        # Skip zero movements
+
         if journal_cash_movement == 0:
             continue
-        
-        # Get counter-party accounts (non-cash accounts in this journal)
-        counter_lines = journal.lines.exclude(account_id__in=cash_account_ids)
-        
-        if not counter_lines.exists():
-            # Check if this is a Fixed Deposit movement (cash-to-FD or FD-to-cash)
-            # These should appear in Investing Activities per IAS 7
+
+        # Counter-party accounts (non-cash side of the journal)
+        counter_lines = list(journal.lines.exclude(account_id__in=cash_account_ids))
+
+        if not counter_lines:
+            # All lines hit cash accounts → internal cash transfer
+            # Handle Fixed Deposit movements (cash ↔ FD = Investing per IAS 7)
             fd_lines = journal.lines.filter(account__is_fixed_deposit=True)
-            non_fd_cash_lines = journal.lines.filter(account_id__in=cash_account_ids).exclude(account__is_fixed_deposit=True)
-            
+            non_fd_cash_lines = journal.lines.filter(
+                account_id__in=cash_account_ids
+            ).exclude(account__is_fixed_deposit=True)
+
             if fd_lines.exists() and non_fd_cash_lines.exists():
-                # This is a Fixed Deposit transfer - show in Investing Activities
                 fd_movement = Decimal('0.00')
                 for fd_line in fd_lines:
-                    # Debit to FD = investing outflow (buying FD)
-                    # Credit to FD = investing inflow (FD matured/withdrawn)
                     fd_movement += fd_line.credit - fd_line.debit
-                
                 if fd_movement != 0:
                     fd_account = fd_lines.first().account
                     item = {
                         'date': journal.date,
                         'reference': journal.reference or journal.entry_number,
-                        'description': journal.description or f"Fixed Deposit {'withdrawal' if fd_movement > 0 else 'placement'}",
+                        'description': journal.description or (
+                            f"Fixed Deposit {'withdrawal' if fd_movement > 0 else 'placement'}"
+                        ),
                         'counter_account': f"{fd_account.code} - {fd_account.name}",
                         'counter_account_type': 'asset',
                         'amount': fd_movement,
                         'journal_id': journal.pk,
                         'source_module': journal.source_module,
                         'is_inflow': fd_movement > 0,
-                        'category': 'Fixed deposit withdrawal' if fd_movement > 0 else 'Fixed deposit placement',
+                        'category': (
+                            'Fixed deposit withdrawal'
+                            if fd_movement > 0
+                            else 'Fixed deposit placement'
+                        ),
                     }
                     investing_items.append(item)
                     investing_total += fd_movement
-            # Skip other cash-to-cash transfers
+            # Skip other cash-to-cash transfers (petty cash replenishment, etc.)
             continue
-        
-        # Determine classification based on counter account
-        primary_counter = counter_lines.first()
-        counter_account = primary_counter.account
-        counter_type = counter_account.account_type
-        counter_name = counter_account.name.lower()
-        counter_category = getattr(counter_account, 'account_category', '') or ''
-        
-        # Skip non-cash entries (double-check)
-        non_cash_keywords = ['depreciation', 'amortization', 'provision', 'accrual', 'allowance']
-        if any(kw in counter_name for kw in non_cash_keywords):
+
+        # ========================================
+        # DOMINANT COUNTER-ACCOUNT SELECTION
+        # For multi-line journals (e.g. Dr Asset + Dr VAT / Cr Bank)
+        # classify by the line with the LARGEST absolute amount.
+        # ========================================
+        dominant_line = max(counter_lines, key=lambda cl: abs(cl.debit - cl.credit))
+        counter_account = dominant_line.account
+
+        # Skip stale opening-balance entries that slipped past the query filter
+        ref_lower = (journal.reference or '').lower()
+        desc_lower = (journal.description or '').lower()
+        if 'opening' in ref_lower or 'opening' in desc_lower or ref_lower.startswith('ob-'):
             continue
-        
-        # NOTE: PDC Receivable clearance IS actual cash (when PDC cheque clears)
-        # Dr Bank (cash in), Cr PDC Receivable (receivable reduces)
-        # This should be classified as "Cash received from customers" - do NOT skip!
-        
-        # Build item
-        # Positive = Cash In, Negative = Cash Out
+
+        # Classify the counter-account
+        classification = _classify_account_for_cash_flow(counter_account)
+
+        if classification == 'excluded':
+            continue
+
+        category = _cash_flow_category_label(
+            classification, counter_account, journal_cash_movement, journal.source_module
+        )
+
         item = {
             'date': journal.date,
             'reference': journal.reference or journal.entry_number,
-            'description': journal.description or primary_counter.description or counter_account.name,
+            'description': (
+                journal.description
+                or dominant_line.description
+                or counter_account.name
+            ),
             'counter_account': f"{counter_account.code} - {counter_account.name}",
-            'counter_account_type': counter_type,
+            'counter_account_type': counter_account.account_type,
             'amount': journal_cash_movement,
             'journal_id': journal.pk,
             'source_module': journal.source_module,
             'is_inflow': journal_cash_movement > 0,
+            'category': category,
         }
-        
-        # ========================================
-        # CLASSIFICATION LOGIC (Direct Method)
-        # ========================================
-        
-        # A. OPERATING ACTIVITIES
-        # - Customer receipts (AR clearing)
-        # - Supplier payments (AP clearing)
-        # - Salary payments
-        # - Tax payments
-        # - Operating expense payments
-        
-        if counter_type == AccountType.INCOME:
-            # Direct cash sales
-            item['category'] = 'Cash received from customers'
+
+        if classification == 'operating':
             operating_items.append(item)
             operating_total += journal_cash_movement
-            
-        elif counter_type == AccountType.EXPENSE:
-            # Direct expense payments
-            expense_category = 'Cash paid for operating expenses'
-            if 'salary' in counter_name or 'wage' in counter_name or 'payroll' in counter_name:
-                expense_category = 'Cash paid to employees'
-            elif 'rent' in counter_name:
-                expense_category = 'Cash paid for rent'
-            elif 'utility' in counter_name or 'electric' in counter_name:
-                expense_category = 'Cash paid for utilities'
-            elif 'bank charge' in counter_name:
-                expense_category = 'Bank charges paid'
-            item['category'] = expense_category
-            operating_items.append(item)
-            operating_total += journal_cash_movement
-            
-        elif (
-            'receivable' in counter_name or 
-            'debtor' in counter_name or 
-            counter_category == 'trade_receivables' or
-            counter_name.startswith('ar ') or  # "AR - Customer A"
-            counter_name.startswith('ar-') or  # "AR-Customer"
-            counter_account.code.startswith('11')  # 11xx = Receivables (standard COA)
-        ):
-            # AR clearing = Customer payment received
-            # PDC Receivable clearance = PDC cheque deposited and cleared
-            # IFRS: Once PDC clears, it's normal customer cash receipt - merge into single category
-            # Internal tracking via description, external presentation as single line
-            item['category'] = 'Cash received from customers'
-            operating_items.append(item)
-            operating_total += journal_cash_movement
-            
-        elif (
-            'payable' in counter_name or 
-            'creditor' in counter_name or 
-            counter_category == 'trade_payables' or
-            counter_name.startswith('ap ') or  # "AP - Vendor A"
-            counter_name.startswith('ap-') or  # "AP-Vendor"
-            counter_account.code.startswith('21') or  # 21xx = Payables (standard COA)
-            'accrued' in counter_name  # Accrued Expenses = Operating
-        ):
-            # AP clearing = Payment to supplier
-            # Accrued expenses clearing = Operating expense payment
-            if 'vat' in counter_name or 'tax' in counter_name:
-                item['category'] = 'VAT/Tax paid'
-            elif 'salary' in counter_name or 'employee' in counter_name or 'wage' in counter_name:
-                item['category'] = 'Cash paid to employees'
-            elif 'accrued' in counter_name:
-                item['category'] = 'Cash paid for accrued expenses'
-            else:
-                item['category'] = 'Cash paid to suppliers'
-            operating_items.append(item)
-            operating_total += journal_cash_movement
-            
-        elif 'vat' in counter_name or counter_category in ['tax_payables', 'tax_receivables']:
-            # VAT payments/refunds
-            item['category'] = 'VAT paid / (received)'
-            operating_items.append(item)
-            operating_total += journal_cash_movement
-        
-        # B. INVESTING ACTIVITIES
-        # - Fixed asset purchases
-        # - Fixed asset sales
-        # - Investment purchases/sales
-        
-        elif counter_category in ['fixed_furniture', 'fixed_it', 'fixed_vehicles', 'fixed_other', 'intangible']:
-            # Fixed asset purchase
-            item['category'] = 'Purchase of fixed assets'
+        elif classification == 'investing':
             investing_items.append(item)
             investing_total += journal_cash_movement
-            
-        elif 'fixed asset' in counter_name or 'furniture' in counter_name or 'equipment' in counter_name or 'vehicle' in counter_name:
-            item['category'] = 'Purchase of fixed assets' if journal_cash_movement < 0 else 'Sale of fixed assets'
-            investing_items.append(item)
-            investing_total += journal_cash_movement
-            
-        elif 'investment' in counter_name:
-            item['category'] = 'Investment activity'
-            investing_items.append(item)
-            investing_total += journal_cash_movement
-        
-        # C. FINANCING ACTIVITIES
-        # - Capital introduced / contributions
-        # - Loans received/repaid
-        # - Drawings / withdrawals
-        # - Dividends paid
-        # - Share capital / equity issued
-        
-        elif counter_type == AccountType.EQUITY or counter_category in ['capital', 'reserves', 'retained_earnings']:
-            if 'drawing' in counter_name or 'withdrawal' in counter_name:
-                item['category'] = 'Owner drawings / withdrawals'
-            elif 'dividend' in counter_name:
-                item['category'] = 'Dividends paid'
-            elif 'capital' in counter_name or 'partner' in counter_name or 'owner' in counter_name:
-                item['category'] = 'Capital contributed by owners' if journal_cash_movement > 0 else 'Capital withdrawn'
-            elif 'share' in counter_name:
-                item['category'] = 'Share capital issued' if journal_cash_movement > 0 else 'Share buyback'
-            elif 'retained' in counter_name:
-                item['category'] = 'Retained earnings adjustment'
-            else:
-                item['category'] = 'Other financing - Equity'
+        elif classification == 'financing':
             financing_items.append(item)
             financing_total += journal_cash_movement
-            
-        elif 'loan' in counter_name or 'borrowing' in counter_name or 'mortgage' in counter_name:
-            item['category'] = 'Proceeds from loans' if journal_cash_movement > 0 else 'Loan repayments'
-            financing_items.append(item)
-            financing_total += journal_cash_movement
-            
-        elif counter_type == AccountType.LIABILITY and ('long term' in counter_name or 'term loan' in counter_name):
-            # Long-term liability typically = financing
-            item['category'] = 'Financing - Long term liability'
-            financing_items.append(item)
-            financing_total += journal_cash_movement
-        
-        # Default to operating (but NOT opening balance entries)
-        else:
-            # Double-check this isn't an opening balance entry
-            ref_lower = (journal.reference or '').lower()
-            desc_lower = (journal.description or '').lower()
-            if 'opening' in ref_lower or 'opening' in desc_lower or ref_lower.startswith('ob-'):
-                continue  # Skip opening balance entries
-            
-            item['category'] = 'Other operating cash flow'
-            operating_items.append(item)
-            operating_total += journal_cash_movement
     
     # ========================================
     # CALCULATE EXCLUDED ADJUSTMENTS
@@ -4422,12 +4424,12 @@ def ar_aging(request):
     else:
         today = date.today()
     
-    # Get AR account (typically 1200 or similar)
-    ar_account = Account.objects.filter(
+    # Get ALL AR accounts (1200, 1210, etc.)
+    ar_accounts = Account.objects.filter(
         code__startswith='12', account_type=AccountType.ASSET, is_active=True
-    ).first()
+    )
     
-    if not ar_account:
+    if not ar_accounts.exists():
         messages.warning(request, 'Accounts Receivable account not found in Chart of Accounts.')
         return render(request, 'finance/ar_aging.html', {
             'title': 'Accounts Receivable Aging',
@@ -4437,15 +4439,13 @@ def ar_aging(request):
             'as_of_date': today,
         })
     
-    # Get all open AR items (invoices) from journal lines
-    # Open items = Journal lines where there's a debit to AR without matching credit (payment)
     ar_lines = JournalEntryLine.objects.filter(
-        account=ar_account,
+        account__in=ar_accounts,
         journal_entry__status='posted',
+        journal_entry__date__lte=today,
         debit__gt=0,
     ).select_related('journal_entry').order_by('journal_entry__date')
     
-    # Build aging data from AR journal lines
     aging_data = {
         'current': [],
         '1_30': [],
@@ -4462,7 +4462,6 @@ def ar_aging(request):
         'over_90': Decimal('0.00'),
     }
     
-    # Group by reference (invoice number) and calculate net outstanding
     invoice_balances = {}
     for line in ar_lines:
         ref = line.journal_entry.reference
@@ -4476,23 +4475,42 @@ def ar_aging(request):
             }
         invoice_balances[ref]['debit'] += line.debit
     
-    # Get credits (payments) to AR
+    # Match AR credits to invoices: first by reference, then FIFO for unmatched
     ar_credits = JournalEntryLine.objects.filter(
-        account=ar_account,
+        account__in=ar_accounts,
         journal_entry__status='posted',
+        journal_entry__date__lte=today,
         credit__gt=0,
     ).select_related('journal_entry')
     
+    unmatched_credits = Decimal('0.00')
     for line in ar_credits:
         ref = line.journal_entry.reference
         if ref in invoice_balances:
             invoice_balances[ref]['credit'] += line.credit
+        else:
+            unmatched_credits += line.credit
     
-    # Calculate aging
+    # FIFO allocation: apply unmatched credits to oldest outstanding invoices
+    if unmatched_credits > 0:
+        sorted_refs = sorted(invoice_balances.keys(),
+                             key=lambda r: invoice_balances[r]['date'])
+        remaining = unmatched_credits
+        for ref in sorted_refs:
+            if remaining <= 0:
+                break
+            data = invoice_balances[ref]
+            outstanding = data['debit'] - data['credit']
+            if outstanding <= 0:
+                continue
+            apply = min(remaining, outstanding)
+            data['credit'] += apply
+            remaining -= apply
+    
     for ref, data in invoice_balances.items():
         outstanding = data['debit'] - data['credit']
         if outstanding <= 0:
-            continue  # Fully paid
+            continue
         
         days_old = (today - data['date']).days
         
@@ -4549,7 +4567,7 @@ def ar_aging(request):
         'totals': totals,
         'grand_total': grand_total,
         'as_of_date': today,
-        'ar_account': ar_account,
+        'ar_accounts': ar_accounts,
     })
 
 
@@ -4573,12 +4591,12 @@ def ap_aging(request):
     else:
         today = date.today()
     
-    # Get AP account (typically 2000 or similar)
-    ap_account = Account.objects.filter(
-        code__startswith='20', account_type=AccountType.LIABILITY, is_active=True
-    ).first()
-    
-    if not ap_account:
+    # Trade payables only (exclude GRN Clearing / accrual accounts)
+    ap_accounts = list(Account.objects.filter(
+        code='2000', account_type=AccountType.LIABILITY, is_active=True,
+    ).order_by('code'))
+
+    if not ap_accounts:
         messages.warning(request, 'Accounts Payable account not found in Chart of Accounts.')
         return render(request, 'finance/ap_aging.html', {
             'title': 'Accounts Payable Aging',
@@ -4587,16 +4605,13 @@ def ap_aging(request):
             'grand_total': Decimal('0.00'),
             'as_of_date': today,
         })
-    
-    # Get all open AP items (bills) from journal lines
-    # Open items = Journal lines where there's a credit to AP without matching debit (payment)
+
     ap_lines = JournalEntryLine.objects.filter(
-        account=ap_account,
+        account__in=ap_accounts,
         journal_entry__status='posted',
         credit__gt=0,
     ).select_related('journal_entry').order_by('journal_entry__date')
-    
-    # Build aging data from AP journal lines
+
     aging_data = {
         'current': [],
         '1_30': [],
@@ -4604,7 +4619,7 @@ def ap_aging(request):
         '61_90': [],
         'over_90': [],
     }
-    
+
     totals = {
         'current': Decimal('0.00'),
         '1_30': Decimal('0.00'),
@@ -4612,8 +4627,7 @@ def ap_aging(request):
         '61_90': Decimal('0.00'),
         'over_90': Decimal('0.00'),
     }
-    
-    # Group by reference (bill number) and calculate net outstanding
+
     bill_balances = {}
     for line in ap_lines:
         ref = line.journal_entry.reference
@@ -4626,27 +4640,43 @@ def ap_aging(request):
                 'credit': Decimal('0.00'),
             }
         bill_balances[ref]['credit'] += line.credit
-    
-    # Get debits (payments) to AP
+
     ap_debits = JournalEntryLine.objects.filter(
-        account=ap_account,
+        account__in=ap_accounts,
         journal_entry__status='posted',
         debit__gt=0,
     ).select_related('journal_entry')
-    
+
+    unmatched_debits = Decimal('0.00')
     for line in ap_debits:
         ref = line.journal_entry.reference
         if ref in bill_balances:
             bill_balances[ref]['debit'] += line.debit
-    
-    # Calculate aging
+        else:
+            unmatched_debits += line.debit
+
+    # FIFO allocation: apply unmatched debits (e.g. opening balance clearing,
+    # bulk payments) against the oldest outstanding credits first.
+    if unmatched_debits > 0:
+        sorted_refs = sorted(bill_balances.keys(), key=lambda r: bill_balances[r]['date'])
+        remaining = unmatched_debits
+        for ref in sorted_refs:
+            if remaining <= 0:
+                break
+            outstanding = bill_balances[ref]['credit'] - bill_balances[ref]['debit']
+            if outstanding <= 0:
+                continue
+            allocation = min(remaining, outstanding)
+            bill_balances[ref]['debit'] += allocation
+            remaining -= allocation
+
     for ref, data in bill_balances.items():
         outstanding = data['credit'] - data['debit']
-        if outstanding <= 0:
-            continue  # Fully paid
-        
+        if outstanding <= Decimal('0.01'):
+            continue
+
         days_old = (today - data['date']).days
-        
+
         item_data = {
             'reference': ref,
             'description': data['description'],
@@ -4656,7 +4686,7 @@ def ap_aging(request):
             'outstanding': outstanding,
             'days_old': days_old,
         }
-        
+
         if days_old <= 30:
             aging_data['current'].append(item_data)
             totals['current'] += outstanding
@@ -4672,7 +4702,7 @@ def ap_aging(request):
         else:
             aging_data['over_90'].append(item_data)
             totals['over_90'] += outstanding
-    
+
     grand_total = sum(totals.values())
     
     # Excel Export
@@ -4700,7 +4730,7 @@ def ap_aging(request):
         'totals': totals,
         'grand_total': grand_total,
         'as_of_date': today,
-        'ap_account': ap_account,
+        'ap_accounts': ap_accounts,
     })
 
 
@@ -4936,22 +4966,28 @@ def payment_post(request, pk):
     bank_account = payment.bank_account.gl_account
     
     if payment.payment_type == 'received':
-        # Debit Bank, Credit AR (clears receivable)
+        if not ar_account:
+            journal.delete()
+            messages.error(request, 'Cannot post: Accounts Receivable account not configured. '
+                           'Set up "customer_receipt_ar_clear" in Account Mapping.')
+            return redirect('finance:payment_list')
+        if ar_account.account_type == AccountType.INCOME:
+            journal.delete()
+            messages.error(request, 'Cannot post: AR clearing account is mapped to a Revenue account. '
+                           'Payments must credit Accounts Receivable, not Revenue.')
+            return redirect('finance:payment_list')
         JournalEntryLine.objects.create(
             journal_entry=journal,
             account=bank_account,
             description=f"Payment from {payment.party_name}",
             debit=payment.amount,
         )
-        if ar_account:
-            JournalEntryLine.objects.create(
-                journal_entry=journal,
-                account=ar_account,
-                description=f"Payment from {payment.party_name}",
-                credit=payment.amount,
-            )
-        else:
-            messages.warning(request, 'Accounts Receivable account not configured in Account Mapping.')
+        JournalEntryLine.objects.create(
+            journal_entry=journal,
+            account=ar_account,
+            description=f"AR Clearing - {payment.party_name}",
+            credit=payment.amount,
+        )
     else:
         # Debit AP (clears payable), Credit Bank
         if ap_account:
@@ -6108,6 +6144,11 @@ def bank_vs_gl_report(request):
             'last_reconciled': last_reconciled,
         })
     
+    export_format = request.GET.get('format', '')
+    if export_format == 'excel':
+        from .excel_exports import export_bank_vs_gl
+        return export_bank_vs_gl(comparison_data, as_of_date)
+
     return render(request, 'finance/bank_vs_gl_report.html', {
         'title': 'Bank vs GL Ledger Comparison',
         'comparison_data': comparison_data,
