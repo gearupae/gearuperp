@@ -1637,6 +1637,90 @@ def export_tax_reconciliation(ct_bridge, vat_revenue_bridge, vat_liability_bridg
 
 # ============ ASSET REGISTER EXPORT ============
 
+def export_depreciation_report(records, totals, from_date, to_date):
+    """Export Depreciation Report to Excel with reconciliation."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Depreciation Report'
+
+    style_title_row(ws, 1, 'Depreciation Report', 9)
+    ws.cell(row=2, column=1, value=f'Period: {from_date} to {to_date}')
+    ws.cell(row=3, column=1, value=f'Generated: {date.today().isoformat()}')
+
+    headers = [
+        'Date', 'Asset #', 'Asset Name', 'Category',
+        'Cost (AED)', 'Period Depr. (AED)', 'Accum. Depr. (AED)',
+        'Book Value (AED)', 'Journal Ref',
+    ]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=5, column=col, value=h)
+    style_header_row(ws, 5, len(headers))
+
+    row = 6
+    sum_cost = Decimal('0')
+    sum_depr = Decimal('0')
+    sum_accum = Decimal('0')
+    sum_nbv = Decimal('0')
+
+    for rec in records:
+        dep_date = rec.get('date')
+        cost = rec.get('cost', Decimal('0'))
+        depr = rec.get('depreciation_amount', Decimal('0'))
+        accum = rec.get('accumulated_depreciation', Decimal('0'))
+        nbv = rec.get('book_value', Decimal('0'))
+
+        ws.cell(row=row, column=1, value=dep_date.strftime('%d/%m/%Y') if hasattr(dep_date, 'strftime') else str(dep_date))
+        ws.cell(row=row, column=2, value=rec.get('asset_number', ''))
+        ws.cell(row=row, column=3, value=rec.get('asset_name', ''))
+        ws.cell(row=row, column=4, value=rec.get('category', ''))
+        ws.cell(row=row, column=5, value=format_currency(cost))
+        ws.cell(row=row, column=6, value=format_currency(depr))
+        ws.cell(row=row, column=7, value=format_currency(accum))
+        ws.cell(row=row, column=8, value=format_currency(nbv))
+        ws.cell(row=row, column=9, value=rec.get('journal_ref', '-'))
+
+        sum_cost += cost
+        sum_depr += depr
+        sum_accum += accum
+        sum_nbv += nbv
+        row += 1
+
+    for col in range(1, len(headers) + 1):
+        ws.cell(row=row, column=col).border = Border(top=Side(style='double'))
+    ws.cell(row=row, column=4, value='TOTAL').font = Font(bold=True)
+    ws.cell(row=row, column=5, value=format_currency(sum_cost)).font = Font(bold=True)
+    ws.cell(row=row, column=6, value=format_currency(sum_depr)).font = Font(bold=True)
+    ws.cell(row=row, column=7, value=format_currency(sum_accum)).font = Font(bold=True)
+    ws.cell(row=row, column=8, value=format_currency(sum_nbv)).font = Font(bold=True)
+
+    row += 2
+    ws.cell(row=row, column=1, value='RECONCILIATION CHECK')
+    ws.cell(row=row, column=1).font = Font(bold=True, size=11)
+    row += 1
+
+    rec_fill = PatternFill(start_color='E8F5E9', end_color='E8F5E9', fill_type='solid')
+    for label, val in [
+        ('Total Asset Cost', totals.get('total_cost', Decimal('0'))),
+        ('Total Accumulated Depreciation', totals.get('total_accumulated', Decimal('0'))),
+        ('Total Net Book Value (Cost − Accum. Depr.)', totals.get('total_book_value', Decimal('0'))),
+    ]:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=row, column=2, value=format_currency(val)).font = Font(bold=True)
+        for c in range(1, 3):
+            ws.cell(row=row, column=c).fill = rec_fill
+        row += 1
+
+    row += 1
+    ws.cell(row=row, column=1, value=f'Total Depreciation for Period: AED {float(totals.get("total_depreciation", 0)):,.2f}')
+    ws.cell(row=row, column=1).font = Font(bold=True, size=11)
+
+    auto_width_columns(ws)
+
+    response = create_excel_response(f'depreciation_report_{from_date}_to_{to_date}.xlsx')
+    wb.save(response)
+    return response
+
+
 def export_asset_register(assets, gl_reconciliation=None, as_of_date=None):
     """Export Fixed Asset Register with GL reconciliation to Excel."""
     wb = Workbook()

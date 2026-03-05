@@ -6,7 +6,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
-from django.db.models import Sum, Q
+from django.db.models import F, Sum, Q, Value
+from django.db.models.functions import Greatest
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
@@ -488,27 +489,35 @@ def asset_register_report(request):
 
 @login_required
 def depreciation_report(request):
-    """Depreciation Schedule Report - filters by depreciation posting date."""
+    """Depreciation Schedule Report - filters by depreciation_date (posting date)."""
     if not (request.user.is_superuser or PermissionChecker.has_permission(request.user, 'assets', 'view')):
         messages.error(request, 'Permission denied.')
         return redirect('dashboard')
 
     try:
-        from_str = request.GET.get('from_date', '')
-        to_str = request.GET.get('to_date', '')
+        from_str = request.GET.get('from_date', '').strip()
+        to_str = request.GET.get('to_date', '').strip()
         from_date = date.fromisoformat(from_str) if from_str else date(date.today().year, 1, 1)
         to_date = date.fromisoformat(to_str) if to_str else date.today()
     except (ValueError, TypeError):
         from_date = date(date.today().year, 1, 1)
         to_date = date.today()
 
-    category_id = request.GET.get('category', '')
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    category_id = request.GET.get('category', '').strip()
 
     depreciation_records = AssetDepreciation.objects.filter(
         depreciation_date__gte=from_date,
         depreciation_date__lte=to_date,
     ).select_related(
         'asset', 'asset__category', 'journal_entry',
+    ).annotate(
+        computed_book_value=Greatest(
+            F('asset__acquisition_cost') - F('accumulated_depreciation'),
+            Value(Decimal('0.00')),
+        ),
     ).order_by('depreciation_date', 'asset__asset_number')
 
     if category_id:
@@ -516,14 +525,49 @@ def depreciation_report(request):
             asset__category_id=category_id
         )
 
-    # Also include records whose journal is posted (exclude draft-only if any)
     depreciation_records = depreciation_records.filter(
         Q(journal_entry__isnull=True) | Q(journal_entry__status='posted')
     )
 
     totals = depreciation_records.aggregate(
         total_depreciation=Sum('depreciation_amount'),
+        total_cost=Sum('asset__acquisition_cost'),
+        total_accumulated=Sum('accumulated_depreciation'),
     )
+    if totals.get('total_depreciation') is None:
+        totals['total_depreciation'] = Decimal('0.00')
+    if totals.get('total_cost') is None:
+        totals['total_cost'] = Decimal('0.00')
+    if totals.get('total_accumulated') is None:
+        totals['total_accumulated'] = Decimal('0.00')
+    totals['total_book_value'] = max(
+        totals['total_cost'] - totals['total_accumulated'],
+        Decimal('0.00'),
+    )
+    result_count = depreciation_records.count()
+    logger.info(
+        "Depreciation Report Query: from_date=%s to_date=%s result_count=%s total=%s",
+        from_date, to_date, result_count,
+        totals.get('total_depreciation'),
+    )
+
+    if request.GET.get('format') == 'excel':
+        from apps.finance.excel_exports import export_depreciation_report
+        records_data = []
+        for rec in depreciation_records:
+            nbv = max(rec.asset.acquisition_cost - rec.accumulated_depreciation, Decimal('0'))
+            records_data.append({
+                'date': rec.depreciation_date,
+                'asset_number': rec.asset.asset_number,
+                'asset_name': rec.asset.name,
+                'category': rec.asset.category.name if rec.asset.category else '',
+                'cost': rec.asset.acquisition_cost,
+                'depreciation_amount': rec.depreciation_amount,
+                'accumulated_depreciation': rec.accumulated_depreciation,
+                'book_value': nbv,
+                'journal_ref': rec.journal_entry.entry_number if rec.journal_entry else '-',
+            })
+        return export_depreciation_report(records_data, totals, from_date.isoformat(), to_date.isoformat())
 
     context = {
         'title': 'Depreciation Report',

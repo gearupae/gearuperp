@@ -1781,7 +1781,7 @@ def vat_report(request):
         from apps.purchase.models import VendorBillItem
 
         period_invoice_items = InvoiceItem.objects.filter(
-            invoice__status='posted',
+            invoice__status__in=['posted', 'sent', 'paid', 'partial'],
             invoice__invoice_date__gte=start_date,
             invoice__invoice_date__lte=end_date,
         ).select_related('tax_code')
@@ -1813,7 +1813,7 @@ def vat_report(request):
 
         # Purchases breakdown (standard rated expenses for Box 9)
         period_bill_items = VendorBillItem.objects.filter(
-            bill__status='posted',
+            bill__status__in=['posted', 'paid', 'partial'],
             bill__bill_date__gte=start_date,
             bill__bill_date__lte=end_date,
         ).select_related('tax_code')
@@ -3490,7 +3490,7 @@ def vatreturn_create_from_preview(request):
 
     # --- Sales breakdown by tax_code.tax_type ---
     inv_items = InvoiceItem.objects.filter(
-        invoice__status='posted',
+        invoice__status__in=['posted', 'sent', 'paid', 'partial'],
         invoice__invoice_date__gte=period_start,
         invoice__invoice_date__lte=period_end,
     ).select_related('tax_code')
@@ -3513,7 +3513,7 @@ def vatreturn_create_from_preview(request):
 
     # --- Purchases breakdown ---
     bill_items = VendorBillItem.objects.filter(
-        bill__status='posted',
+        bill__status__in=['posted', 'paid', 'partial'],
         bill__bill_date__gte=period_start,
         bill__bill_date__lte=period_end,
     ).select_related('tax_code')
@@ -3698,8 +3698,9 @@ def tax_reconciliation(request):
         gl_period_revenue = (gl_rev_agg['cr'] or Decimal('0.00')) - (gl_rev_agg['dr'] or Decimal('0.00'))
 
         # InvoiceItem breakdown by tax_code.tax_type
+        # Include all valid invoice statuses — paid/partial invoices still count for VAT
         inv_items = InvoiceItem.objects.filter(
-            invoice__status='posted',
+            invoice__status__in=['posted', 'sent', 'paid', 'partial'],
             invoice__invoice_date__gte=ps,
             invoice__invoice_date__lte=pe,
         ).select_related('tax_code')
